@@ -1,0 +1,75 @@
+# docker-compose.yml — оркестрация сервисов (см. docker-build.md).
+
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        - APP_VERSION=${APP_VERSION:-dev}
+    container_name: inteli-dev-web
+    restart: unless-stopped
+    ports:
+      - "${WEB_PORT:-8080}:8080"
+    # host.docker.internal -> хост (нужно для доступа к локальной LLM на хосте).
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      - RUST_LOG=${RUST_LOG:-info}
+      - PORT=8080
+      - CONFIG_PATH=/app/config.toml
+      # OpenViking
+      - OPENVIKING_BASE_URL=http://viking:1933/mcp
+      # LLM
+      - LLM_API_KEY=${LLM_API_KEY:-}
+      - LLM_BASE_URL=${LLM_BASE_URL:-https://api.deepseek.com/v1}
+      - LLM_MODEL=${LLM_MODEL:-deepseek-chat}
+      # Telegram
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
+      - TELEGRAM_ADMIN_CHAT_ID=${TELEGRAM_ADMIN_CHAT_ID:-0}
+      # VK
+      - VK_OAUTH_TOKEN=${VK_OAUTH_TOKEN:-}
+      - VK_ADMIN_USER_ID=${VK_ADMIN_USER_ID:-0}
+      # Admin
+      - ADMIN_TOKEN=${ADMIN_TOKEN:-}
+      # SQLite: DB пишется в volume, примонтированный в DATA_DIR.
+      - DATA_DIR=/data
+      - DB_PATH=/data/chats.db
+    volumes:
+      - db-data:/data
+      - ./config.toml:/app/config.toml:ro
+    depends_on:
+      - redis
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # OpenViking — семантическая память (опционально, приложение деградирует на fallback).
+  # ⚠️ 1933 на хосте занят (хост-OpenViking/OpenWebUI), поэтому публикуем на VIKING_PORT
+  # (по умолчанию 1943). Внутри контейнер слушает 1933, и web ходит к нему по
+  # docker-сети как `http://viking:1933/mcp` — это НЕ конфликтует с хостом.
+  viking:
+    image: ghcr.io/volcengine/openviking:latest
+    container_name: inteli-dev-viking
+    restart: unless-stopped
+    ports:
+      - "${VIKING_PORT:-1943}:1933"
+    volumes:
+      - viking-data:/data
+
+  # Redis — кэш/rate limiting (этап P7; приложение работает и без него).
+  redis:
+    image: redis:7-alpine
+    container_name: inteli-dev-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis-data:/data
+
+volumes:
+  db-data:
+  viking-data:
+  redis-data:

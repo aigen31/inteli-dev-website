@@ -1,0 +1,48 @@
+# config.toml.example — пример конфигурации приложения inteli-dev.ru.
+# Скопируйте в `config.toml` и заполните. ⚠️ config.toml НЕ коммитится в Git.
+# Секреты (API key, токены ботов, admin token) задаются через env vars (.env).
+
+[server]
+host = "0.0.0.0"
+port = 8080
+read_timeout_ms = 5000
+write_timeout_ms = 10000
+
+[database]
+path = "data/chats.db"        # или DB_PATH env (в контейнере: /data/chats.db)
+
+[cache]
+enabled = true
+ttl_seconds = 3600            # TTL кэша ответов LLM (in-memory; Redis — этап P7)
+
+[openviking]
+base_url = "http://viking:1933/mcp"
+timeout_seconds = 5
+read_timeout_seconds = 5
+
+[llm]
+provider = "deepseek"
+base_url = "https://api.deepseek.com/v1"
+model = "deepseek-chat"
+# api_key — читается из env LLM_API_KEY, НЕ храните его здесь.
+
+[telegram]
+bot_token = ""                # или TELEGRAM_BOT_TOKEN env
+admin_chat_id = 0             # или TELEGRAM_ADMIN_CHAT_ID env
+
+[vk]
+oauth_token = ""              # или VK_OAUTH_TOKEN env
+admin_user_id = 0             # или VK_ADMIN_USER_ID env
+
+[admin]
+token = ""                    # или ADMIN_TOKEN env (Bearer-аутентификация)
+
+[ratelimit]
+max_requests_per_minute = 10
+window_seconds = 60
+
+[logging]
+level = "info"                # или RUST_LOG env
+
+[security]
+ip_hash_algorithm = "sha256"

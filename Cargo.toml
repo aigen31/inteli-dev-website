@@ -1,0 +1,62 @@
+[package]
+name = "inteli-dev"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.84"
+description = "inteli.dev.ru — личный сайт-визитка специалиста по продвижению сайтов (SEO)"
+license = "UNLICENSED"
+publish = false
+
+[[bin]]
+name = "inteli-dev"
+path = "src/main.rs"
+
+[dependencies]
+# --- HTTP / web framework (hyper-based) ---
+axum = "0.7"
+tokio = { version = "1", features = ["full"] }
+
+# --- UI (SSR only, no WASM/hydration: interactivity via vanilla JS) ---
+# Версии закреплены точно: leptos_macro 0.7.9 несовместим с leptos 0.7.8
+# (иначе возникает «&str: PossibleRouteMatch» в leptos_router).
+leptos = { version = "=0.7.8", features = ["ssr"] }
+leptos_axum = "=0.7.8"
+leptos_router = "=0.7.8"
+leptos_macro = "=0.7.8"
+
+# --- Serialization / config ---
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"
+
+# --- Storage ---
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "sqlite", "chrono", "macros"] }
+
+# --- Time ---
+chrono = { version = "0.4", features = ["serde"] }
+
+# --- HTTP client (OpenViking / LLM / Telegram / VK) ---
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+
+# --- Errors / logging ---
+thiserror = "1"
+async-trait = "0.1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# --- Utilities ---
+sha2 = "0.10"
+hex = "0.4"
+uuid = { version = "1", features = ["v4"] }
+
+[dev-dependencies]
+# Integration tests spin up the axum router with a real in-memory SQLite database.
+tower = { version = "0.4", features = ["util"] }
+http-body-util = "0.1"
+
+[profile.release]
+opt-level = "z"     # Optimize for size (P2: лёгкость — это фича)
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

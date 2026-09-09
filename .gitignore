@@ -1,0 +1,26 @@
+# Secrets & local config — never commit
+config.toml
+.env
+.env.*
+!.env.example
+
+# Databases
+*.sqlite
+*.sqlite3
+*.db
+*.db-wal
+*.db-shm
+
+# Build artifacts
+/target/
+node_modules/
+
+# Editor / OS noise
+.DS_Store
+*.swp
+*.swo
+.idea/
+.vscode/
+
+# OpenViking local data
+viking-content/

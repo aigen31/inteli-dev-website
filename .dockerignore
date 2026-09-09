@@ -1,0 +1,15 @@
+.git/
+.github/
+.vscode/
+.idea/
+target/
+.DS_Store
+*.md
+viking-content/
+config.toml
+.env
+.env.*
+!.env.example
+*.sqlite
+*.sqlite3
+*.db
