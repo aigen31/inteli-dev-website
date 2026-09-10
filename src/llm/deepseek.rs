@@ -24,7 +24,9 @@ impl DeepSeekProvider {
         model: impl Into<String>,
     ) -> Self {
         let client = reqwest::Client::builder()
-            .timeout(Duration::from_secs(30))
+            // Локальные GGUF-модели (llama.cpp) могут генерировать долго —
+            // даём запас (120s), чтобы запрос не падал в fallback по таймауту.
+            .timeout(Duration::from_secs(120))
             .build()
             .expect("reqwest client build cannot fail with valid config");
 

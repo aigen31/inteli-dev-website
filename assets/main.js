@@ -294,7 +294,176 @@
     if (token()) { loadDashboard(); }
   }
 
+  // ---------- Hero: интерактивная геометрическая сетка (реагирует на курсор) ----------
+  function initHeroCanvas() {
+    var canvas = document.getElementById('hero-canvas');
+    if (!canvas) return;
+    var ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    var hero = canvas.parentElement;
+    var reduceMotion = !!(window.matchMedia &&
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+
+    var W = 0, H = 0, cols = 0, rows = 0;
+    var grid = [];
+    var mouse = { x: -1e5, y: -1e5, active: false };
+    var rafId = 0, running = false;
+    var CURSOR_R = 190;   // радиус влияния курсора
+    var PUSH = 30;        // сила отталкивания точек
+    var IDLE_AMP = 3;     // лёгкое «дыхание» в покое
+
+    function build() {
+      var rect = hero.getBoundingClientRect();
+      W = rect.width; H = rect.height;
+      if (W < 40 || H < 40) return;
+
+      var dpr = Math.min(window.devicePixelRatio || 1, 2);
+      canvas.width = Math.round(W * dpr);
+      canvas.height = Math.round(H * dpr);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+      // Плотная сетка край→край: первая точка на границе 0, последняя ровно на W/H.
+      var base = W < 640 ? 130 : 110;   // крупные ячейки
+      // Пространство снизу, чтобы нижний ряд точек не обрезался у края секции.
+      var bottom = 150;
+      var availH = Math.max(80, H - bottom);
+      cols = Math.max(2, Math.round(W / base));
+      rows = Math.max(2, Math.round(availH / base));
+      var spX = cols > 1 ? W / (cols - 1) : W;
+      var spY = rows > 1 ? availH / (rows - 1) : availH;
+
+      grid = [];
+      for (var r = 0; r < rows; r++) {
+        var row = [];
+        for (var c = 0; c < cols; c++) {
+          row.push({ hx: c * spX, hy: r * spY, cx: c * spX, cy: r * spY, ph: Math.random() * 6.283 });
+        }
+        grid.push(row);
+      }
+      if (reduceMotion) draw();
+    }
+
+    function draw() {
+      if (W < 40 || H < 40) return;
+      ctx.clearRect(0, 0, W, H);
+
+      // Линии сетки (к соседям справа и снизу).
+      ctx.strokeStyle = 'rgba(255,255,255,0.045)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      for (var r = 0; r < rows; r++) {
+        var row = grid[r];
+        for (var c = 0; c < cols; c++) {
+          var d = row[c];
+          if (c + 1 < cols) {
+            ctx.moveTo(d.cx, d.cy);
+            ctx.lineTo(row[c + 1].cx, row[c + 1].cy);
+          }
+          if (r + 1 < rows) {
+            ctx.moveTo(d.cx, d.cy);
+            ctx.lineTo(grid[r + 1][c].cx, grid[r + 1][c].cy);
+          }
+        }
+      }
+      ctx.stroke();
+
+      // Точки сетки.
+      ctx.fillStyle = 'rgba(214,210,255,0.32)';
+      ctx.beginPath();
+      for (r = 0; r < rows; r++) {
+        row = grid[r];
+        for (c = 0; c < cols; c++) {
+          d = row[c];
+          ctx.moveTo(d.cx + 2.2, d.cy);
+          ctx.arc(d.cx, d.cy, 2.2, 0, 6.283);
+        }
+      }
+      ctx.fill();
+    }
+
+    // Вычисляем целевые координаты и плавно двигаем точки.
+    function update() {
+      var t = performance.now() / 1000;
+      for (var r = 0; r < rows; r++) {
+        var row = grid[r];
+        for (var c = 0; c < cols; c++) {
+          var d = row[c];
+          var idle = reduceMotion ? 0 : Math.sin(t * 1.1 + d.ph) * IDLE_AMP;
+          var tx = d.hx;
+          var ty = d.hy + idle;
+
+          if (mouse.active && !reduceMotion) {
+            var vx = d.hx - mouse.x;
+            var vy = d.hy - mouse.y;
+            var dist = Math.sqrt(vx * vx + vy * vy);
+            if (dist < CURSOR_R && dist > 0.01) {
+              var k = 1 - dist / CURSOR_R;
+              var push = PUSH * k * k;
+              tx += (vx / dist) * push;
+              ty += (vy / dist) * push;
+            }
+          }
+          d.cx += (tx - d.cx) * 0.1;
+          d.cy += (ty - d.cy) * 0.1;
+        }
+      }
+    }
+
+    function frame() {
+      if (!running) return;
+      rafId = requestAnimationFrame(frame);
+      update();
+      draw();
+    }
+
+    function start() {
+      if (running || reduceMotion) return;
+      running = true;
+      cancelAnimationFrame(rafId);
+      rafId = requestAnimationFrame(frame);
+    }
+    function stop() {
+      running = false;
+      cancelAnimationFrame(rafId);
+    }
+
+    function onMove(e) {
+      var rect = hero.getBoundingClientRect();
+      mouse.x = e.clientX - rect.left;
+      mouse.y = e.clientY - rect.top;
+      mouse.active = true;
+    }
+
+    window.addEventListener('pointermove', onMove, { passive: true });
+    hero.addEventListener('pointerleave', function () { mouse.active = false; });
+    window.addEventListener('blur', function () { mouse.active = false; });
+
+    // Запускаем/останавливаем анимацию при попадании hero в вьюпорт.
+    if ('IntersectionObserver' in window) {
+      new IntersectionObserver(function (entries) {
+        entries.forEach(function (en) {
+          if (en.isIntersecting) { start(); } else { stop(); }
+        });
+      }, { threshold: 0.05 }).observe(hero);
+    }
+
+    function onResize() {
+      build();
+      if (reduceMotion) { draw(); } else { start(); }
+    }
+
+    if ('ResizeObserver' in window) {
+      new ResizeObserver(onResize).observe(hero);
+    } else {
+      window.addEventListener('resize', onResize);
+    }
+
+    build();
+    if (!reduceMotion) { start(); }
+  }
+
   initReveal();
+  initHeroCanvas();
   initChat();
   initLeadForm();
   initAdmin();
