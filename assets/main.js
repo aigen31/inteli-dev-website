@@ -294,7 +294,7 @@
     if (token()) { loadDashboard(); }
   }
 
-  // ---------- Hero: интерактивная геометрическая сетка (реагирует на курсор) ----------
+  // ---------- Интерактивные карточки: tilt + radial spotlight ----------
   function initHeroCanvas() {
     var canvas = document.getElementById('hero-canvas');
     if (!canvas) return;
@@ -508,7 +508,191 @@
     }, 100);
   }
 
-  // ---------- Интерактивные карточки: tilt + radial spotlight ----------
+  // ---------- Hero: интерактивная AI-терминальная сессия (CLI) ----------
+  function initHeroTerminal() {
+    var terminal = document.getElementById('hero-terminal');
+    if (!terminal) return;
+
+    var output = document.getElementById('hero-terminal-output');
+    var input = document.getElementById('hero-terminal-input');
+    var inputRow = document.getElementById('hero-terminal-input-row');
+    var reduceMotion = !!(window.matchMedia &&
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+
+    // Состояние терминала
+    var isTyping = false;       // идёт анимация печати ответа
+    var isBusy = false;         // запрос к API ещё не завершён
+
+    // ---------- Утилиты ----------
+    function scrollToBottom() {
+      output.scrollTop = output.scrollHeight;
+    }
+
+    function appendLine(className, text) {
+      var line = document.createElement('div');
+      line.className = 'terminal-line ' + (className || '');
+      line.textContent = text;
+      output.appendChild(line);
+      scrollToBottom();
+      return line;
+    }
+
+    // ---------- Анимация посимвольной печати ----------
+    function typeText(element, text, callback) {
+      if (!element) return; // null element — просто пропускаем (для приветствия используем appendLine)
+      if (reduceMotion) {
+        element.textContent = text;
+        if (callback) callback();
+        return;
+      }
+      isTyping = true;
+      var i = 0;
+      var cursorEl = document.createElement('span');
+      cursorEl.className = 'terminal-cursor';
+      cursorEl.innerHTML = '█';
+      element.textContent = '';
+      element.appendChild(cursorEl);
+
+      function typeChar() {
+        if (i < text.length) {
+          // Вставляем символ перед курсором
+          var span = document.createElement('span');
+          span.style.opacity = '0.85';
+          span.textContent = text[i];
+          element.insertBefore(span, cursorEl);
+          i++;
+          scrollToBottom();
+          setTimeout(typeChar, 12 + Math.random() * 8); // случайная скорость для реалистичности
+        } else {
+          // Убираем мигающий курсор после завершения
+          setTimeout(function() {
+            if (cursorEl.parentNode) cursorEl.remove();
+            isTyping = false;
+            enableInput();
+            if (callback) callback();
+          }, 400);
+        }
+      }
+      typeChar();
+    }
+
+    // ---------- Анимация загрузочного индикатора ("думает...") ----------
+    function showLoading() {
+      var line = document.createElement('div');
+      line.className = 'terminal-line terminal-loading';
+      line.innerHTML = '<span class="code-fn">[думает]</span><span class="loading-dots">...</span>';
+      output.appendChild(line);
+      scrollToBottom();
+
+      // Анимация точек
+      var dotsEl = line.querySelector('.loading-dots');
+      var dotCount = 0;
+      var dotInterval = setInterval(function() {
+        dotCount = (dotCount + 1) % 4;
+        dotsEl.textContent = '.'.repeat(dotCount);
+      }, 500);
+
+      return function hideLoading() {
+        clearInterval(dotInterval);
+        line.remove();
+      };
+    }
+
+    // ---------- Управление состоянием ввода ----------
+    function disableInput() {
+      isBusy = true;
+      input.disabled = true;
+      input.placeholder = 'ждём ответ...';
+      inputRow.classList.add('is-busy');
+    }
+
+    function enableInput() {
+      isBusy = false;
+      input.disabled = false;
+      input.placeholder = 'Задайте вопрос...';
+      inputRow.classList.remove('is-busy');
+      input.focus();
+    }
+
+    // ---------- Приветственное сообщение (typewriter) ----------
+    var welcomeLine = document.createElement('div');
+    welcomeLine.className = 'terminal-line terminal-welcome';
+    output.appendChild(welcomeLine);
+    typeText(welcomeLine, '> inteli-dev CLI v1.0 — спрашивайте обо мне, услугах, ценах или оставьте заявку.', function() {
+      input.focus();
+    });
+
+    // ---------- Отправка сообщения в API ----------
+    async function sendMessage(message, questionType) {
+      if (isTyping) return; // только проверка typing — isBusy будет установлен сразу
+
+      disableInput();
+      var loading = showLoading();
+
+      try {
+        var res = await fetch('/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message: message, question_type: questionType })
+        });
+
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+
+        var data = await res.json();
+        loading(); // убрать лоадер
+
+        appendLine('terminal-user', '$ > ' + message);
+
+        // Напечатать ответ от бота с анимацией
+        var botLine = document.createElement('div');
+        botLine.className = 'terminal-line terminal-bot-response';
+        output.appendChild(botLine);
+
+        typeText(botLine, data.answer, function() {
+          scrollToBottom();
+          enableInput();
+        });
+
+      } catch (err) {
+        loading(); // убрать лоадер в случае ошибки
+        appendLine('terminal-error', '⚠ Ошибка: ' + err.message);
+        enableInput();
+      }
+    }
+
+    // ---------- Обработчики событий ----------
+    function handleSend() {
+      var text = input.value.trim();
+      if (!text) return;
+      sendMessage(text, 'free');
+      input.value = '';
+    }
+
+    input.addEventListener('keydown', function(e) {
+      if (e.key === 'Enter') handleSend();
+    });
+
+    // Preset-кнопки
+    terminal.querySelectorAll('.terminal-preset-btn').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        var kind = btn.getAttribute('data-kind');
+        var index = btn.getAttribute('data-index');
+        var message = btn.textContent.replace(/^["']|["']$/g, ''); // убрать кавычки из шаблона
+
+        if (kind === 'analysis') {
+          var url = prompt('Введите ссылку на ваш сайт (например, example.com):');
+          if (!url || !url.trim()) return;
+          sendMessage(message + ' (' + url.trim() + ')', 'analysis');
+        } else {
+          var payload = { message: message, question_type: kind };
+          if (index) payload.preset_index = parseInt(index, 10);
+          sendMessage(message, kind);
+        }
+      });
+    });
+  }
+
+  // ---------- Hero: интерактивная геометрическая сетка (реагирует на курсор) ----------
   function initCardEffects() {
     var cards = document.querySelectorAll('.card');
     if (!cards.length) return;
@@ -577,6 +761,7 @@
   }
 
   initReveal();
+  initHeroTerminal();
   initHeroCanvas();
   initCardEffects();
   initChat();

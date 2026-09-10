@@ -8,23 +8,38 @@ use leptos::prelude::*;
 use crate::memory::content::SiteContent;
 use crate::ui::shared::{PrimaryButton, ProjectCard, SecondaryButton, ServiceCard, StatusBadge};
 
-/// Декоративное «код-окно» в стиле терминала (как на обложке).
+/// Интерактивный AI-терминал в hero-секции. Клиент может задать вопрос через
+/// CLI-интерфейс (как на /chat) и получить ответ от ИИ прямо на главной.
 #[component]
-fn CodeWindow() -> impl IntoView {
+pub fn HeroTerminal() -> impl IntoView {
     view! {
-        <div class="code-window" aria-hidden="true">
-            <div class="code-window-bar">
+        <div class="terminal-window" id="hero-terminal">
+            <div class="terminal-bar">
                 <span class="dot dot-red"></span>
                 <span class="dot dot-yellow"></span>
                 <span class="dot dot-green"></span>
-                <span class="code-window-title">{"inteli-dev — терминал"}</span>
+                <span class="terminal-title">{"inteli-dev — терминал"}</span>
             </div>
-            <div class="code-window-body">
-                <span class="ln"><span class="code-prompt">{"$"}</span> <span class="code-cmd">{"npx create-app"}</span> <span class="code-arg">{"my-site"}</span></span>
-                <span class="ln code-out">{"Installing dependencies..."}</span>
-                <span class="ln"><span class="code-kw">{"import"}</span> <span class="code-op">{"{ "}</span><span class="code-fn">{"rank"}</span><span class="code-op">{" }"}</span> <span class="code-kw">{"from"}</span> <span class="code-str">{"'seo'"}</span></span>
-                <span class="ln"><span class="code-kw">{"const"}</span> <span class="code-var">{"site"}</span> <span class="code-op">{"= "}</span><span class="code-fn">{"new Growth()"}</span></span>
-                <span class="ln"><span class="code-var">{"site"}</span><span class="code-op">{"."}</span><span class="code-fn">{"plan"}</span> <span class="code-op">{"= "}</span><span class="code-str">{"'top-3'"}</span></span>
+
+            <div class="terminal-body" id="hero-terminal-output" aria-live="polite"></div>
+
+            <div class="terminal-input-line" id="hero-terminal-input-row">
+                <span class="terminal-prompt"><span class="code-prompt">$</span></span>
+                <input
+                    id="hero-terminal-input"
+                    type="text"
+                    class="terminal-input"
+                    placeholder="Задайте вопрос..."
+                    autocomplete="off"
+                    aria-label="Введите ваш вопрос"
+                />
+            </div>
+
+            <div class="terminal-presets" role="group" aria-label="Частые вопросы">
+                <button type="button" class="preset-button terminal-preset-btn" data-kind="preset" data-index="0">{"👤 Кто вы?"}</button>
+                <button type="button" class="preset-button terminal-preset-btn" data-kind="preset" data-index="1">{"💼 Чем можете помочь?"}</button>
+                <button type="button" class="preset-button terminal-preset-btn" data-kind="preset" data-index="2">{"💰 Сколько стоит?"}</button>
+                <button type="button" class="preset-button terminal-preset-btn" data-kind="analysis" data-index="3">{"🔍 Анализ сайта"}</button>
             </div>
         </div>
     }
@@ -55,7 +70,7 @@ pub fn Home() -> impl IntoView {
             </div>
 
             <div class="hero-grid">
-                <CodeWindow/>
+                <HeroTerminal/>
 
                 <div class="hero-content">
                     <span class="hero-eyebrow">{"</>"}</span>
