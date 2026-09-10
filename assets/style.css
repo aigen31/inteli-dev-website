@@ -137,21 +137,42 @@ ul { margin: 0; padding: 0; list-style: none; }
   font-size: var(--text-body);
   border: 1px solid transparent;
   cursor: pointer;
-  transition: transform var(--transition-fast), box-shadow var(--transition-fast),
-              background-color var(--transition-fast), border-color var(--transition-fast);
+  transition: background-color var(--transition-fast), border-color var(--transition-fast);
   text-decoration: none;
+  /* Spotlight под курсором. */
+  position: relative;
+  overflow: hidden;
 }
 .btn:hover { text-decoration: none; }
+
+/* Radial spotlight — позиционируется относительно курсора через CSS-переменные. */
+.btn::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--transition-fast);
+  background: radial-gradient(
+    280px circle at var(--mx, 50%) var(--my, 50%),
+    rgba(255, 255, 255, 0.18),
+    transparent 60%
+  );
+}
+
+.btn:hover::before {
+  opacity: 1;
+}
 
 .btn-primary {
   background: var(--color-primary);
   color: #fff;
-  box-shadow: 0 4px 18px rgba(139, 127, 245, 0.4);
+  border-color: var(--color-primary);
 }
 .btn-primary:hover {
   background: var(--color-primary-hover);
-  transform: translateY(-1px);
-  box-shadow: 0 8px 26px rgba(139, 127, 245, 0.5);
+  border-color: var(--color-primary-hover);
 }
 
 .btn-secondary {
@@ -162,7 +183,6 @@ ul { margin: 0; padding: 0; list-style: none; }
 .btn-secondary:hover {
   background: rgba(255, 255, 255, 0.12);
   border-color: var(--color-primary);
-  transform: translateY(-1px);
 }
 
 /* ---------- 5. Navbar — floating glass pill with blur (fixed for reliability) ---------- */

@@ -692,6 +692,31 @@
     });
   }
 
+  // ---------- Кнопки: radial spotlight под курсором (без box-shadow) ----------
+  function initButtonSpotlight() {
+    var buttons = document.querySelectorAll('.btn');
+    if (!buttons.length) return;
+
+    buttons.forEach(function(btn) {
+      function onMove(e) {
+        var rect = btn.getBoundingClientRect();
+        var x = e.clientX - rect.left;
+        var y = e.clientY - rect.top;
+        // CSS-переменные для radial spotlight.
+        btn.style.setProperty('--mx', x + 'px');
+        btn.style.setProperty('--my', y + 'px');
+      }
+
+      function onLeave() {
+        btn.style.setProperty('--mx', '50%');
+        btn.style.setProperty('--my', '50%');
+      }
+
+      btn.addEventListener('pointermove', onMove, { passive: true });
+      btn.addEventListener('pointerleave', onLeave);
+    });
+  }
+
   // ---------- Hero: интерактивная геометрическая сетка (реагирует на курсор) ----------
   function initCardEffects() {
     var cards = document.querySelectorAll('.card');
@@ -764,6 +789,7 @@
   initHeroTerminal();
   initHeroCanvas();
   initCardEffects();
+  initButtonSpotlight();
   initChat();
   initLeadForm();
   initAdmin();
