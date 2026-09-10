@@ -311,74 +311,111 @@
     var CURSOR_R = 190;   // радиус влияния курсора
     var PUSH = 30;        // сила отталкивания точек
     var IDLE_AMP = 3;     // лёгкое «дыхание» в покое
+    var FADE_START = 620; // Y-координата, с которой начинается затухание сетки (фиксированная)
 
     function build() {
-      var rect = hero.getBoundingClientRect();
-      W = rect.width; H = rect.height;
-      if (W < 40 || H < 40) return;
+      // Force canvas to match the CSS-stretched dimensions (inset bottom: -120px)
+      var hero = canvas.parentElement;
+      var heroRect = hero.getBoundingClientRect();
+      
+      // Wait for layout to settle, then read actual canvas bounding rect
+      requestAnimationFrame(function() {
+        var canvasRect = canvas.getBoundingClientRect();
+        W = canvasRect.width;
+        H = canvasRect.height;
+        if (W < 40 || H < 40) return;
 
-      var dpr = Math.min(window.devicePixelRatio || 1, 2);
-      canvas.width = Math.round(W * dpr);
-      canvas.height = Math.round(H * dpr);
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        var dpr = Math.min(window.devicePixelRatio || 1, 2);
+        canvas.width = Math.round(W * dpr);
+        canvas.height = Math.round(H * dpr);
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-      // Плотная сетка край→край: первая точка на границе 0, последняя ровно на W/H.
-      var base = W < 640 ? 130 : 110;   // крупные ячейки
-      // Пространство снизу, чтобы нижний ряд точек не обрезался у края секции.
-      var bottom = 150;
-      var availH = Math.max(80, H - bottom);
-      cols = Math.max(2, Math.round(W / base));
-      rows = Math.max(2, Math.round(availH / base));
-      var spX = cols > 1 ? W / (cols - 1) : W;
-      var spY = rows > 1 ? availH / (rows - 1) : availH;
+        // Плотная сетка: базовый шаг, расширяемый при ресайзе canvas.
+        var base = W < 640 ? 130 : 110;   // крупные ячейки
+        // Растягиваем сетку по всей высоте canvas (без зоны сохранения снизу).
+        cols = Math.max(2, Math.round(W / base));
+        rows = Math.max(2, Math.round(H / base));
+        var spX = cols > 1 ? W / (cols - 1) : W;
+        var spY = rows > 1 ? H / (rows - 1) : H;
 
-      grid = [];
-      for (var r = 0; r < rows; r++) {
-        var row = [];
-        for (var c = 0; c < cols; c++) {
-          row.push({ hx: c * spX, hy: r * spY, cx: c * spX, cy: r * spY, ph: Math.random() * 6.283 });
+        grid = [];
+        for (var r = 0; r < rows; r++) {
+          var row = [];
+          for (var c = 0; c < cols; c++) {
+            row.push({ hx: c * spX, hy: r * spY, cx: c * spX, cy: r * spY, ph: Math.random() * 6.283 });
+          }
+          grid.push(row);
         }
-        grid.push(row);
-      }
-      if (reduceMotion) draw();
+        layoutReady = true;
+        if (reduceMotion) draw();
+      });
     }
 
     function draw() {
       if (W < 40 || H < 40) return;
       ctx.clearRect(0, 0, W, H);
 
-      // Линии сетки (к соседям справа и снизу).
-      ctx.strokeStyle = 'rgba(255,255,255,0.045)';
+      // Зона затухания — фиксированная Y=620. С этой высоты начинается прозрачность.
+      var fadeStart = FADE_START; // 620px
+      var fadeRange = H - fadeStart; // ~241px при canvas.height=861
+
+      // Линии сетки — с постепенным затуханием к низу.
       ctx.lineWidth = 1;
-      ctx.beginPath();
       for (var r = 0; r < rows; r++) {
         var row = grid[r];
         for (var c = 0; c < cols; c++) {
           var d = row[c];
+
+          // Горизонтальная линия к соседу справа.
           if (c + 1 < cols) {
+            var nx = row[c + 1].cx, ny = row[c + 1].cy;
+            var avgY = (d.cy + ny) / 2;
+            var lineAlpha = avgY < fadeStart ? 0.045 : Math.max(0, 0.045 * (1 - (avgY - fadeStart) / fadeRange));
+            ctx.strokeStyle = 'rgba(255,255,255,' + lineAlpha.toFixed(3) + ')';
+            ctx.beginPath();
             ctx.moveTo(d.cx, d.cy);
-            ctx.lineTo(row[c + 1].cx, row[c + 1].cy);
+            ctx.lineTo(nx, ny);
+            ctx.stroke();
           }
+
+          // Вертикальная линия к соседу снизу.
           if (r + 1 < rows) {
+            var sx = grid[r + 1][c].cx, sy = grid[r + 1][c].cy;
+            var avgYV = (d.cy + sy) / 2;
+            var lineAlphaV = avgYV < fadeStart ? 0.045 : Math.max(0, 0.045 * (1 - (avgYV - fadeStart) / fadeRange));
+            ctx.strokeStyle = 'rgba(255,255,255,' + lineAlphaV.toFixed(3) + ')';
+            ctx.beginPath();
             ctx.moveTo(d.cx, d.cy);
-            ctx.lineTo(grid[r + 1][c].cx, grid[r + 1][c].cy);
+            ctx.lineTo(sx, sy);
+            ctx.stroke();
           }
         }
       }
-      ctx.stroke();
 
-      // Точки сетки.
-      ctx.fillStyle = 'rgba(214,210,255,0.32)';
-      ctx.beginPath();
+      // Точки сетки — с постепенным затуханием к низу.
       for (r = 0; r < rows; r++) {
         row = grid[r];
         for (c = 0; c < cols; c++) {
           d = row[c];
+          var dotAlpha = d.cy < fadeStart ? 0.32 : Math.max(0, 0.32 * (1 - (d.cy - fadeStart) / fadeRange));
+          ctx.fillStyle = 'rgba(214,210,255,' + dotAlpha.toFixed(3) + ')';
+          ctx.beginPath();
           ctx.moveTo(d.cx + 2.2, d.cy);
           ctx.arc(d.cx, d.cy, 2.2, 0, 6.283);
+          ctx.fill();
         }
       }
-      ctx.fill();
+
+      // Финальное затемнение — чёрный градиент поверх зоны fade для полного растворения в фоне.
+      if (fadeRange > 0) {
+        var grad = ctx.createLinearGradient(0, fadeStart, 0, H);
+        grad.addColorStop(0, 'rgba(10,10,20,0)');
+        grad.addColorStop(0.6, 'rgba(10,10,20,0.4)');
+        grad.addColorStop(1, 'rgba(10,10,20,0.95)');
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, fadeStart, W, fadeRange);
+      }
     }
 
     // Вычисляем целевые координаты и плавно двигаем точки.
@@ -428,7 +465,7 @@
     }
 
     function onMove(e) {
-      var rect = hero.getBoundingClientRect();
+      var rect = canvas.getBoundingClientRect();
       mouse.x = e.clientX - rect.left;
       mouse.y = e.clientY - rect.top;
       mouse.active = true;
@@ -447,9 +484,14 @@
       }, { threshold: 0.05 }).observe(hero);
     }
 
+    var layoutReady = false; // flag что build() завершил асинхронно
+
     function onResize() {
       build();
-      if (reduceMotion) { draw(); } else { start(); }
+      // Ждём завершения requestAnimationFrame перед запуском анимации
+      setTimeout(function() {
+        if (reduceMotion) { draw(); } else if (layoutReady) { start(); }
+      }, 50);
     }
 
     if ('ResizeObserver' in window) {
@@ -459,11 +501,84 @@
     }
 
     build();
-    if (!reduceMotion) { start(); }
+    // После начального build() ждём RAF и стартуем
+    setTimeout(function() {
+      layoutReady = true;
+      if (!reduceMotion) { start(); }
+    }, 100);
+  }
+
+  // ---------- Интерактивные карточки: tilt + radial spotlight ----------
+  function initCardEffects() {
+    var cards = document.querySelectorAll('.card');
+    if (!cards.length) return;
+
+    var MAX_TILT = 6; // градусов максимального наклона
+    var ROTATE_SPEED = 0.15; // плавность возврата (0-1, меньше = медленнее)
+
+    cards.forEach(function(card) {
+      var currentRotateX = 0;
+      var currentRotateY = 0;
+      var targetRotateX = 0;
+      var targetRotateY = 0;
+      var rafId = 0;
+      var reduceMotion = !!(window.matchMedia &&
+        window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+
+      function onMove(e) {
+        var rect = card.getBoundingClientRect();
+        var x = e.clientX - rect.left;
+        var y = e.clientY - rect.top;
+
+        // CSS-переменные для radial spotlight.
+        card.style.setProperty('--mx', x + 'px');
+        card.style.setProperty('--my', y + 'px');
+
+        if (!reduceMotion) {
+          // Вычисляем tilt: нормализуем позицию к [-1, 1], умножаем на MAX_TILT.
+          targetRotateX = ((y / rect.height - 0.5) * -2) * MAX_TILT;
+          targetRotateY = ((x / rect.width - 0.5) * 2) * MAX_TILT;
+        }
+
+        // Запускаем анимацию если не запущена.
+        if (!rafId && !reduceMotion) { rafId = animate(); }
+      }
+
+      function onLeave() {
+        targetRotateX = 0;
+        targetRotateY = 0;
+        card.style.setProperty('--mx', '50%');
+        card.style.setProperty('--my', '50%');
+      }
+
+      function animate() {
+        currentRotateX += (targetRotateX - currentRotateX) * ROTATE_SPEED;
+        currentRotateY += (targetRotateY - currentRotateY) * ROTATE_SPEED;
+
+        // Условие остановки: близко к нулю.
+        if (Math.abs(currentRotateX) < 0.01 && Math.abs(currentRotateY) < 0.01 &&
+            targetRotateX === 0 && targetRotateY === 0) {
+          currentRotateX = 0;
+          currentRotateY = 0;
+          card.style.transform = '';
+          rafId = 0;
+          return;
+        }
+
+        card.style.transform = 'perspective(800px) rotateX(' + currentRotateX.toFixed(2) +
+          'deg) rotateY(' + currentRotateY.toFixed(2) + 'deg)';
+        rafId = requestAnimationFrame(animate);
+      }
+
+      // Убираем raf на mouseleave чтобы цикл остановился.
+      card.addEventListener('pointermove', onMove, { passive: true });
+      card.addEventListener('pointerleave', onLeave);
+    });
   }
 
   initReveal();
   initHeroCanvas();
+  initCardEffects();
   initChat();
   initLeadForm();
   initAdmin();

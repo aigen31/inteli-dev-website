@@ -8,8 +8,8 @@
   /* Palette — тёмный индиго/фиолетовый с обложки */
   --color-bg: #2b2c7a;
   --color-bg-2: #3a3390;
-  --color-surface: #221e4d;
-  --color-surface-2: #2a2560;
+  --color-surface: #16133a;
+  --color-surface-2: #1b1845;
   --color-code-bg: #191536;
   --color-code-bar: rgba(255, 255, 255, 0.04);
   --color-border: rgba(255, 255, 255, 0.12);
@@ -82,19 +82,17 @@
 
 /* ---------- 2. Reset ---------- */
 *, *::before, *::after { box-sizing: border-box; }
-html { scroll-behavior: smooth; }
+html { scroll-behavior: smooth; overflow-x: hidden; }
 body {
   margin: 0;
   font-family: var(--font-body);
   font-size: var(--text-body);
   line-height: 1.6;
   color: var(--color-text);
-  /* Фон заливает всю страницу (без fixed, иначе низ длинной страницы белый). */
-  background-color: var(--color-bg);
-  background:
-    radial-gradient(1100px 600px at 12% -10%, rgba(139, 127, 245, 0.16), transparent 60%),
-    radial-gradient(900px 560px at 100% 0%, rgba(90, 76, 255, 0.14), transparent 55%),
-    linear-gradient(150deg, var(--color-bg) 0%, var(--color-bg-2) 100%);
+  overflow-x: hidden; /* предотвращает горизонтальный скролл при выходе blob'ов за границы viewport */
+  /* Фон заливает всю страницу (без fixed, иначе низ длиговой страницы белый).
+     Адаптация под стиль deepseek.com/harness — тёмный фон + radial-gradient «свечения». */
+  background-color: #0a0a14;
   -webkit-font-smoothing: antialiased;
 }
 h1, h2, h3, h4 { font-family: var(--font-heading); line-height: 1.2; margin: 0 0 var(--space-md); font-weight: 700; }
@@ -167,14 +165,23 @@ ul { margin: 0; padding: 0; list-style: none; }
   transform: translateY(-1px);
 }
 
-/* ---------- 5. Navbar ---------- */
+/* ---------- 5. Navbar — floating glass pill with blur (fixed for reliability) ---------- */
 .navbar {
-  position: sticky;
-  top: 0;
+  position: fixed;
+  top: var(--space-md);
+  left: 50%;
+  transform: translateX(-50%);
+  width: calc(var(--container-max) + var(--space-2xl));
+  max-width: calc(100vw - var(--space-xl));
   z-index: 100;
-  background: rgba(38, 35, 90, 0.72);
-  backdrop-filter: blur(10px);
-  border-bottom: 1px solid var(--color-border);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-md);
+  /* Простой blur для стеклянного эффекта. */
+  background: rgba(24, 21, 58, 0.72);
+  backdrop-filter: blur(12px) saturate(1.4);
+  -webkit-backdrop-filter: blur(12px) saturate(1.4);
+  border-bottom: none;
+  padding: 0 var(--space-lg);
 }
 .navbar-inner {
   max-width: var(--container-max);
@@ -183,7 +190,7 @@ ul { margin: 0; padding: 0; list-style: none; }
   display: flex;
   align-items: center;
   gap: var(--space-lg);
-  padding: 0 var(--space-lg);
+  padding: 0 var(--space-md);
 }
 .navbar-brand {
   font-weight: 700;
@@ -234,18 +241,18 @@ ul { margin: 0; padding: 0; list-style: none; }
 /* ---------- 7. Hero (по мотиву обложки: код-окно + контент) ---------- */
 .hero {
   position: relative;
-  overflow: hidden;
+  overflow: hidden; /* строго ограничивает canvas и blobs внутри hero — gradient overlay не вылезает на следующую секцию */
+  z-index: 0; /* stacking context для детей с позиционированием */
   /* Больше места снизу, чтобы сетка не упиралась/не обрезалась у границы. */
   padding: var(--space-3xl) var(--space-lg) 200px;
 }
-/* Интерактивная геометрическая сетка — фон под контентом hero. */
+/* Интерактивная геометрическая сетка — фон под контентом hero. НЕ растягивается вниз. */
 .hero-canvas {
   position: absolute;
-  inset: 0;
+  inset: 0; /* top=0, left=0, right=0, bottom=0 → высота равна высоте .hero */
   width: 100%;
-  height: 100%;
   display: block;
-  z-index: 0;
+  z-index: 2; /* поверх свечений */
   pointer-events: none;
 }
 .hero-grid {
@@ -258,6 +265,67 @@ ul { margin: 0; padding: 0; list-style: none; }
   position: relative;
   z-index: 1;
 }
+
+/* ---------- Свечения по мотиву deepseek.com/harness/en/ ---------- */
+/* Три radial-gradient «блоба» внутри hero + продолжения на следующие секции. */
+@keyframes blob-drift-left {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  33% { transform: translate(40px, -25px) scale(1.06); }
+  66% { transform: translate(-25px, 15px) scale(0.95); }
+}
+@keyframes blob-drift-bottom {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  33% { transform: translate(-50px, 20px) scale(1.04); }
+  66% { transform: translate(30px, -15px) scale(0.97); }
+}
+@keyframes blob-drift-right {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  33% { transform: translate(-30px, 20px) scale(0.96); }
+  66% { transform: translate(20px, -35px) scale(1.05); }
+}
+
+.hero-blob {
+  position: absolute;
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 0;
+}
+/* Верхний левый — глубокий фиолетово-синий, крупный. */
+.hero-blob-1 {
+  top: -10%;
+  left: -6%;
+  width: 520px;
+  height: 520px;
+  opacity: 0.40;
+  background: radial-gradient(circle, rgba(70, 45, 220, 0.8) 0%, transparent 70%);
+  animation: blob-drift-left 14s ease-in-out infinite;
+}
+/* Центральный — средний синий, широкий. */
+.hero-blob-2 {
+  bottom: -18%;
+  left: 30%;
+  width: 700px;
+  height: 400px;
+  opacity: 0.44;
+  background: radial-gradient(ellipse, rgba(60, 55, 210, 0.7) 0%, rgba(50, 30, 180, 0.4) 40%, transparent 70%);
+  animation: blob-drift-bottom 18s ease-in-out infinite;
+}
+/* Правый верхний — яркий светло-фиолетовый, поменьше. */
+.hero-blob-3 {
+  top: -6%;
+  right: -4%;
+  width: 480px;
+  height: 480px;
+  opacity: 0.22;
+  background: radial-gradient(circle, rgba(150, 90, 255, 0.7) 0%, rgba(100, 60, 230, 0.35) 30%, transparent 70%);
+  animation: blob-drift-right 16s ease-in-out infinite;
+}
+
+/* Свечения-продолжения убраны — .section::before с top:-200px затемнял
+   заголовок «Услуги», вылезая на hero-область. Если нужно, добавляйте
+   свечение точечно через inline-стили или отдельные классы. */
+
+/* ---------- Hero content ---------- */
 .hero-content { max-width: 560px; }
 .hero-content h1 { margin-bottom: var(--space-sm); }
 .hero-eyebrow {
@@ -403,7 +471,33 @@ ul { margin: 0; padding: 0; list-style: none; }
   padding: var(--space-lg);
   transition: transform var(--transition-fast), box-shadow var(--transition-fast),
               border-color var(--transition-fast);
+  /* Для 3D-трансформации — перспектива на родительском контейнере задаётся в JS. */
+  will-change: transform;
+  /* Свечение под курсором. */
+  position: relative;
+  overflow: hidden;
 }
+
+/* Radial spotlight — позиционируется относительно курсора через CSS-переменные. */
+.card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--transition-fast);
+  background: radial-gradient(
+    400px circle at var(--mx, 50%) var(--my, 50%),
+    rgba(139, 127, 245, 0.18),
+    transparent 60%
+  );
+}
+
+.card:hover::before {
+  opacity: 1;
+}
+
 .card:hover {
   transform: translateY(-2px);
   box-shadow: var(--shadow-lg);

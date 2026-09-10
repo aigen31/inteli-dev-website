@@ -45,6 +45,9 @@ pub fn Home() -> impl IntoView {
     view! {
         <section class="hero">
             <canvas id="hero-canvas" class="hero-canvas" aria-hidden="true"></canvas>
+            <div class="hero-blob hero-blob-1" aria-hidden="true"></div>
+            <div class="hero-blob hero-blob-2" aria-hidden="true"></div>
+            <div class="hero-blob hero-blob-3" aria-hidden="true"></div>
             <div class="hero-decoration" aria-hidden="true">
                 <span class="sparkle sparkle-1"></span>
                 <span class="sparkle sparkle-2"></span>
