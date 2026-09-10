@@ -314,10 +314,13 @@
     var FADE_START = 620; // Y-координата, с которой начинается затухание сетки (фиксированная)
 
     function build() {
-      // Force canvas to match the CSS-stretched dimensions (inset bottom: -120px)
+      // Force canvas to match the CSS-stretched dimensions (bottom: -80px for fade)
       var hero = canvas.parentElement;
       var heroRect = hero.getBoundingClientRect();
-      
+
+      // Expand canvas below hero for gradient fade overlay
+      canvas.style.height = Math.round(heroRect.height + 80) + 'px';
+
       // Wait for layout to settle, then read actual canvas bounding rect
       requestAnimationFrame(function() {
         var canvasRect = canvas.getBoundingClientRect();

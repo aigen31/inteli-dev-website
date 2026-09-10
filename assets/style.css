@@ -263,13 +263,16 @@ ul { margin: 0; padding: 0; list-style: none; }
   position: relative;
   overflow: hidden; /* строго ограничивает canvas и blobs внутри hero — gradient overlay не вылезает на следующую секцию */
   z-index: 0; /* stacking context для детей с позиционированием */
-  /* Больше места снизу, чтобы сетка не упиралась/не обрезалась у границы. */
-  padding: var(--space-3xl) var(--space-lg) 200px;
+  /* Больше места снизу — canvas растянут на +80px для gradient fade. */
+  padding: var(--space-3xl) var(--space-lg) 280px;
 }
-/* Интерактивная геометрическая сетка — фон под контентом hero. НЕ растягивается вниз. */
+/* Интерактивная геометрическая сетка — фон под контентом hero. Растянута немного вниз для зоны затухания. */
 .hero-canvas {
   position: absolute;
-  inset: 0; /* top=0, left=0, right=0, bottom=0 → высота равна высоте .hero */
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: -80px; /* extra 80px ниже hero для gradient fade overlay */
   width: 100%;
   display: block;
   z-index: 2; /* поверх свечений */
