@@ -320,22 +320,13 @@ fn answer_availability() -> String {
 /// Форматирует статус занятости в текст (переиспользуется в status-сервисе).
 pub(crate) fn format_availability(a: &Availability) -> String {
     format!(
-        "{emoji} Сейчас: {label}.\nВ работе {projects} проектов. Ближайший слот — {slot}.\n\n\
+        "Сейчас: {label}.\nВ работе {projects} проектов. Ближайший слот — {slot}.\n\n\
          Если сроки горят — напишите в Telegram, постараемся найти решение.",
-        emoji = status_emoji(&a.status),
+        
         label = label_for_status(&a.status),
         projects = a.current_projects,
         slot = a.next_free_slot,
     )
-}
-
-/// Эмодзи-индикатор статуса.
-pub(crate) fn status_emoji(status: &str) -> &'static str {
-    match status {
-        "available" => "🟢",
-        "busy" => "🟡",
-        _ => "🔴",
-    }
 }
 
 /// Имя иконки Lucide для статуса (вместо эмодзи).

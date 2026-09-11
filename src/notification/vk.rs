@@ -54,7 +54,7 @@ fn build_notification_message(lead: &Lead) -> String {
     // VK ограничивает длину сообщения — обрезаем слишком длинные.
     let truncated: String = lead.message.chars().take(1024).collect();
     format!(
-        "📩 НОВАЯ ЗАЯВКА #{}\n\n\
+        "НОВАЯ ЗАЯВКА #{}\n\n\
          Имя: {}\n\
          Email: {}\n\
          Телефон: {}\n\

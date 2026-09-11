@@ -42,13 +42,13 @@ pub async fn send_lead_notification(
 
 fn build_notification_text(lead: &Lead) -> String {
     format!(
-        "<b>📩 НОВАЯ ЗАЯВКА #{id}</b>\n\n\
+        "<b>НОВАЯ ЗАЯВКА #{id}</b>\n\n\
          Имя: <code>{name}</code>\n\
          Email: {email}\n\
          Телефон: {phone}\n\
          Источник: <b>{source}</b>\n\n\
          Сообщение:\n<code>{message}</code>\n\n\
-         ───────────────\n⏰ {created_at}",
+         ───────────────\n {created_at}",
         id = lead.id,
         name = escape_html(&lead.name),
         email = lead.email.as_deref().unwrap_or("—"),
@@ -64,8 +64,8 @@ fn build_lead_keyboard(lead_id: i64) -> serde_json::Value {
     serde_json::json!({
         "inline_keyboard": [
             [
-                { "text": "✅ Конвертировать", "callback_data": format!("lead:convert:{lead_id}") },
-                { "text": "⏸ В обработку", "callback_data": format!("lead:processing:{lead_id}") }
+                { "text": "Конвертировать", "callback_data": format!("lead:convert:{lead_id}") },
+                { "text": "В обработку", "callback_data": format!("lead:processing:{lead_id}") }
             ]
         ]
     })
