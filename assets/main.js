@@ -74,8 +74,26 @@
           addMessage(data.error || 'Ошибка. Попробуйте позже.', 'bot');
           return;
         }
+
+        // Анимация «печатает…» с мигающими точками (по аналогии с hero-терминалом)
+        var typingEl = document.createElement('div');
+        typingEl.className = 'chat-message bot-message';
+        typingEl.innerHTML = '<em>печатает</em><span class="chat-dots">...</span>';
+        messages.appendChild(typingEl);
+        messages.scrollTop = messages.scrollHeight;
+
+        // Анимация точек: показываем по одной с интервалом 400ms
+        var dotCount = 0;
+        var dotTimer = setInterval(function () {
+          dotCount = (dotCount + 1) % 4;
+          typingEl.querySelector('.chat-dots').textContent = '.'.repeat(dotCount);
+        }, 400);
+
         addMessage(data.answer, 'bot');
         addSuggestions(data.suggested_next);
+
+        clearInterval(dotTimer);
+        typingEl.remove();
       } catch (err) {
         addMessage('Сетевая ошибка. Попробуйте ещё раз.', 'bot');
       }

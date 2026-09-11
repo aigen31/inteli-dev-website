@@ -298,8 +298,8 @@ ul { margin: 0; padding: 0; list-style: none; }
 }
 @keyframes blob-drift-bottom {
   0%, 100% { transform: translate(0, 0) scale(1); }
-  33% { transform: translate(-50px, 20px) scale(1.04); }
-  66% { transform: translate(30px, -15px) scale(0.97); }
+  33% { transform: translate(-35px, 15px) scale(1.02); }
+  66% { transform: translate(20px, -10px) scale(0.98); }
 }
 @keyframes blob-drift-right {
   0%, 100% { transform: translate(0, 0) scale(1); }
@@ -325,10 +325,10 @@ ul { margin: 0; padding: 0; list-style: none; }
 }
 /* Центральный — средний синий, широкий. */
 .hero-blob-2 {
-  bottom: -18%;
+  bottom: 0;
   left: 30%;
   width: 700px;
-  height: 400px;
+  height: 320px;
   opacity: 0.44;
   background: radial-gradient(ellipse, rgba(60, 55, 210, 0.7) 0%, rgba(50, 30, 180, 0.4) 40%, transparent 70%);
   animation: blob-drift-bottom 18s ease-in-out infinite;
@@ -577,8 +577,9 @@ ul { margin: 0; padding: 0; list-style: none; }
 /* Анимация точек загрузки */
 .loading-dots {
   display: inline-block;
-  width: 2ch;
+  min-width: 4ch;
   text-align: left;
+  white-space: nowrap;
 }
 
 /* Preset-кнопки в терминале */
@@ -635,7 +636,7 @@ ul { margin: 0; padding: 0; list-style: none; }
 .section {
   max-width: var(--container-max);
   margin: 0 auto;
-  padding: var(--space-2xl) var(--space-lg);
+  padding: 120px var(--space-lg) var(--space-2xl);
 }
 .section-head {
   display: flex;
@@ -819,6 +820,12 @@ ul { margin: 0; padding: 0; list-style: none; }
   border-bottom-left-radius: 0;
 }
 .chat-suggestions { display: flex; flex-wrap: wrap; gap: var(--space-sm); }
+.chat-dots {
+  display: inline-block;
+  min-width: 3ch;
+  text-align: left;
+  white-space: nowrap;
+}
 
 .chat-input-row { display: flex; gap: var(--space-sm); }
 .chat-input-row input {
