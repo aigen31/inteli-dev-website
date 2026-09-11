@@ -8,6 +8,7 @@ pub mod admin;
 pub mod chat;
 pub mod contact;
 pub mod home;
+pub mod icon;
 pub mod layout;
 pub mod projects;
 pub mod services;

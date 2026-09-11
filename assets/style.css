@@ -698,6 +698,16 @@ ul { margin: 0; padding: 0; list-style: none; }
   border-color: var(--color-border-strong);
 }
 .card-icon { font-size: 2rem; margin-bottom: var(--space-sm); }
+/* Lucide SVG-иконки — стилизация под тонкие 3D-линии. */
+.card-icon svg,
+.status-badge .card-icon svg,
+.status-badge svg[aria-hidden] {
+  width: 2rem;
+  height: 2rem;
+  stroke-width: 1.5;
+  color: var(--color-primary);
+  opacity: 0.9;
+}
 .card-title { font-size: var(--text-h3); margin-bottom: var(--space-sm); color: #fff; }
 .card-text { color: var(--color-text-secondary); font-size: var(--text-small); }
 .card-price { display: inline-block; margin-top: var(--space-sm); font-weight: 700; color: var(--color-primary); }

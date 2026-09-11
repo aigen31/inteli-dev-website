@@ -7,12 +7,12 @@ use leptos::prelude::*;
 
 /// Шесть preset-кнопок (см. chatbot.md).
 const PRESETS: [(&str, &str, usize); 6] = [
-    ("👤 Кто вы?", "preset", 0),
-    ("💼 Чем можете помочь?", "preset", 1),
-    ("💰 Сколько стоит?", "preset", 2),
-    ("🔍 Проанализируйте мой сайт", "analysis", 3),
-    ("🟢 Когда свободны?", "availability", 4),
-    ("📩 Оставить заявку", "lead_request", 5),
+    ("Кто вы?", "preset", 0),
+    ("Чем можете помочь?", "preset", 1),
+    ("Сколько стоит?", "preset", 2),
+    ("Проанализируйте мой сайт", "analysis", 3),
+    ("Когда свободны?", "availability", 4),
+    ("Оставить заявку", "lead_request", 5),
 ];
 
 #[component]
@@ -48,7 +48,7 @@ pub fn Chat() -> impl IntoView {
                     <button id="chat-send" type="button" class="btn btn-primary">Отправить</button>
                 </div>
 
-                <a href="/contact" class="floating-cta">{"📩 Оставить заявку"}</a>
+                <a href="/contact" class="floating-cta">{"Оставить заявку"}</a>
             </div>
         </section>
     }

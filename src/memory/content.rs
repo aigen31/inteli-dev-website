@@ -38,7 +38,7 @@ pub struct AuthorProfile {
 pub struct Service {
     pub slug: String,
     pub title: String,
-    pub icon: String,
+    pub icon_name: String,  // имя иконки Lucide (outline SVG)
     pub description: String,
     pub price_from: Option<String>,
     pub price_to: Option<String>,
@@ -196,7 +196,7 @@ pub fn fallback_content() -> SiteContent {
             Service {
                 slug: "seo-audit".into(),
                 title: "SEO-аудит сайта".into(),
-                icon: "🔍".into(),
+                icon_name: "search".into(),
                 description:
                     "Технический аудит, анализ контента и конкурентов, отчёт с приоритетами.".into(),
                 price_from: Some("15 000 ₽".into()),
@@ -205,7 +205,7 @@ pub fn fallback_content() -> SiteContent {
             Service {
                 slug: "promotion".into(),
                 title: "Продвижение в Яндекс/Google".into(),
-                icon: "🚀".into(),
+                icon_name: "rocket".into(),
                 description: "Комплексное продвижение: семантика, контент, ссылочный профиль."
                     .into(),
                 price_from: Some("30 000 ₽/мес".into()),
@@ -214,7 +214,7 @@ pub fn fallback_content() -> SiteContent {
             Service {
                 slug: "technical-seo".into(),
                 title: "Техническая оптимизация".into(),
-                icon: "⚙️".into(),
+                icon_name: "settings".into(),
                 description: "Скорость, Core Web Vitals, индексация, структура сайта.".into(),
                 price_from: Some("20 000 ₽".into()),
                 price_to: None,
@@ -222,7 +222,7 @@ pub fn fallback_content() -> SiteContent {
             Service {
                 slug: "content".into(),
                 title: "Контент-стратегия".into(),
-                icon: "✍️".into(),
+                icon_name: "pen-tool".into(),
                 description: "Кластеры ключевых слов, план публикаций, оптимизация текстов.".into(),
                 price_from: Some("25 000 ₽".into()),
                 price_to: None,
@@ -230,7 +230,7 @@ pub fn fallback_content() -> SiteContent {
             Service {
                 slug: "analytics".into(),
                 title: "Аналитика и отчётность".into(),
-                icon: "📊".into(),
+                icon_name: "bar-chart-3".into(),
                 description: "Настройка метрик, ежемесячные отчёты, рост трафика и заявок.".into(),
                 price_from: Some("10 000 ₽/мес".into()),
                 price_to: None,

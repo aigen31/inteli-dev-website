@@ -36,10 +36,10 @@ pub fn HeroTerminal() -> impl IntoView {
             </div>
 
             <div class="terminal-presets" role="group" aria-label="Частые вопросы">
-                <button type="button" class="preset-button terminal-preset-btn" data-kind="preset" data-index="0">{"👤 Кто вы?"}</button>
-                <button type="button" class="preset-button terminal-preset-btn" data-kind="preset" data-index="1">{"💼 Чем можете помочь?"}</button>
-                <button type="button" class="preset-button terminal-preset-btn" data-kind="preset" data-index="2">{"💰 Сколько стоит?"}</button>
-                <button type="button" class="preset-button terminal-preset-btn" data-kind="analysis" data-index="3">{"🔍 Анализ сайта"}</button>
+                <button type="button" class="preset-button terminal-preset-btn" data-kind="preset" data-index="0">{"Кто вы?"}</button>
+                <button type="button" class="preset-button terminal-preset-btn" data-kind="preset" data-index="1">{"Чем можете помочь?"}</button>
+                <button type="button" class="preset-button terminal-preset-btn" data-kind="preset" data-index="2">{"Сколько стоит?"}</button>
+                <button type="button" class="preset-button terminal-preset-btn" data-kind="analysis" data-index="3">{"Анализ сайта"}</button>
             </div>
         </div>
     }
@@ -78,8 +78,8 @@ pub fn Home() -> impl IntoView {
                     <p class="subtitle">{subtitle}</p>
                     <StatusBadge/>
                     <div class="cta-buttons">
-                        <PrimaryButton text="💬 Задать вопрос" href="/chat"/>
-                        <SecondaryButton text="📩 Оставить заявку" href="/contact"/>
+                        <PrimaryButton text="Задать вопрос" href="/chat"/>
+                        <SecondaryButton text="Оставить заявку" href="/contact"/>
                     </div>
                     <div class="tech-pills">
                         {skills.into_iter().map(|s| view! { <span class="tech-pill">{s}</span> }).collect::<Vec<_>>()}
@@ -112,8 +112,8 @@ pub fn Home() -> impl IntoView {
             <h2>Готовы обсудить ваш проект?</h2>
             <p class="subtitle">{"Оставьте заявку — отвечу в течение 24 часов."}</p>
             <div class="cta-buttons">
-                <PrimaryButton text="📩 Оставить заявку" href="/contact"/>
-                <SecondaryButton text="💬 Спросить в чате" href="/chat"/>
+                <PrimaryButton text="Оставить заявку" href="/contact"/>
+                <SecondaryButton text="Спросить в чате" href="/chat"/>
             </div>
         </section>
     }

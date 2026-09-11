@@ -290,7 +290,7 @@ fn answer_services() -> String {
     let c = crate::memory::content::SiteContent::get();
     let mut out = String::from("Вот чем я могу помочь:\n\n");
     for s in &c.services {
-        out.push_str(&format!("• {} {} — {}\n", s.icon, s.title, s.description));
+        out.push_str(&format!("• {} — {}\n", s.title, s.description));
     }
     out.push_str("\nХотите рассчитать стоимость для вашего проекта? Оставьте заявку.");
     out
@@ -335,6 +335,15 @@ pub(crate) fn status_emoji(status: &str) -> &'static str {
         "available" => "🟢",
         "busy" => "🟡",
         _ => "🔴",
+    }
+}
+
+/// Имя иконки Lucide для статуса (вместо эмодзи).
+pub(crate) fn status_icon_name(status: &str) -> &'static str {
+    match status {
+        "available" => "circle-check",
+        "busy" => "settings",
+        _ => "check-circle",
     }
 }
 

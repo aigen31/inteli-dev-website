@@ -3,20 +3,21 @@
 use leptos::prelude::*;
 
 use crate::memory::content::{Project, Service, SiteContent};
-use crate::services::chat::{label_for_status, status_emoji};
+use crate::services::chat::{label_for_status, status_icon_name};
+use crate::ui::icon::LucideIcon;
 
 /// Бейдж текущего статуса занятости.
 #[component]
 pub fn StatusBadge() -> impl IntoView {
     let content = SiteContent::get();
     let status = content.availability.status.clone();
-    let emoji = status_emoji(&status).to_string();
     let label = label_for_status(&status).to_string();
 
     view! {
         <span class=format!("status-badge status-{}", status)>
             <span class="status-dot" aria-hidden="true"></span>
-            <span>{emoji} {label}</span>
+            <LucideIcon name=status_icon_name(&status) />
+            <span>{label}</span>
         </span>
     }
 }
@@ -45,7 +46,7 @@ pub fn ServiceCard(service: Service) -> impl IntoView {
 
     view! {
         <article class="card">
-            <div class="card-icon" aria-hidden="true">{service.icon}</div>
+            <div class="card-icon" aria-hidden="true"><LucideIcon name=service.icon_name/></div>
             <h3 class="card-title">{service.title}</h3>
             <p class="card-text">{service.description}</p>
             <span class="card-price">{price}</span>
