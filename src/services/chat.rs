@@ -56,7 +56,7 @@ pub struct SuggestedAction {
 enum QuestionKind {
     Who,
     Services,
-    Pricing,
+    LocalInference,
     Analysis,
     Availability,
     LeadRequest,
@@ -98,7 +98,7 @@ impl ChatService {
         let (answer, source) = match kind {
             QuestionKind::Who => (answer_who(), "openviking_direct".to_string()),
             QuestionKind::Services => (answer_services(), "openviking_direct".to_string()),
-            QuestionKind::Pricing => (answer_pricing(), "openviking_direct".to_string()),
+            QuestionKind::LocalInference => (answer_local_inference(), "openviking_direct".to_string()),
             QuestionKind::Availability => (answer_availability(), "openviking_direct".to_string()),
             QuestionKind::LeadRequest => (answer_lead_request(), "openviking_direct".to_string()),
             QuestionKind::Analysis => self.answer_analysis(&req).await?,
@@ -242,7 +242,7 @@ fn resolve_kind(req: &ChatRequest) -> QuestionKind {
         Some("preset") => match req.preset_index.unwrap_or(0) {
             0 => QuestionKind::Who,
             1 => QuestionKind::Services,
-            2 => QuestionKind::Pricing,
+            2 => QuestionKind::LocalInference,
             3 => QuestionKind::Analysis,
             4 => QuestionKind::Availability,
             5 => QuestionKind::LeadRequest,
@@ -260,7 +260,7 @@ fn suggested_next(kind: QuestionKind) -> Vec<SuggestedAction> {
         }],
         _ => vec![
             SuggestedAction {
-                text: "Рассчитать стоимость моего сайта".into(),
+                text: "Рассчитать стоимость проекта".into(),
                 kind: "lead_request".into(),
             },
             SuggestedAction {
@@ -288,12 +288,20 @@ fn answer_who() -> String {
 
 fn answer_services() -> String {
     let c = crate::memory::content::SiteContent::get();
-    let mut out = String::from("Вот чем я могу помочь:\n\n");
+    let mut out = String::from("Чем я занимаюсь:\n\n");
     for s in &c.services {
         out.push_str(&format!("• {} — {}\n", s.title, s.description));
     }
-    out.push_str("\nХотите рассчитать стоимость для вашего проекта? Оставьте заявку.");
+    out.push_str("\nХотите обсудить ваш проект? Оставьте заявку.");
     out
+}
+
+fn answer_local_inference() -> String {
+    "Локальный инференс — это запуск AI-моделей на собственном оборудовании, а не через облачные API.\n\n\
+     Чем это лучше:\n• Приватность — ваши данные никогда не покидают ваш сервер\n• Цена — нет ежемесячной платы за API-подписки (OpenAI, Anthropic и т.д.)\n• Скорость — без задержек сети, ответ модели мгновенно\n• Независимость — работает автономно, без зависимости от внешних провайдеров\n\n\
+     Мой стек: GPU-кластер (RTX 5080 + RTX 3060, 64GB RAM), Qwen 3.6/3.8 (до 35B параметров).\n\n\
+     Хотите запустить AI на своём сервере? Оставьте заявку — рассчитаю стоимость."
+        .to_string()
 }
 
 fn answer_pricing() -> String {
@@ -308,7 +316,7 @@ fn answer_pricing() -> String {
         };
         out.push_str(&format!("• {} — {}\n", s.title, price));
     }
-    out.push_str("\nТочная стоимость зависит от проекта. Отправьте ссылку на сайт — посчитаю после бесплатного аудита.");
+    out.push_str("\nТочная стоимость зависит от проекта. Отправьте ссылку или опишите задачу — рассчитаю бесплатно.");
     out
 }
 
@@ -425,15 +433,16 @@ mod tests {
         let svc = service(true).await; // LLM сломан — preset всё равно работает
         let resp = svc.answer(preset_req(0), None).await.unwrap();
         assert_eq!(resp.source, "openviking_direct");
-        assert!(resp.answer.contains("Иван Петров"));
+        assert!(resp.answer.contains("Евгений Биль"));
     }
 
     #[tokio::test]
-    async fn preset_pricing_lists_prices() {
+    async fn preset_local_inference_returns_explanation() {
         ensure_content();
         let svc = service(true).await;
         let resp = svc.answer(preset_req(2), None).await.unwrap();
-        assert!(resp.answer.contains("15 000"));
+        assert_eq!(resp.source, "openviking_direct");
+        assert!(resp.answer.contains("инференс") || resp.answer.contains("Инференс"));
     }
 
     #[tokio::test]

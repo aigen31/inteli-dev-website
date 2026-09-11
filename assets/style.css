@@ -735,7 +735,8 @@ ul { margin: 0; padding: 0; list-style: none; }
   gap: var(--space-lg);
   margin-bottom: var(--space-lg);
 }
-.cards-grid-2 { grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
+/* /projects: ровно 2 колонки в строке на десктопе (ниже 768px — 1 колонка). */
+.cards-grid-2 { grid-template-columns: repeat(2, 1fr); }
 
 .card {
   background: var(--color-surface);

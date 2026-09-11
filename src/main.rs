@@ -148,8 +148,8 @@ fn shell(_options: LeptosOptions) -> impl IntoView {
             <head>
                 <meta charset="utf-8"/>
                 <meta name="viewport" content="width=device-width, initial-scale=1"/>
-                <meta name="description" content="Специалист по продвижению сайтов: SEO-аудит, продвижение в Яндекс и Google."/>
-                <title>{"inteli.dev — продвижение сайтов"}</title>
+                <meta name="description" content="Fullstack-разработчик и архитектор приватных AI-систем: локальный инференс, MCP-серверы, голосовые ассистенты, PHP + JS."/>
+                <title>{"inteli.dev — Fullstack & приватные AI-системы"}</title>
                 <link rel="stylesheet" href="/assets/style.css"/>
                 <link rel="manifest" href="/manifest.json"/>
                 <link rel="icon" href="/favicon.svg" type="image/svg+xml"/>

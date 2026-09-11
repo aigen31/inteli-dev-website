@@ -172,101 +172,155 @@ fn first_number(s: &str) -> Option<u32> {
 pub fn fallback_content() -> SiteContent {
     SiteContent {
         profile: AuthorProfile {
-            name: "Иван Петров".to_string(),
-            title: "Специалист по продвижению сайтов".to_string(),
-            experience_years: 10,
-            projects_completed: 200,
-            location: "Россия, удалённая работа".to_string(),
+            name: "Евгений Биль".to_string(),
+            title: "Fullstack-разработчик и архитектор приватных AI-систем".to_string(),
+            experience_years: 6,
+            projects_completed: 100,
+            location: "Красноярск, Россия · удалённо по РФ и СНГ".to_string(),
             languages: vec!["Русский".to_string(), "English (B2)".to_string()],
             skills: vec![
-                "SEO-аудит".to_string(),
-                "Продвижение Яндекс/Google".to_string(),
-                "Техническое SEO".to_string(),
-                "Контент-стратегия".to_string(),
-                "Аналитика и отчётность".to_string(),
+                "Приватные AI-системы".to_string(),
+                "Локальный инференс (Qwen 3.6/3.8)".to_string(),
+                "MCP-серверы и AI Skills".to_string(),
+                "Голосовые ассистенты".to_string(),
+                "Fullstack PHP + JS".to_string(),
+                "Docker & DevOps".to_string(),
+                "ComfyUI Mass Production".to_string(),
             ],
             contacts: Contacts {
-                email: "email@example.com".to_string(),
-                telegram: "@username".to_string(),
-                vk: "vk.com/username".to_string(),
+                email: "contact@inteli-dev.ru".to_string(),
+                telegram: "@AiGen31".to_string(),
+                vk: "vk.com/aigen_31".to_string(),
                 phone: "+7 (XXX) XXX-XX-XX".to_string(),
             },
         },
         services: vec![
             Service {
-                slug: "seo-audit".into(),
-                title: "SEO-аудит сайта".into(),
-                icon_name: "search".into(),
+                slug: "ai-infrastructure".into(),
+                title: "Приватные AI-системы".into(),
+                icon_name: "brain-circuit".into(),
                 description:
-                    "Технический аудит, анализ контента и конкурентов, отчёт с приоритетами.".into(),
-                price_from: Some("15 000 ₽".into()),
-                price_to: Some("50 000 ₽".into()),
-            },
-            Service {
-                slug: "promotion".into(),
-                title: "Продвижение в Яндекс/Google".into(),
-                icon_name: "rocket".into(),
-                description: "Комплексное продвижение: семантика, контент, ссылочный профиль."
-                    .into(),
-                price_from: Some("30 000 ₽/мес".into()),
+                    "Локальный инференс на собственном GPU-кластере (RTX 5080 + RTX 3060, 64GB RAM). Полная приватность данных, без облачных API-подписок. Qwen 3.6/3.8 (27B, 35B A3B) с глубокой настройкой под ваш домен.".into(),
+                price_from: Some("100 000 ₽".into()),
                 price_to: None,
             },
             Service {
-                slug: "technical-seo".into(),
-                title: "Техническая оптимизация".into(),
-                icon_name: "settings".into(),
-                description: "Скорость, Core Web Vitals, индексация, структура сайта.".into(),
-                price_from: Some("20 000 ₽".into()),
+                slug: "ai-mcp".into(),
+                title: "MCP-серверы и AI Skills".into(),
+                icon_name: "plug-zap".into(),
+                description:
+                    "Собственные MCP-серверы для интеграции ИИ в ваш код. Голосовые ассистенты, автоматизация рабочих процессов, кастомные AI-навыки под бизнес-задачи.".into(),
+                price_from: Some("80 000 ₽".into()),
                 price_to: None,
             },
             Service {
-                slug: "content".into(),
-                title: "Контент-стратегия".into(),
-                icon_name: "pen-tool".into(),
-                description: "Кластеры ключевых слов, план публикаций, оптимизация текстов.".into(),
-                price_from: Some("25 000 ₽".into()),
+                slug: "voice-ai".into(),
+                title: "Голосовые ИИ-боты".into(),
+                icon_name: "mic".into(),
+                description:
+                    "Voice AI для холодных обзвонов, квалификации лидов, поддержки клиентов. LLM с динамическим ветвлением диалога, SIP/VoIP интеграция, TTS/STT настройка. Twin + LLM стек.".into(),
+                price_from: Some("120 000 ₽".into()),
                 price_to: None,
             },
             Service {
-                slug: "analytics".into(),
-                title: "Аналитика и отчётность".into(),
-                icon_name: "bar-chart-3".into(),
-                description: "Настройка метрик, ежемесячные отчёты, рост трафика и заявок.".into(),
-                price_from: Some("10 000 ₽/мес".into()),
+                slug: "comfyui-workflows".into(),
+                title: "ComfyUI Mass Production".into(),
+                icon_name: "images".into(),
+                description:
+                    "Массовая генерация через ComfyUI — изображения, видео, дизайн-материалы. Автоматизированные пайплайны, настройка моделей, оптимизация под GPU.".into(),
+                price_from: Some("50 000 ₽".into()),
+                price_to: None,
+            },
+            Service {
+                slug: "fullstack-web".into(),
+                title: "Fullstack PHP + JS разработка".into(),
+                icon_name: "code-2".into(),
+                description:
+                    "Symfony, Laravel, React, Vue. REST API, мультиязычность, e-commerce, event-driven архитектура. Контейнеризация Docker + CI/CD. Проекты под ключ от проектирования до деплоя.".into(),
+                price_from: Some("150 000 ₽".into()),
+                price_to: None,
+            },
+            Service {
+                slug: "devops".into(),
+                title: "DevOps & автоматизация серверов".into(),
+                icon_name: "server-cog".into(),
+                description:
+                    "Docker-инфраструктура, Linux-серверы, Arch-based environments, CI/CD пайплайны. Автоматизация деплоя, мониторинг, масштабирование.".into(),
+                price_from: Some("80 000 ₽".into()),
                 price_to: None,
             },
         ],
         projects: vec![
             Project {
-                slug: "case-001".into(),
-                title: "Интернет-магазин электроники".into(),
-                niche: "E-commerce".into(),
-                before: "100 визитов/день".into(),
-                after: "800 визитов/день".into(),
-                metric: "+700% трафика за 6 месяцев".into(),
+                slug: "voice-ai-real-estate".into(),
+                title: "Голосовой ИИ-бот для продаж в недвижимости".into(),
+                niche: "Voice AI · Недвижимость".into(),
+                before: "Ручные обзвоны, высокая стоимость минуты".into(),
+                after: "Автономная система квалификации лидов, 24/7 обзвон".into(),
+                metric: "SIP/VoIP + LLM-ветвление · квалификация лидов 24/7".into(),
             },
             Project {
-                slug: "case-002".into(),
-                title: "Корпоративный сайт застройщика".into(),
-                niche: "Недвижимость".into(),
-                before: "20 заявок/мес".into(),
-                after: "120 заявок/мес".into(),
-                metric: "+500% заявок за 4 месяца".into(),
+                slug: "ai-browser-agent".into(),
+                title: "AI-агент для эмуляции реальных пользователей".into(),
+                niche: "AI · Автоматизация".into(),
+                before: "Ручные тесты, низкое покрытие сценариев".into(),
+                after: "12+ модулей, ~3000 строк, anti-fingerprinting, human-like behavior".into(),
+                metric: "Browser-use + Playwright · multi-worker orchestration ready".into(),
             },
             Project {
-                slug: "case-003".into(),
-                title: "Блог о финансах".into(),
-                niche: "Медиа".into(),
-                before: "5 000 визитов/мес".into(),
-                after: "40 000 визитов/мес".into(),
-                metric: "+700% органического трафика".into(),
+                slug: "coffee-b2b-platform".into(),
+                title: "B2B/B2C платформа поставки кофе (Costa Rica)".into(),
+                niche: "Laravel · E-commerce".into(),
+                before: "Отсутствовала цифровая платформа поставок".into(),
+                after: "Мультиязычная платформа на 8 языков, 2 платёжных шлюза, CI/CD".into(),
+                metric: "Laravel 12 + Livewire 3 · event-driven ядро, 56 миграций".into(),
+            },
+            Project {
+                slug: "pdd-pro-maintenance".into(),
+                title: "Оптимизация pdd.pro — SQL, кэширование, бизнес-логика".into(),
+                niche: "Symfony · Оптимизация".into(),
+                before: "Медленные запросы, перегруженное кэширование".into(),
+                after: "Оптимизированный SQL, переработанная бизнес-логика, рост скорости".into(),
+                metric: "Symfony · индексы и кэш-слой, рост скорости отклика".into(),
+            },
+            Project {
+                slug: "wordpress-devops-refactor".into(),
+                title: "Рефакторинг WordPress + DevOps настройка сервера".into(),
+                niche: "WordPress · DevOps".into(),
+                before: "Медленный сайт, уязвимости, ручное администрирование".into(),
+                after: "Ускоренный сайт, автоматизированный деплой, защита сервера".into(),
+                metric: "WordPress + Docker · деплой и защита автоматизированы".into(),
+            },
+            Project {
+                slug: "symfony-kimai-custom".into(),
+                title: "Кастомизация Kimai и fullstack разработка на Symfony".into(),
+                niche: "Symfony · SaaS".into(),
+                before: "Стандартный функционал не покрывал бизнес-потребности".into(),
+                after: "Полная кастомизация тайм-трекинга, REST API, fullstack интеграции".into(),
+                metric: "Symfony + Vue/React · REST API, кастомный тайм-трекинг".into(),
+            },
+            Project {
+                slug: "edu-platform-marketplace".into(),
+                title: "Образовательная платформа и маркетплейс услуг".into(),
+                niche: "WordPress · LMS · Маркетплейс".into(),
+                before: "Нет единой платформы для обучения и продаж".into(),
+                after: "WordPress + WooCommerce + LMS — обучение, маркетплейс, автоматизация".into(),
+                metric: "WordPress + WooCommerce + LMS · платформа под ключ".into(),
+            },
+            Project {
+                slug: "wordpress-woocommerce-plugins".into(),
+                title: "Кастомные плагины WordPress и WooCommerce".into(),
+                niche: "WordPress · Плагины".into(),
+                before: "Готовые решения не решают уникальную бизнес-задачу".into(),
+                after: "Кастомная бизнес-логика, автоматизация продаж, интеграции с внешними сервисами".into(),
+                metric: "WordPress + WooCommerce · плагины полного цикла".into(),
             },
         ],
         availability: Availability {
             status: "available".to_string(),
-            current_projects: 5,
-            next_free_slot: "начало ноября 2026".to_string(),
-            availability_date: "2026-10-15".to_string(),
+            current_projects: 2,
+            next_free_slot: "немедленно — есть свободные слоты".to_string(),
+            availability_date: "2026-10-01".to_string(),
         },
         status_updated_at: "2026-09-07T10:00:00Z".to_string(),
     }
@@ -280,12 +334,28 @@ mod tests {
     fn fallback_content_is_complete() {
         let c = fallback_content();
         assert!(!c.profile.name.is_empty());
-        assert_eq!(c.services.len(), 5);
+        assert_eq!(c.services.len(), 6);
         assert!(c.projects.len() >= 3);
         assert!(matches!(
             c.availability.status.as_str(),
             "available" | "busy" | "full"
         ));
+    }
+
+    /// Каждая услуга должна ссылаться на реально существующую иконку Lucide:
+    /// иначе `LucideIcon` отрисует пустой `<svg>`.
+    #[test]
+    fn every_service_icon_exists_in_lucide_set() {
+        use crate::ui::icon::ICON_PATHS;
+        let c = fallback_content();
+        for s in &c.services {
+            assert!(
+                ICON_PATHS.iter().any(|(k, _)| *k == s.icon_name),
+                "иконка «{}» для услуги «{}» отсутствует в ICON_PATHS",
+                s.icon_name,
+                s.title
+            );
+        }
     }
 
     #[test]

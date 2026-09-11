@@ -12,7 +12,7 @@ pub fn Layout(children: Children) -> impl IntoView {
     let name = content.profile.name.clone();
     let telegram = content.profile.contacts.telegram.clone();
     let email = content.profile.contacts.email.clone();
-    let tagline = format!("{name} — специалист по продвижению сайтов");
+    let tagline = format!("{name} — Fullstack и приватные AI-системы");
 
     view! {
         <a href="#main" class="skip-link">Перейти к содержимому</a>

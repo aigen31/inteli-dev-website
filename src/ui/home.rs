@@ -37,9 +37,8 @@ pub fn HeroTerminal() -> impl IntoView {
 
             <div class="terminal-presets" role="group" aria-label="Частые вопросы">
                 <button type="button" class="preset-button terminal-preset-btn" data-kind="preset" data-index="0">{"Кто вы?"}</button>
-                <button type="button" class="preset-button terminal-preset-btn" data-kind="preset" data-index="1">{"Чем можете помочь?"}</button>
+                <button type="button" class="preset-button terminal-preset-btn" data-kind="preset" data-index="1">{"Чем занимаетесь?"}</button>
                 <button type="button" class="preset-button terminal-preset-btn" data-kind="preset" data-index="2">{"Сколько стоит?"}</button>
-                <button type="button" class="preset-button terminal-preset-btn" data-kind="analysis" data-index="3">{"Анализ сайта"}</button>
             </div>
         </div>
     }

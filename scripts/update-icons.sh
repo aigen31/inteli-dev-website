@@ -17,20 +17,27 @@ LUCIDE_VERSION="${LUCIDE_VERSION:-1.44.0}"
 BASE_URL="https://cdn.jsdelivr.net/npm/lucide-static@${LUCIDE_VERSION}/icons"
 
 # Иконки, используемые на сайте. Список = ключи ICON_PATHS в icon.rs.
+#
+# Первые шесть — карточки услуг (src/memory/content.rs → Service.icon_name),
+# порядок совпадает с порядком услуг:
+#   1. Приватные AI-системы      → brain-circuit (нейросеть)
+#   2. MCP-серверы и AI Skills   → plug-zap      (интеграция/подключение)
+#   3. Голосовые ИИ-боты         → mic           (голос)
+#   4. ComfyUI Mass Production   → images        (массовая генерация)
+#   5. Fullstack PHP + JS        → code-2        (код)
+#   6. DevOps и серверы          → server-cog    (сервер + автоматизация)
+#
+# Последние три — иконки статуса занятости (services/chat.rs → status_icon_name).
 ICONS=(
-  search
-  rocket
-  settings
-  pen-tool
-  bar-chart-3
-  user
-  briefcase
-  dollar-sign
-  mail
-  message-square
-  send
-  check-circle
+  brain-circuit
+  plug-zap
+  mic
+  images
+  code-2
+  server-cog
   circle-check
+  settings
+  check-circle
 )
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -76,8 +83,9 @@ footer = '''];
 
 /// SVG-иконка Lucide (outline, тонкие линии).
 ///
-/// Атрибуты корневого `<svg>` соответствуют официальной разметке Lucide;
-/// размер и толщина линии задаются в CSS (`.card-icon svg`).
+/// Атрибуты корневого `<svg>` соответствуют официальной разметке Lucide,
+/// кроме `stroke-width`: он задан в `1` (тонкие линии в 1px), а не в `2`,
+/// как в эталоне. Размер по-прежнему задаётся в CSS (`.card-icon svg`).
 #[component]
 pub fn LucideIcon(#[prop(into)] name: String) -> impl IntoView {
     let content = ICON_PATHS
@@ -91,7 +99,7 @@ pub fn LucideIcon(#[prop(into)] name: String) -> impl IntoView {
         .attr("viewBox", "0 0 24 24")
         .attr("fill", "none")
         .attr("stroke", "currentColor")
-        .attr("stroke-width", "2")
+        .attr("stroke-width", "1")
         .attr("stroke-linecap", "round")
         .attr("stroke-linejoin", "round")
         .attr("width", "1em")
