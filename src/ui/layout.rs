@@ -3,6 +3,7 @@
 use leptos::prelude::*;
 
 use crate::memory::content::SiteContent;
+use crate::ui::beget::BegetLogo;
 use crate::ui::shared::StatusBadge;
 
 #[component]
@@ -34,12 +35,27 @@ pub fn Layout(children: Children) -> impl IntoView {
 
         <footer class="footer">
             <div class="footer-inner">
-                <p>{tagline}</p>
-                <p class="footer-contacts">
-                    <a href=format!("https://t.me/{}", telegram.trim_start_matches('@'))>{telegram.clone()}</a>
-                    <span aria-hidden="true">{"·"}</span>
-                    <a href=format!("mailto:{}", email)>{email.clone()}</a>
-                </p>
+                <div class="footer-col">
+                    <p>{tagline}</p>
+                    <p class="footer-contacts">
+                        <a href=format!("https://t.me/{}", telegram.trim_start_matches('@'))>{telegram.clone()}</a>
+                        <span aria-hidden="true">{"·"}</span>
+                        <a href=format!("mailto:{}", email)>{email.clone()}</a>
+                    </p>
+                </div>
+
+                <div class="footer-col footer-col-beget">
+                    <span class="footer-beget-label">{"работает на"}</span>
+                    <a
+                        class="footer-beget-logo"
+                        href="https://beget.com/p1627316"
+                        target="_blank"
+                        rel="noopener noreferrer nofollow"
+                        aria-label="Хостинг Beget"
+                    >
+                        <BegetLogo/>
+                    </a>
+                </div>
             </div>
         </footer>
     }

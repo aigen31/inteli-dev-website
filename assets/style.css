@@ -82,14 +82,21 @@
 
 /* ---------- 2. Reset ---------- */
 *, *::before, *::after { box-sizing: border-box; }
-html { scroll-behavior: smooth; overflow-x: hidden; }
+/* Горизонтальный скролл режем через `clip`, а не `hidden`: по спецификации
+   `overflow-x: hidden` заставляет `overflow-y` вычисляться в `auto`, из-за чего
+   и <html>, и <body> становятся скролл-контейнерами — на главной появлялись
+   ДВА вертикальных скроллбара. `clip` не создаёт скролл-контейнер, поэтому
+   вертикальный скролл остаётся один — у документа. `hidden` оставлен первой
+   строкой как фолбэк для браузеров без поддержки `clip`. */
+html { scroll-behavior: smooth; overflow-x: hidden; overflow-x: clip; }
 body {
   margin: 0;
   font-family: var(--font-body);
   font-size: var(--text-body);
   line-height: 1.6;
   color: var(--color-text);
-  overflow-x: hidden; /* предотвращает горизонтальный скролл при выходе blob'ов за границы viewport */
+  overflow-x: hidden; /* фолбэк */
+  overflow-x: clip;   /* предотвращает горизонтальный скролл от blob'ов, не создавая второй вертикальный */
   /* Фон заливает всю страницу (без fixed, иначе низ длиговой страницы белый).
      Адаптация под стиль deepseek.com/harness — тёмный фон + radial-gradient «свечения». */
   background-color: #0a0a14;
@@ -344,9 +351,9 @@ ul { margin: 0; padding: 0; list-style: none; }
   animation: blob-drift-right 16s ease-in-out infinite;
 }
 
-/* Свечения-продолжения убраны — .section::before с top:-200px затемнял
-   заголовок «Услуги», вылезая на hero-область. Если нужно, добавляйте
-   свечение точечно через inline-стили или отдельные классы. */
+/* Свечения-продолжения hero'а убраны: общий `.section::before` с top:-200px
+   затемнял заголовок «Услуги». Световые пятна вернулись — но точечно, через
+   класс .section-glow, который кладёт их ПОД контент (см. раздел 8.1). */
 
 /* ---------- Hero content ---------- */
 .hero-content { max-width: 560px; }
@@ -505,6 +512,7 @@ ul { margin: 0; padding: 0; list-style: none; }
 .terminal-bot-response {
   color: var(--color-text-secondary);
   line-height: 1.5;
+  white-space: pre-wrap; /* ответы ИИ приходят с \n — печатаем построчно */
 }
 
 /* Ошибка */
@@ -609,27 +617,6 @@ ul { margin: 0; padding: 0; list-style: none; }
   transform: translateY(-1px);
 }
 
-/* ---------- 7b. Декор (искры, скобки) ---------- */
-.hero-decoration { position: absolute; inset: 0; pointer-events: none; z-index: 0; }
-.sparkle {
-  position: absolute;
-  width: 16px;
-  height: 16px;
-  background: rgba(255, 255, 255, 0.65);
-  clip-path: polygon(50% 0%, 61% 39%, 100% 50%, 61% 61%, 50% 100%, 39% 61%, 0% 50%, 39% 39%);
-}
-.sparkle-1 { top: 14%; right: 10%; width: 22px; height: 22px; }
-.sparkle-2 { bottom: 20%; left: 44%; width: 12px; height: 12px; opacity: 0.35; }
-.braces {
-  position: absolute;
-  bottom: 6%;
-  right: 5%;
-  font-family: var(--font-mono);
-  font-size: 3rem;
-  color: rgba(255, 255, 255, 0.16);
-  letter-spacing: var(--space-xs);
-}
-
 /* ---------- 8. Sections ---------- */
 .main { min-height: calc(100vh - var(--nav-height)); }
 
@@ -648,6 +635,98 @@ ul { margin: 0; padding: 0; list-style: none; }
 .section-link { font-size: var(--text-small); font-weight: 600; color: var(--color-text-secondary); }
 .section-link:hover { color: #fff; }
 .cta-section { text-align: center; }
+
+/* ---------- 8.1 Световые пятна в нижних секциях главной ----------
+   Фон hero — три blob'а; ниже он раньше «выдыхался» в сплошной #0a0a14.
+   Добавляем мягкие засветлённые пятна через ::before/::after: они лежат
+   под контентом (z-index: -1 внутри изолированного стекинг-контекста) и
+   поэтому не затемняют заголовки — прошлая попытка с top:-200px затемняла
+   «Услуги» именно потому, что пятно шло поверх текста. */
+.section-glow { position: relative; isolation: isolate; }
+.section-glow > * { position: relative; z-index: 1; }
+
+.section-glow::before,
+.section-glow::after {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+/* Услуги — тёплое фиолетовое пятно справа + холодное синее слева. */
+.section-services::before {
+  top: -80px;
+  right: -180px;
+  width: 640px;
+  height: 540px;
+  opacity: 0.75;
+  background: radial-gradient(circle, rgba(155, 95, 255, 0.42) 0%, rgba(110, 70, 230, 0.20) 45%, transparent 72%);
+  animation: section-drift-a 24s ease-in-out infinite;
+}
+.section-services::after {
+  bottom: -120px;
+  left: -200px;
+  width: 540px;
+  height: 460px;
+  opacity: 0.7;
+  background: radial-gradient(circle, rgba(60, 120, 255, 0.34) 0%, rgba(50, 70, 210, 0.15) 50%, transparent 74%);
+  animation: section-drift-b 30s ease-in-out infinite;
+}
+
+/* Результаты — меняем тон: мягкая маджента справа + бирюза слева. */
+.section-results::before {
+  top: 0;
+  left: -220px;
+  width: 600px;
+  height: 600px;
+  opacity: 0.65;
+  background: radial-gradient(circle, rgba(70, 200, 210, 0.30) 0%, rgba(60, 120, 220, 0.15) 48%, transparent 72%);
+  animation: section-drift-b 26s ease-in-out infinite;
+}
+.section-results::after {
+  bottom: -140px;
+  right: -200px;
+  width: 580px;
+  height: 500px;
+  opacity: 0.7;
+  background: radial-gradient(circle, rgba(235, 105, 205, 0.32) 0%, rgba(150, 80, 230, 0.16) 50%, transparent 74%);
+  animation: section-drift-a 32s ease-in-out infinite;
+}
+
+/* CTA — широкое свечение снизу по центру (как «подсветка» финального призыва). */
+.section-cta::before {
+  left: 50%;
+  bottom: -220px;
+  width: 940px;
+  height: 480px;
+  margin-left: -470px; /* вместо translateX(-50%), чтобы не конфликтовать с анимацией */
+  opacity: 0.8;
+  background: radial-gradient(ellipse, rgba(139, 127, 245, 0.42) 0%, rgba(90, 70, 220, 0.20) 45%, transparent 72%);
+  animation: section-drift-cta 28s ease-in-out infinite;
+}
+.section-cta::after {
+  left: 50%;
+  top: -60px;
+  width: 660px;
+  height: 280px;
+  margin-left: -330px;
+  opacity: 0.6;
+  background: radial-gradient(ellipse, rgba(185, 155, 255, 0.26) 0%, transparent 70%);
+}
+
+@keyframes section-drift-a {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+  50%      { transform: translate3d(-36px, 26px, 0) scale(1.06); }
+}
+@keyframes section-drift-b {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+  50%      { transform: translate3d(30px, -22px, 0) scale(0.95); }
+}
+@keyframes section-drift-cta {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+  50%      { transform: translate3d(0, -24px, 0) scale(1.08); }
+}
 
 /* ---------- 9. Cards ---------- */
 .cards-grid {
@@ -700,13 +779,18 @@ ul { margin: 0; padding: 0; list-style: none; }
 .card-icon { font-size: 2rem; margin-bottom: var(--space-sm); }
 /* Lucide SVG-иконки — стилизация под тонкие 3D-линии. */
 .card-icon svg,
-.status-badge .card-icon svg,
 .status-badge svg[aria-hidden] {
   width: 2rem;
   height: 2rem;
-  stroke-width: 1.5;
+  stroke-width: 1;
   color: var(--color-primary);
   opacity: 0.9;
+}
+/* Иконка внутри статус-бейджа — компактнее, чтобы не спорить с текстом. */
+.status-badge svg[aria-hidden] {
+  width: 1rem;
+  height: 1rem;
+  flex: none;
 }
 .card-title { font-size: var(--text-h3); margin-bottom: var(--space-sm); color: #fff; }
 .card-text { color: var(--color-text-secondary); font-size: var(--text-small); }
@@ -830,11 +914,85 @@ ul { margin: 0; padding: 0; list-style: none; }
   border-bottom-left-radius: 0;
 }
 .chat-suggestions { display: flex; flex-wrap: wrap; gap: var(--space-sm); }
-.chat-dots {
-  display: inline-block;
-  min-width: 3ch;
-  text-align: left;
+
+/* ---------- Индикатор ожидания ответа ИИ ---------- */
+/* Пузырь появляется сразу после отправки и живёт до прихода ответа:
+   три «дышащие» точки + пробегающий по пузырю блеск. */
+.chat-typing {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-sm);
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  box-shadow: var(--shadow-sm);
+}
+.chat-typing::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    100deg,
+    transparent 20%,
+    rgba(139, 127, 245, 0.22) 50%,
+    transparent 80%
+  );
+  transform: translateX(-120%);
+  animation: typing-shimmer 1.9s ease-in-out infinite;
+  pointer-events: none;
+}
+.typing-dots { position: relative; z-index: 1; display: inline-flex; align-items: center; gap: 5px; }
+.typing-dots i {
+  display: block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--color-primary);
+  animation: typing-bounce 1.3s ease-in-out infinite;
+}
+.typing-dots i:nth-child(2) { animation-delay: 0.16s; }
+.typing-dots i:nth-child(3) { animation-delay: 0.32s; }
+.typing-static {
+  position: relative;
+  z-index: 1;
+  font-size: var(--text-small);
+  color: var(--color-text-secondary);
+}
+
+@keyframes typing-bounce {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.40; }
+  30%            { transform: translateY(-4px); opacity: 1; }
+}
+@keyframes typing-shimmer {
+  0%   { transform: translateX(-120%); }
+  60%  { transform: translateX(120%); }
+  100% { transform: translateX(120%); }
+}
+
+/* Пока ждём ответ — приглушаем поле ввода и кнопку, чтобы не отправляли дважды. */
+.chat-container.is-waiting #chat-input,
+.chat-container.is-waiting #chat-send { opacity: 0.6; cursor: progress; }
+.chat-container.is-waiting .preset-button { opacity: 0.5; pointer-events: none; }
+.chat-container.is-waiting #chat-send {
+  background: linear-gradient(135deg, var(--color-primary), #6f5cf0);
+  animation: send-pulse 1.6s ease-in-out infinite;
+}
+@keyframes send-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(139, 127, 245, 0); }
+  50%      { box-shadow: 0 0 0 6px rgba(139, 127, 245, 0.16); }
+}
+
+/* Текст только для скринридеров. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
   white-space: nowrap;
+  border: 0;
 }
 
 .chat-input-row { display: flex; gap: var(--space-sm); }
@@ -873,12 +1031,28 @@ ul { margin: 0; padding: 0; list-style: none; }
   max-width: var(--container-max);
   margin: 0 auto;
   display: flex;
-  flex-direction: column;
-  gap: var(--space-sm);
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-lg);
 }
+.footer-col { display: flex; flex-direction: column; gap: var(--space-sm); }
+.footer-col p { margin: 0; }
 .footer-contacts { display: flex; gap: var(--space-sm); align-items: center; margin: 0; }
 .footer a { color: var(--color-text-secondary); }
 .footer a:hover { color: #fff; }
+
+/* Правая колонка — «работает на Beget»: логотип ведёт на партнёрскую ссылку. */
+.footer-col-beget { align-items: flex-start; gap: var(--space-xs); }
+.footer-beget-label { font-size: var(--text-caption); color: var(--color-text-tertiary); }
+.footer-beget-logo {
+  display: inline-block;
+  color: var(--color-text-secondary);
+  opacity: 0.85;
+  transition: opacity var(--transition-fast), color var(--transition-fast);
+}
+.footer-beget-logo:hover { color: #fff; opacity: 1; }
+.footer-beget-logo svg { display: block; width: 97px; height: 44px; }
 
 /* ---------- 13. Admin panel ---------- */
 .admin-section { max-width: 1200px; }
@@ -960,7 +1134,9 @@ ul { margin: 0; padding: 0; list-style: none; }
   .cards-grid, .cards-grid-2 { grid-template-columns: 1fr; }
   .contact-grid { grid-template-columns: 1fr; }
   .project-metrics { grid-template-columns: 1fr; }
-  .braces { font-size: 2.2rem; }
+  /* Световые пятна на мобильном — тише, чтобы не спорить с текстом. */
+  .section-glow::before,
+  .section-glow::after { opacity: 0.32; }
 }
 
 /* ---------- 16. Reduced motion ---------- */

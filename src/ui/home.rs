@@ -63,11 +63,6 @@ pub fn Home() -> impl IntoView {
             <div class="hero-blob hero-blob-1" aria-hidden="true"></div>
             <div class="hero-blob hero-blob-2" aria-hidden="true"></div>
             <div class="hero-blob hero-blob-3" aria-hidden="true"></div>
-            <div class="hero-decoration" aria-hidden="true">
-                <span class="sparkle sparkle-1"></span>
-                <span class="sparkle sparkle-2"></span>
-                <span class="braces">{"{...}"}</span>
-            </div>
 
             <div class="hero-grid">
                 <HeroTerminal/>
@@ -88,7 +83,7 @@ pub fn Home() -> impl IntoView {
             </div>
         </section>
 
-        <section class="section">
+        <section class="section section-glow section-services">
             <div class="section-head">
                 <h2>Услуги</h2>
                 <a class="section-link" href="/services">{"Все услуги →"}</a>
@@ -98,7 +93,7 @@ pub fn Home() -> impl IntoView {
             </div>
         </section>
 
-        <section class="section">
+        <section class="section section-glow section-results">
             <div class="section-head">
                 <h2>Результаты</h2>
                 <a class="section-link" href="/projects">{"Все проекты →"}</a>
@@ -108,7 +103,7 @@ pub fn Home() -> impl IntoView {
             </div>
         </section>
 
-        <section class="section cta-section">
+        <section class="section section-glow section-cta cta-section">
             <h2>Готовы обсудить ваш проект?</h2>
             <p class="subtitle">{"Оставьте заявку — отвечу в течение 24 часов."}</p>
             <div class="cta-buttons">

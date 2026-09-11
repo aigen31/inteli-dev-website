@@ -31,6 +31,11 @@
     var input = document.getElementById('chat-input');
     var sendBtn = document.getElementById('chat-send');
 
+    // Пока ждём ответ ИИ — блокируем повторную отправку и показываем анимацию.
+    var isWaiting = false;
+    var MIN_TYPING_MS = 500; // индикатор не должен «мигать» на быстрых ответах
+    var reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
     function addMessage(text, who) {
       var div = document.createElement('div');
       div.className = 'chat-message ' + (who === 'user' ? 'user-message' : 'bot-message');
@@ -62,7 +67,52 @@
       messages.scrollTop = messages.scrollHeight;
     }
 
+    // Индикатор ожидания ответа ИИ: пузырь с тремя «дышащими» точками и
+    // пробегающим блеском. Рендерится до запроса, а не после него.
+    function showTyping() {
+      var el = document.createElement('div');
+      el.className = 'chat-message bot-message chat-typing';
+      el.setAttribute('role', 'status');
+      el.innerHTML =
+        '<span class="typing-dots" aria-hidden="true"><i></i><i></i><i></i></span>' +
+        '<span class="sr-only">ИИ печатает ответ</span>';
+      // Если анимации отключены системно — оставляем читаемый текстовый статус.
+      if (reduceMotion) {
+        el.innerHTML =
+          '<span class="typing-static" aria-hidden="true">печатает</span>' +
+          '<span class="sr-only">ИИ печатает ответ</span>';
+      }
+      messages.appendChild(el);
+      messages.scrollTop = messages.scrollHeight;
+      return el;
+    }
+
+    function setWaiting(state) {
+      isWaiting = state;
+      app.classList.toggle('is-waiting', state);
+      app.setAttribute('aria-busy', state ? 'true' : 'false');
+      messages.setAttribute('aria-busy', state ? 'true' : 'false');
+      input.disabled = state;
+      sendBtn.disabled = state;
+      sendBtn.setAttribute('aria-busy', state ? 'true' : 'false');
+      input.placeholder = state ? 'Жду ответ...' : 'Ваш вопрос...';
+      app.querySelectorAll('.preset-button').forEach(function (b) { b.disabled = state; });
+    }
+
+    // Не даём индикатору исчезнуть раньше, чем он прочитается глазом.
+    function holdTyping(startedAt) {
+      var left = MIN_TYPING_MS - (Date.now() - startedAt);
+      if (left <= 0) return Promise.resolve();
+      return new Promise(function (resolve) { setTimeout(resolve, left); });
+    }
+
     async function send(payload) {
+      if (isWaiting) return;
+      setWaiting(true);
+
+      var startedAt = Date.now();
+      var typingEl = showTyping();
+
       try {
         var res = await fetch('/api/chat', {
           method: 'POST',
@@ -70,36 +120,27 @@
           body: JSON.stringify(payload)
         });
         var data = await res.json().catch(function () { return {}; });
+
+        await holdTyping(startedAt);
+        typingEl.remove();
+
         if (!res.ok) {
           addMessage(data.error || 'Ошибка. Попробуйте позже.', 'bot');
           return;
         }
-
-        // Анимация «печатает…» с мигающими точками (по аналогии с hero-терминалом)
-        var typingEl = document.createElement('div');
-        typingEl.className = 'chat-message bot-message';
-        typingEl.innerHTML = '<em>печатает</em><span class="chat-dots">...</span>';
-        messages.appendChild(typingEl);
-        messages.scrollTop = messages.scrollHeight;
-
-        // Анимация точек: показываем по одной с интервалом 400ms
-        var dotCount = 0;
-        var dotTimer = setInterval(function () {
-          dotCount = (dotCount + 1) % 4;
-          typingEl.querySelector('.chat-dots').textContent = '.'.repeat(dotCount);
-        }, 400);
-
         addMessage(data.answer, 'bot');
         addSuggestions(data.suggested_next);
-
-        clearInterval(dotTimer);
-        typingEl.remove();
       } catch (err) {
+        await holdTyping(startedAt);
+        typingEl.remove();
         addMessage('Сетевая ошибка. Попробуйте ещё раз.', 'bot');
+      } finally {
+        setWaiting(false);
       }
     }
 
     function sendFree() {
+      if (isWaiting) return;
       var text = input.value.trim();
       if (!text) return;
       addMessage(text, 'user');
@@ -114,6 +155,7 @@
 
     app.querySelectorAll('.preset-button[data-kind]').forEach(function (btn) {
       btn.addEventListener('click', function () {
+        if (isWaiting) return;
         var kind = btn.getAttribute('data-kind');
         var index = btn.getAttribute('data-index');
         addMessage(btn.textContent, 'user');
@@ -543,6 +585,8 @@
     // Состояние терминала
     var isTyping = false;       // идёт анимация печати ответа
     var isBusy = false;         // запрос к API ещё не завершён
+    var skipTyping = null;      // мгновенно допечатать текущую строку
+    var typingToken = 0;        // поколение печати: старый таймаут не должен гасить новую
 
     // ---------- Утилиты ----------
     function scrollToBottom() {
@@ -558,42 +602,80 @@
       return line;
     }
 
-    // ---------- Анимация посимвольной печати ----------
-    function typeText(element, text, callback) {
-      if (!element) return; // null element — просто пропускаем (для приветствия используем appendLine)
+    // ---------- Печать «как в терминале» ----------
+    // Раньше задержка была фиксированной (~15 ms на символ): строка росла
+    // ровным потоком и читалась как линейный «занавес», а не как набор текста.
+    // Теперь у каждого символа своя задержка с джиттером + паузы на знаках
+    // препинания — ритм рваный, и буквы видно по отдельности.
+    var TYPE_BASE_MS = 26;    // базовая скорость набора
+    var TYPE_JITTER_MS = 22;  // разброс, чтобы ритм не был метрономом
+
+    function typeDelay(ch) {
+      var d = TYPE_BASE_MS + Math.random() * TYPE_JITTER_MS;
+      if (ch === '\n') return d + 150;                // новая строка
+      if ('.!?…'.indexOf(ch) !== -1) return d + 240;  // конец предложения
+      if (';:—–-'.indexOf(ch) !== -1) return d + 110; // пауза внутри фразы
+      if (ch === ' ') return d * 0.7;                 // между словами чуть быстрее
+      return d;
+    }
+
+    function typeText(element, text, callback, speed) {
+      if (!element) return; // null element — просто пропускаем
       if (reduceMotion) {
         element.textContent = text;
         if (callback) callback();
         return;
       }
+      speed = speed || 1;
       isTyping = true;
+      var myToken = ++typingToken;
+
       var i = 0;
+      var finished = false;
+      var timer = null;
       var cursorEl = document.createElement('span');
       cursorEl.className = 'terminal-cursor';
-      cursorEl.innerHTML = '█';
+      cursorEl.textContent = '█';
       element.textContent = '';
       element.appendChild(cursorEl);
 
-      function typeChar() {
-        if (i < text.length) {
-          // Вставляем символ перед курсором
-          var span = document.createElement('span');
-          span.style.opacity = '0.85';
-          span.textContent = text[i];
-          element.insertBefore(span, cursorEl);
-          i++;
-          scrollToBottom();
-          setTimeout(typeChar, 12 + Math.random() * 8); // случайная скорость для реалистичности
-        } else {
-          // Убираем мигающий курсор после завершения
-          setTimeout(function() {
-            if (cursorEl.parentNode) cursorEl.remove();
+      function complete() {
+        if (finished) return;
+        finished = true;
+        clearTimeout(timer);
+        // Курсор гаснет не сразу — даём глазу увидеть конец строки.
+        setTimeout(function () {
+          if (cursorEl.parentNode) cursorEl.remove();
+          // Если за это время стартовала новая печать — её состояние не трогаем.
+          if (myToken === typingToken) {
             isTyping = false;
-            enableInput();
-            if (callback) callback();
-          }, 400);
-        }
+            skipTyping = null;
+          }
+          if (callback) callback();
+        }, 400);
       }
+
+      function typeChar() {
+        if (i >= text.length) {
+          complete();
+          return;
+        }
+        var ch = text[i++];
+        element.insertBefore(document.createTextNode(ch), cursorEl);
+        scrollToBottom();
+        timer = setTimeout(typeChar, typeDelay(ch) * speed);
+      }
+
+      // Допечатать всё сразу: Enter во время вывода не должен терять ввод.
+      skipTyping = function () {
+        if (i < text.length) {
+          element.insertBefore(document.createTextNode(text.slice(i)), cursorEl);
+          i = text.length;
+          scrollToBottom();
+        }
+        complete();
+      };
+
       typeChar();
     }
 
@@ -641,11 +723,12 @@
     output.appendChild(welcomeLine);
     typeText(welcomeLine, '> inteli-dev CLI v1.0 — спрашивайте обо мне, услугах, ценах или оставьте заявку.', function() {
       input.focus();
-    });
+    }, 0.6);
 
     // ---------- Отправка сообщения в API ----------
     async function sendMessage(message, questionType) {
-      if (isTyping) return; // только проверка typing — isBusy будет установлен сразу
+      if (isBusy) return;                          // предыдущий запрос ещё в полёте
+      if (isTyping && skipTyping) skipTyping();    // недопечатанный ответ — допечатать мгновенно
 
       disableInput();
       var loading = showLoading();
@@ -669,10 +752,11 @@
         botLine.className = 'terminal-line terminal-bot-response';
         output.appendChild(botLine);
 
-        typeText(botLine, data.answer, function() {
-          scrollToBottom();
-          enableInput();
-        });
+        // Ввод разблокируем сразу: пока идёт вывод, можно печатать следующий
+        // вопрос (Enter допечатает текущий ответ мгновенно) — как в терминале.
+        enableInput();
+
+        typeText(botLine, data.answer, scrollToBottom);
 
       } catch (err) {
         loading(); // убрать лоадер в случае ошибки

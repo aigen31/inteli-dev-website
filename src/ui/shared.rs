@@ -16,7 +16,7 @@ pub fn StatusBadge() -> impl IntoView {
     view! {
         <span class=format!("status-badge status-{}", status)>
             <span class="status-dot" aria-hidden="true"></span>
-            <LucideIcon name=status_icon_name(&status) />
+            // <LucideIcon name=status_icon_name(&status) />
             <span>{label}</span>
         </span>
     }

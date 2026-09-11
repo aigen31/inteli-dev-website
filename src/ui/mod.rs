@@ -5,6 +5,7 @@
 //! SSR рендерится на сервере.
 
 pub mod admin;
+pub mod beget;
 pub mod chat;
 pub mod contact;
 pub mod home;
