@@ -4,7 +4,6 @@ use leptos::prelude::*;
 
 use crate::memory::content::{Project, Service, SiteContent};
 use crate::services::chat::{label_for_status, status_icon_name};
-use crate::ui::icon::LucideIcon;
 
 /// Бейдж текущего статуса занятости.
 #[component]
