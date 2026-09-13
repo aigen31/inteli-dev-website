@@ -56,12 +56,32 @@ cargo run
 или `config.toml`. Без ключей сайт работает: чат отвечает fallback-ответами,
 уведомления пропускаются.
 
-### Docker
+### Docker (dev)
 
 ```bash
 cp .env.example .env    # заполнить секреты
 docker compose up --build
+# → http://localhost:8080
 ```
+
+### Docker (prod)
+
+Продакшен — отдельный файл `docker-compose.prod.yml`: приложение за Nginx,
+трафик и TLS — через внешний Traefik (сеть `traefik-public`), сертификат
+Let's Encrypt выпускается Traefik автоматически.
+
+```bash
+cp .env.prod.example .env.prod    # заполнить секреты
+docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --build
+```
+
+Требования к серверу:
+
+- внешняя docker-сеть Traefik: `docker network create traefik-public` (один раз);
+- A-запись `inteli-dev.ru` (и `www`) на этот сервер — без неё ACME HTTP-01 не пройдёт.
+
+Конфигурация приложения — `config/config.prod.toml` (монтируется read-only как
+`/app/config.toml`, секретов в нём нет). Подробности — `RULES/docker-build.md`.
 
 ## API
 

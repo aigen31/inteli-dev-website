@@ -142,6 +142,21 @@ CMD ["/app/server"]
 
 ## docker-compose.yml
 
+Окружения разделены на два файла:
+
+| Файл | Назначение |
+|---|---|
+| `docker-compose.yml` | **Dev** — сборка из исходников, порты на хост, `host.docker.internal` для локальной LLM |
+| `docker-compose.prod.yml` | **Prod** — Nginx + внешний Traefik (`traefik-public`), TLS Let's Encrypt, секреты из `.env.prod` |
+
+```bash
+# Dev
+docker compose up --build
+
+# Prod
+docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --build
+```
+
 ### Базовая конфигурация (все сервисы)
 ```yaml
 # docker-compose.yml
@@ -232,7 +247,11 @@ volumes:
   redis-data:
 ```
 
-### docker-compose.override.yml (для разработки)
+### docker-compose.override.yml (вариант для разработки)
+> Актуальная реализация: dev — это `docker-compose.yml`, prod — `docker-compose.prod.yml`.
+> Override-файл ниже — альтернативный подход (hot-reload), при необходимости сохраните
+> его как `docker-compose.override.yml`; тогда для prod обязательно
+> `docker compose -f docker-compose.yml -f docker-compose.prod.yml ...`.
 ```yaml
 # docker-compose.override.yml — монтирует исходный код для hot-reload при разработке
 version: "3.9"
@@ -281,9 +300,12 @@ WEB_PORT=8080
 VIKING_PORT=1933
 ```
 
-### Production .env (на сервере)
+### Production .env (`.env.prod`)
+Продакшен-окружение отделено от dev. Секреты — в `.env.prod` (шаблон: `.env.prod.example`),
+конфигурация приложения — в `config/config.prod.toml` (монтируется как `/app/config.toml`,
+read-only, без секретов). Запуск: `docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --build`.
 ```bash
-# /etc/inteli-dev/.env — на продакшен-сервере
+# .env.prod — на продакшен-сервере (НЕ коммитить)
 LLM_API_KEY=sk-prod-xxxxxxxxxxxxxxxx
 TELEGRAM_BOT_TOKEN=prod-bot-token
 TELEGRAM_ADMIN_CHAT_ID=-100prod-chat-id
@@ -291,6 +313,7 @@ VK_OAUTH_TOKEN=prod-vk-token
 VK_ADMIN_USER_ID=prod-user-id
 ADMIN_TOKEN=prod-admin-super-secret-token-32chars==
 APP_VERSION=1.0.0-prod
+APP_IMAGE=inteli-dev.ru:latest
 RUST_LOG=warn  # Less verbose in production
 ```
 
@@ -432,17 +455,19 @@ docker compose logs -f web      # Просмотр логов приложени
 docker compose logs -f viking   # Просмотр логов OpenViking
 
 # ===== Production (на сервере) =====
-# 1. Подготовить .env файл на сервере
-scp .env user@server:/etc/inteli-dev/.env
+# 0. Один раз: внешняя сеть Traefik (см. /mnt/disk1/work/traefik/docker-compose.yml)
+docker network create traefik-public
 
-# 2. Скопировать docker-compose.yml
-scp docker-compose.yml user@server:/opt/inteli-dev/docker-compose.yml
+# 1. Скопировать prod-файлы (dev-файлы на сервере не нужны)
+scp docker-compose.prod.yml user@server:/opt/inteli-dev/docker-compose.prod.yml
+scp -r docker/nginx config/config.prod.toml user@server:/opt/inteli-dev/
+scp .env.prod user@server:/opt/inteli-dev/.env.prod
 
-# 3. На сервере:
+# 2. На сервере (домен должен уже резолвиться в этот сервер — иначе ACME HTTP-01 не пройдёт):
 cd /opt/inteli-dev
-docker compose pull             # Скачать новые образы (OpenViking, Redis)
-docker compose up -d --pull always  # Пересобрать если нужно, запустить
-docker compose ps               # Проверить все сервисы
+docker compose --env-file .env.prod -f docker-compose.prod.yml pull   # OpenViking, Redis, Nginx
+docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --build
+docker compose --env-file .env.prod -f docker-compose.prod.yml ps     # Проверить все сервисы
 
 # ===== Обновление версии приложения =====
 # Локально:

@@ -1,0 +1,142 @@
+# docker-compose.prod.yml — ПРОДАКШЕН (сервер inteli-dev.ru).
+#
+# Отличия от dev (docker-compose.yml):
+#   • порты приложения наружу не публикуются: трафик идёт Nginx → web;
+#   • Nginx подключён к внешней сети Traefik `traefik-public` и получает TLS;
+#   • сертификат Let's Encrypt выпускается автоматически Traefik (HTTP-01);
+#   • секреты только из env (.env.prod), config монтируется read-only;
+#   • у томов явные имена — предсказуемые бэкапы.
+#
+# Запуск на сервере:
+#   cp .env.prod.example .env.prod      # заполнить секреты
+#   docker compose -f docker-compose.prod.yml up -d --build
+#
+# Один раз должна существовать внешняя сеть Traefik:
+#   docker network create traefik-public
+#
+# Обновление версии: приложение пересобирается из исходников; при использовании
+# реестра задайте APP_IMAGE и добавьте `pull_policy: always` сервису web.
+
+name: inteli-dev-prod
+
+services:
+  # --- Приложение (Leptos SSR + axum). Наружу не публикуется: только через nginx. ---
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        - APP_VERSION=${APP_VERSION:-latest}
+    image: ${APP_IMAGE:-inteli-dev.ru:latest}
+    container_name: inteli-dev-web
+    restart: unless-stopped
+    env_file:
+      - path: .env.prod
+        required: false
+    environment:
+      - PORT=8080
+      - CONFIG_PATH=/app/config.toml
+      - OPENVIKING_BASE_URL=http://viking:1933/mcp
+      # SQLite пишется в volume, примонтированный в DATA_DIR.
+      - DATA_DIR=/data
+      - DB_PATH=/data/chats.db
+    volumes:
+      - db-data:/data
+      - ./config/config.prod.toml:/app/config.toml:ro
+    depends_on:
+      redis:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    # Если LLM крутится на хосте (как в dev) — раскомментируйте:
+    # extra_hosts:
+    #   - "host.docker.internal:host-gateway"
+    networks:
+      - internal
+
+  # --- Nginx: reverse proxy перед web, точка входа для Traefik. ---
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: inteli-dev-nginx
+    restart: unless-stopped
+    volumes:
+      - ./docker/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      web:
+        condition: service_healthy
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - internal
+      - traefik-public
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=traefik-public
+
+      # HTTPS-роутер: автоматический выпуск сертификата Let's Encrypt.
+      - traefik.http.routers.inteli-dev.rule=Host(`inteli-dev.ru`) || Host(`www.inteli-dev.ru`)
+      - traefik.http.routers.inteli-dev.entrypoints=websecure
+      - traefik.http.routers.inteli-dev.tls=true
+      - traefik.http.routers.inteli-dev.tls.certresolver=letsencrypt
+      - traefik.http.routers.inteli-dev.service=inteli-dev
+      - traefik.http.services.inteli-dev.loadbalancer.server.port=80
+
+      # HTTP-роутер: редирект на HTTPS (ACME-челлендж Traefik отдаёт сам).
+      - traefik.http.routers.inteli-dev-http.rule=Host(`inteli-dev.ru`) || Host(`www.inteli-dev.ru`)
+      - traefik.http.routers.inteli-dev-http.entrypoints=web
+      - traefik.http.routers.inteli-dev-http.middlewares=inteli-dev-redirect-https
+      - traefik.http.middlewares.inteli-dev-redirect-https.redirectscheme.scheme=https
+      - traefik.http.middlewares.inteli-dev-redirect-https.redirectscheme.permanent=true
+
+      # www → apex: канонический домен для SEO.
+      - traefik.http.routers.inteli-dev.middlewares=inteli-dev-www-to-apex
+      - traefik.http.middlewares.inteli-dev-www-to-apex.redirectregex.regex=^https?://www\.inteli-dev\.ru/(.*)
+      - traefik.http.middlewares.inteli-dev-www-to-apex.redirectregex.replacement=https://inteli-dev.ru/$$1
+      - traefik.http.middlewares.inteli-dev-www-to-apex.redirectregex.permanent=true
+
+  # --- OpenViking: семантическая память (приложение деградирует на fallback). ---
+  viking:
+    image: ghcr.io/volcengine/openviking:latest
+    container_name: inteli-dev-viking
+    restart: unless-stopped
+    volumes:
+      - viking-data:/data
+    networks:
+      - internal
+
+  # --- Redis: кэш/rate limiting (приложение работает и без него). ---
+  redis:
+    image: redis:7-alpine
+    container_name: inteli-dev-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis-data:/data
+    networks:
+      - internal
+
+networks:
+  # Внутренняя сеть приложения: web ↔ nginx ↔ viking ↔ redis.
+  internal:
+    driver: bridge
+  # Внешняя сеть Traefik (см. /mnt/disk1/work/traefik/docker-compose.yml).
+  traefik-public:
+    external: true
+
+volumes:
+  db-data:
+    name: inteli-dev_db-data
+  viking-data:
+    name: inteli-dev_viking-data
+  redis-data:
+    name: inteli-dev_redis-data

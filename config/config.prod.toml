@@ -1,0 +1,49 @@
+# config/config.prod.toml — продакшен-конфигурация приложения (без секретов).
+#
+# Монтируется в контейнер как /app/config.toml (read-only) — см.
+# docker-compose.prod.yml. Секреты (LLM_API_KEY, TELEGRAM_*, VK_*, ADMIN_TOKEN)
+# подставляются из переменных окружения (.env.prod) и здесь не хранятся.
+
+[server]
+host = "0.0.0.0"
+port = 8080
+read_timeout_ms = 5000
+write_timeout_ms = 30000
+
+[database]
+path = "/data/chats.db"        # дублируется env DB_PATH
+
+[cache]
+enabled = true
+ttl_seconds = 3600
+
+[openviking]
+base_url = "http://viking:1933/mcp"
+timeout_seconds = 5
+read_timeout_seconds = 5
+
+[llm]
+provider = "deepseek"
+base_url = "https://api.deepseek.com/v1"
+model = "deepseek-chat"
+
+[telegram]
+bot_token = ""                 # env TELEGRAM_BOT_TOKEN
+admin_chat_id = 0              # env TELEGRAM_ADMIN_CHAT_ID
+
+[vk]
+oauth_token = ""               # env VK_OAUTH_TOKEN
+admin_user_id = 0              # env VK_ADMIN_USER_ID
+
+[admin]
+token = ""                     # env ADMIN_TOKEN
+
+[ratelimit]
+max_requests_per_minute = 10
+window_seconds = 60
+
+[logging]
+level = "warn"                 # env RUST_LOG
+
+[security]
+ip_hash_algorithm = "sha256"

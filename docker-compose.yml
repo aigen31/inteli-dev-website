@@ -1,4 +1,9 @@
-# docker-compose.yml — оркестрация сервисов (см. docker-build.md).
+# docker-compose.yml — DEV-окружение (локальная разработка, см. docker-build.md).
+#
+# Публикует порты на хост, собирает образ из исходников и ходит к локальной LLM
+# через host.docker.internal. ПРОДАКШЕН — отдельный файл docker-compose.prod.yml
+# (Nginx + Traefik + TLS). Не запускайте dev и prod одновременно: имена
+# контейнеров совпадают.
 
 services:
   web:
