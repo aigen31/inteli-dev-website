@@ -43,6 +43,75 @@ impl InMemoryCache {
     }
 }
 
+/// Скользящее окно: хранит метки времени запросов и не даёт превысить
+/// `max_requests` за последние `window`. В отличие от fixed-window не позволяет
+/// «удвоить» квоту на стыке окон (3 запроса в 12:59 + 3 в 13:00).
+#[derive(Debug, Clone)]
+pub struct SlidingWindowLimiter {
+    max_requests: u32,
+    window: Duration,
+    state: Arc<Mutex<HashMap<String, Vec<Instant>>>>,
+}
+
+/// После скольких ключей начинаем вычищать протухшие (защита от роста памяти).
+const PRUNE_THRESHOLD: usize = 1024;
+
+impl SlidingWindowLimiter {
+    pub fn new(max_requests: u32, window: Duration) -> Self {
+        Self {
+            max_requests,
+            window,
+            state: Arc::new(Mutex::new(HashMap::new())),
+        }
+    }
+
+    /// Проверяет и учитывает запрос. `true` = можно выполнять.
+    pub fn check(&self, key: &str) -> bool {
+        let mut state = self.state.lock().expect("rate limiter mutex poisoned");
+        let now = Instant::now();
+
+        if state.len() > PRUNE_THRESHOLD {
+            let window = self.window;
+            state.retain(|_, stamps| {
+                stamps.retain(|t| now.duration_since(*t) < window);
+                !stamps.is_empty()
+            });
+        }
+
+        let entry = state.entry(key.to_string()).or_default();
+        entry.retain(|t| now.duration_since(*t) < self.window);
+
+        if entry.len() >= self.max_requests as usize {
+            return false;
+        }
+        entry.push(now);
+        true
+    }
+
+    /// Сколько секунд ждать до освобождения слота (`0` — слот есть).
+    /// Вызывать после неудачного [`check`](Self::check) для текста ошибки.
+    pub fn retry_after(&self, key: &str) -> u64 {
+        let mut state = self.state.lock().expect("rate limiter mutex poisoned");
+        let now = Instant::now();
+
+        let Some(entry) = state.get_mut(key) else {
+            return 0;
+        };
+        entry.retain(|t| now.duration_since(*t) < self.window);
+
+        if entry.len() < self.max_requests as usize {
+            return 0;
+        }
+        let Some(oldest) = entry.iter().min() else {
+            return 0;
+        };
+        self.window
+            .saturating_sub(now.duration_since(*oldest))
+            .as_secs()
+            .max(1)
+    }
+}
+
 /// Fixed-window rate limiter по строковому ключу (обычно хэш IP).
 #[derive(Debug, Clone)]
 pub struct RateLimiter {
@@ -112,6 +181,41 @@ mod tests {
     #[test]
     fn rate_limiter_isolation_between_keys() {
         let rl = RateLimiter::new(1, Duration::from_secs(60));
+        assert!(rl.check("a"));
+        assert!(!rl.check("a"));
+        assert!(rl.check("b"));
+    }
+
+    #[test]
+    fn sliding_window_blocks_after_limit() {
+        let rl = SlidingWindowLimiter::new(3, Duration::from_secs(3600));
+        assert!(rl.check("ip"));
+        assert!(rl.check("ip"));
+        assert!(rl.check("ip"));
+        assert!(!rl.check("ip"), "4-й запрос в час должен быть отклонён");
+    }
+
+    #[test]
+    fn sliding_window_reports_retry_after() {
+        let rl = SlidingWindowLimiter::new(1, Duration::from_secs(3600));
+        assert_eq!(rl.retry_after("ip"), 0, "до первого запроса ждать нечего");
+        assert!(rl.check("ip"));
+        let wait = rl.retry_after("ip");
+        assert!((1..=3600).contains(&wait), "ожидание вне окна: {wait}");
+    }
+
+    #[test]
+    fn sliding_window_frees_slot_after_window() {
+        let rl = SlidingWindowLimiter::new(1, Duration::from_millis(20));
+        assert!(rl.check("ip"));
+        assert!(!rl.check("ip"));
+        std::thread::sleep(Duration::from_millis(30));
+        assert!(rl.check("ip"), "после окна слот должен освободиться");
+    }
+
+    #[test]
+    fn sliding_window_isolation_between_keys() {
+        let rl = SlidingWindowLimiter::new(1, Duration::from_secs(3600));
         assert!(rl.check("a"));
         assert!(!rl.check("a"));
         assert!(rl.check("b"));

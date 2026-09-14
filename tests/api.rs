@@ -12,7 +12,7 @@ use http_body_util::BodyExt;
 use tower::ServiceExt;
 
 use inteli_dev::api;
-use inteli_dev::cache::{InMemoryCache, RateLimiter};
+use inteli_dev::cache::{InMemoryCache, RateLimiter, SlidingWindowLimiter};
 use inteli_dev::config::AppConfig;
 use inteli_dev::error::AppResult;
 use inteli_dev::llm::{ChatProvider, Message};
@@ -82,6 +82,11 @@ ip_hash_algorithm = "sha256"
 }
 
 async fn test_state() -> AppState {
+    test_state_with_quota(1000).await
+}
+
+/// Состояние с настраиваемой часовой квотой на AI-ответы.
+async fn test_state_with_quota(llm_requests_per_hour: u32) -> AppState {
     SiteContent::set_global(fallback_content());
 
     let config = Arc::new(test_config());
@@ -97,6 +102,12 @@ async fn test_state() -> AppState {
     ));
     let cache = Arc::new(InMemoryCache::new(Duration::from_secs(3600)));
     let rate_limiter = Arc::new(RateLimiter::new(1000, Duration::from_secs(60)));
+    // Часовая квота: в большинстве сценариев щедрая, чтобы обычные запросы не
+    // упирались в лимит; точечно проверяется в тестах на квоту.
+    let hourly_limiter = Arc::new(SlidingWindowLimiter::new(
+        llm_requests_per_hour,
+        Duration::from_secs(3600),
+    ));
     let notifications = Arc::new(NotificationService::new(0, String::new(), String::new(), 0));
     let chat = Arc::new(ChatService::new(llm, memory, cache.clone(), db.clone()));
     let leads = Arc::new(LeadService::new(db.clone(), notifications.clone()));
@@ -112,6 +123,7 @@ async fn test_state() -> AppState {
         notifications,
         cache,
         rate_limiter,
+        hourly_limiter,
         leptos_options,
         started_at: Instant::now(),
     }
@@ -174,7 +186,14 @@ async fn chat_preset_answers_without_llm() {
     let (status, resp) = request(&state, "POST", "/api/chat", Some(body), None).await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(resp["source"], "openviking_direct");
-    assert!(resp["answer"].as_str().unwrap().contains("Иван Петров"));
+
+    // Имя берём из контента, а не хардкодом: прежний литерал «Иван Петров»
+    // остался от SEO-версии сайта и ломал тест после смены позиционирования.
+    let expected = fallback_content().profile.name;
+    assert!(
+        resp["answer"].as_str().unwrap_or("").contains(&expected),
+        "ответ должен содержать имя {expected}, получено: {resp}"
+    );
 }
 
 #[tokio::test]
@@ -198,6 +217,137 @@ async fn lead_rejects_invalid_email() {
     let body = serde_json::json!({ "name": "Иван", "email": "not-an-email", "message": "x", "source": "form" });
     let (status, _) = request(&state, "POST", "/api/lead", Some(body), None).await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn lead_rejects_overly_long_message() {
+    let state = test_state().await;
+    let max = inteli_dev::limits::Limits::get().lead_message_max_chars;
+    let body = serde_json::json!({
+        "name": "Иван",
+        "message": "а".repeat(max + 1),
+        "source": "form"
+    });
+    let (status, resp) = request(&state, "POST", "/api/lead", Some(body), None).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(
+        resp["error"].as_str().unwrap_or("").contains("длиннее"),
+        "получено: {resp}"
+    );
+}
+
+#[tokio::test]
+async fn lead_rejects_overly_long_name() {
+    let state = test_state().await;
+    let max = inteli_dev::limits::Limits::get().lead_name_max_chars;
+    let body = serde_json::json!({
+        "name": "а".repeat(max + 1),
+        "message": "нужен SEO",
+        "source": "form"
+    });
+    let (status, _) = request(&state, "POST", "/api/lead", Some(body), None).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn chat_rejects_empty_message() {
+    let state = test_state().await;
+    let body = serde_json::json!({ "message": "   ", "question_type": "free" });
+    let (status, _) = request(&state, "POST", "/api/chat", Some(body), None).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn chat_rejects_overly_long_message() {
+    let state = test_state().await;
+    let max = inteli_dev::limits::Limits::get().chat_message_max_chars;
+    let body = serde_json::json!({
+        "message": "а".repeat(max + 1),
+        "question_type": "free"
+    });
+    let (status, resp) = request(&state, "POST", "/api/chat", Some(body), None).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(
+        resp["error"].as_str().unwrap_or("").contains("длинн"),
+        "получено: {resp}"
+    );
+}
+
+#[tokio::test]
+async fn chat_accepts_message_at_the_limit() {
+    let state = test_state().await;
+    let max = inteli_dev::limits::Limits::get().chat_message_max_chars;
+    let body = serde_json::json!({
+        "message": "а".repeat(max),
+        "question_type": "free"
+    });
+    let (status, _) = request(&state, "POST", "/api/chat", Some(body), None).await;
+    assert_eq!(status, StatusCode::OK, "ровно лимит должен приниматься");
+}
+
+#[tokio::test]
+async fn hourly_quota_blocks_fourth_ai_request() {
+    let state = test_state_with_quota(3).await;
+
+    for i in 0..3 {
+        // Разные вопросы: одинаковые попали бы в кэш и не тратили квоту.
+        let body = serde_json::json!({
+            "message": format!("вопрос номер {i}"),
+            "question_type": "free"
+        });
+        let (status, _) = request(&state, "POST", "/api/chat", Some(body), None).await;
+        assert_eq!(status, StatusCode::OK, "запрос {i} должен пройти");
+    }
+
+    let body = serde_json::json!({ "message": "четвёртый вопрос", "question_type": "free" });
+    let (status, resp) = request(&state, "POST", "/api/chat", Some(body), None).await;
+    assert_eq!(status, StatusCode::TOO_MANY_REQUESTS);
+
+    // Пользователь должен увидеть понятный текст и время ожидания.
+    let err = resp["error"].as_str().unwrap_or("");
+    assert!(
+        err.contains("Лимит") || err.contains("Слишком много"),
+        "технический текст вместо человеческого: {err}"
+    );
+    assert!(resp["retry_after"].as_u64().unwrap_or(0) > 0);
+}
+
+#[tokio::test]
+async fn presets_do_not_consume_ai_quota() {
+    let state = test_state_with_quota(1).await;
+
+    // Единственный AI-ответ за час.
+    let body = serde_json::json!({ "message": "свободный вопрос", "question_type": "free" });
+    let (status, _) = request(&state, "POST", "/api/chat", Some(body), None).await;
+    assert_eq!(status, StatusCode::OK);
+
+    // Квота исчерпана, но preset/availability/lead_request идут из контента.
+    for (kind, index) in [("preset", 0), ("preset", 1), ("availability", 4), ("lead_request", 5)] {
+        let body = serde_json::json!({
+            "message": "preset",
+            "question_type": kind,
+            "preset_index": index
+        });
+        let (status, resp) = request(&state, "POST", "/api/chat", Some(body), None).await;
+        assert_eq!(status, StatusCode::OK, "{kind}/{index} не должен упираться в квоту LLM");
+        assert_eq!(resp["source"], "openviking_direct");
+    }
+}
+
+#[tokio::test]
+async fn cached_answer_does_not_consume_ai_quota() {
+    let state = test_state_with_quota(1).await;
+
+    let body = serde_json::json!({ "message": "Сколько стоит?", "question_type": "free" });
+    let (s1, r1) = request(&state, "POST", "/api/chat", Some(body), None).await;
+    assert_eq!(s1, StatusCode::OK);
+    assert_eq!(r1["source"], "llm");
+
+    // Тот же вопрос другим регистром — из кэша, квота не тратится.
+    let body2 = serde_json::json!({ "message": "сколько СТОИТ?", "question_type": "free" });
+    let (s2, r2) = request(&state, "POST", "/api/chat", Some(body2), None).await;
+    assert_eq!(s2, StatusCode::OK, "повтор из кэша не должен упираться в квоту");
+    assert_eq!(r2["source"], "cached");
 }
 
 #[tokio::test]

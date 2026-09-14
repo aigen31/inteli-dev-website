@@ -20,14 +20,35 @@ pub fn Layout(children: Children) -> impl IntoView {
         <header class="navbar">
             <nav class="navbar-inner" aria-label="Основная навигация">
                 <a href="/" class="navbar-brand">{name}</a>
-                <div class="navbar-links">
-                    <a href="/">Главная</a>
-                    <a href="/services">Услуги</a>
-                    <a href="/projects">Проекты</a>
-                    <a href="/chat">Чат</a>
-                    <a href="/contact">Контакты</a>
+
+                // Бургер виден только на мобильном (см. RULES/ui-rules.md:
+                // «Navbar: <768px — hamburger menu, лого слева»). Состояние
+                // переключает initMobileNav() в assets/main.js.
+                <button
+                    type="button"
+                    class="navbar-toggle"
+                    id="navbar-toggle"
+                    aria-controls="navbar-menu"
+                    aria-expanded="false"
+                    aria-label="Открыть меню"
+                >
+                    <span class="navbar-toggle-box" aria-hidden="true">
+                        <span class="navbar-toggle-bar"></span>
+                        <span class="navbar-toggle-bar"></span>
+                        <span class="navbar-toggle-bar"></span>
+                    </span>
+                </button>
+
+                <div class="navbar-menu" id="navbar-menu">
+                    <div class="navbar-links">
+                        <a href="/">Главная</a>
+                        <a href="/services">Услуги</a>
+                        <a href="/projects">Проекты</a>
+                        <a href="/chat">Чат</a>
+                        <a href="/contact">Контакты</a>
+                    </div>
+                    <StatusBadge/>
                 </div>
-                <StatusBadge/>
             </nav>
         </header>
 

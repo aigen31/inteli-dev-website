@@ -22,6 +22,90 @@
     targets.forEach(function (t) { io.observe(t); });
   }
 
+  // ---------- Мобильная навигация (бургер) ----------
+  // Разметка и стили: .navbar / .navbar-toggle / .navbar-menu.
+  // Панель существует всегда, видимость переключает класс .is-menu-open.
+  function initMobileNav() {
+    var navbar = document.querySelector('.navbar');
+    var toggle = document.getElementById('navbar-toggle');
+    var menu = document.getElementById('navbar-menu');
+    if (!navbar || !toggle || !menu) return;
+
+    var desktop = window.matchMedia('(min-width: 768px)');
+
+    function isOpen() { return navbar.classList.contains('is-menu-open'); }
+
+    function setOpen(open) {
+      navbar.classList.toggle('is-menu-open', open);
+      toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+      toggle.setAttribute('aria-label', open ? 'Закрыть меню' : 'Открыть меню');
+    }
+
+    toggle.addEventListener('click', function () { setOpen(!isOpen()); });
+
+    // Переход по ссылке закрывает панель.
+    menu.addEventListener('click', function (e) {
+      if (e.target.closest('a')) setOpen(false);
+    });
+
+    // Escape закрывает меню и возвращает фокус на кнопку.
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape' && isOpen()) {
+        setOpen(false);
+        toggle.focus();
+      }
+    });
+
+    // Клик вне шапки закрывает меню (клик по самой кнопке игнорируем —
+    // он обрабатывается выше и всплывает сюда же).
+    document.addEventListener('click', function (e) {
+      if (isOpen() && !navbar.contains(e.target)) setOpen(false);
+    });
+
+    // Ушли на десктоп — сбрасываем состояние, чтобы панель не «залипла».
+    function onBreakpoint() { if (desktop.matches) setOpen(false); }
+    if (desktop.addEventListener) desktop.addEventListener('change', onBreakpoint);
+    else if (desktop.addListener) desktop.addListener(onBreakpoint);
+  }
+
+  // ---------- Счётчики символов ----------
+  // Разметка: <span class="char-count" data-counter-for="<id поля>"></span>.
+  // Максимум берём из самого поля (maxlength), поэтому HTML и скрипт не могут
+  // разойтись. Цифры показываем только у предела — чтобы не шуметь.
+  function initCharCounters() {
+    document.querySelectorAll('[data-counter-for]').forEach(function (counter) {
+      var field = document.getElementById(counter.getAttribute('data-counter-for'));
+      if (!field) return;
+
+      var max = field.maxLength;
+      if (!max || max < 0) return;
+      var showFrom = Math.ceil(max * 0.8); // последние 20% — уже интересно
+
+      function update() {
+        var used = field.value.length;
+        if (used < showFrom) {
+          counter.textContent = '';
+          counter.classList.remove('is-near-limit', 'is-at-limit');
+          return;
+        }
+        counter.textContent = used + '/' + max;
+        counter.classList.toggle('is-near-limit', used < max);
+        counter.classList.toggle('is-at-limit', used >= max);
+      }
+
+      field.addEventListener('input', update);
+      update();
+    });
+  }
+
+  // Проверяет длину перед отправкой. Браузер режет ввод по maxlength сам, но
+  // вставка из буфера и автозаполнение — не всегда; плюс сервер вернёт ту же
+  // ошибку, только после сетевого запроса.
+  function tooLong(field, text) {
+    var max = field && field.maxLength > 0 ? field.maxLength : 0;
+    return max > 0 && text.length > max ? max : 0;
+  }
+
   // ---------- Чат ----------
   function initChat() {
     var app = document.getElementById('chat-app');
@@ -143,6 +227,11 @@
       if (isWaiting) return;
       var text = input.value.trim();
       if (!text) return;
+      var max = tooLong(input, text);
+      if (max) {
+        addMessage('Вопрос длиннее ' + max + ' символов — сократите его, пожалуйста.', 'bot');
+        return;
+      }
       addMessage(text, 'user');
       input.value = '';
       send({ message: text, question_type: 'free' });
@@ -769,6 +858,11 @@
     function handleSend() {
       var text = input.value.trim();
       if (!text) return;
+      var max = tooLong(input, text);
+      if (max) {
+        appendLine('terminal-line-warn', 'Вопрос длиннее ' + max + ' символов — сократите его, пожалуйста.');
+        return;
+      }
       sendMessage(text, 'free');
       input.value = '';
     }
@@ -891,6 +985,8 @@
   }
 
   initReveal();
+  initMobileNav();
+  initCharCounters();
   initHeroTerminal();
   initHeroCanvas();
   initCardEffects();

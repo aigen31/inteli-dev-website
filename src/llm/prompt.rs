@@ -6,37 +6,30 @@
 use crate::memory::{AuthorProfile, MemoryResult};
 
 /// Собирает системный промпт чатбота из профиля автора.
+///
+/// Промпт уходит в модель на КАЖДОМ free-запросе, поэтому он сжат до минимума:
+/// все факты сохранены, но убраны повторы (имя/опыт дублировались дважды) и
+/// многословие. Это ~⅓ экономии входных токенов без потери качества ответов.
 pub fn chatbot_system_prompt(profile: &AuthorProfile) -> String {
     format!(
-        r#"Ты — AI-ассистент {name}, Fullstack-разработчика и архитектора приватных AI-систем с {years}-летним опытом.
-Твоя задача — помогать посетителям сайта быстро получить ответы и подталкивать их к оставлению заявки.
+        r#"Ты — AI-ассистент {name}, Fullstack-разработчика и архитектора приватных AI-систем.
+Опыт: {years} лет, {projects}+ проектов с 2020 года. Локация: Красноярск, удалённо по РФ и СНГ.
+Задача: быстро отвечать посетителям сайта и подводить их к заявке.
 
-## О специалисте:
-Имя: {name}
-Должность: Fullstack-разработчик и архитектор приватных AI-систем
-Опыт: {years} лет, {projects}+ проектов (с 2020 года).
-Локация: Красноярск, Россия · удалённо по РФ и СНГ.
-
-## Ключевые компетенции:
-• Приватные AI-системы — локальный инференс на собственном GPU-кластере (RTX 5080 + RTX 3060, 64GB RAM), без облачных API. Полная приватность данных. Qwen 3.6/3.8 (27B, 35B A3B).
-• MCP-серверы и AI Skills — собственные серверы для интеграции ИИ в ваш код, голосовые ассистенты.
-• Fullstack PHP + JS — Symfony, Laravel, React, Vue. REST API, event-driven архитектура, Docker + CI/CD.
+Компетенции:
+• Приватные AI-системы — локальный инференс на своём GPU-кластере (RTX 5080 + RTX 3060, 64GB RAM), Qwen 3.6/3.8 (27B, 35B A3B). Данные не покидают сервер, нет абонплаты за API и сетевых задержек.
+• MCP-серверы и AI Skills — интеграция ИИ в код клиента, голосовые ассистенты, кастомные навыки.
+• Fullstack PHP + JS — Symfony, Laravel, React, Vue, REST API, event-driven архитектура, Docker + CI/CD.
 • ComfyUI Mass Production — массовая генерация через автоматизированные пайплайны.
+Работа под ключ: от железа до интеграции в код. Модели от 30B параметров и выше.
 
-## Принципы работы:
-1. Локальный инференс = быстро (без задержек сети), безопасно (данные не покидают сервер) и дёшево (нет абонентской платы за API).
-2. Мощное железо для запуска больших моделей — от 30B параметров и выше.
-3. Решение под ключ: от железа до интеграции в ваш код.
-
-## Правила общения:
-1. Отвечай на русском языке, кратко и по делу (1-2 предложения + максимум 3 пунктов).
-2. Упоминай конкретные цифры: {years} лет опыта, {projects}+ проектов.
-3. Не обещай результатов вне темы разработки и AI-интеграции.
-4. Если вопрос о ценах — давай ориентировочный диапазон и уточняй, что точная стоимость зависит от проекта.
-5. Если не знаешь ответа — честно скажи и предложи оставить заявку.
-
-## Каждый ответ должен заканчиваться CTA:
-"Хотите обсудить ваш проект? Оставьте заявку — отвечу в течение 24 часов.""#,
+Правила:
+1. Отвечай по-русски, кратко: 1-2 предложения + максимум 3 пункта.
+2. Приводи конкретные цифры: {years} лет опыта, {projects}+ проектов.
+3. Не обсуждай темы вне разработки и AI-интеграции.
+4. О ценах — ориентировочный диапазон; точная стоимость зависит от проекта.
+5. Не знаешь ответа — скажи честно и предложи оставить заявку.
+6. Каждый ответ заканчивай: "Хотите обсудить ваш проект? Оставьте заявку — отвечу в течение 24 часов.""#,
         name = profile.name,
         years = profile.experience_years,
         projects = profile.projects_completed,
@@ -67,21 +60,67 @@ pub fn analysis_prompt(url: &str) -> String {
     )
 }
 
+/// Бюджет RAG-контекста: сколько результатов и символов уходит в промпт.
+///
+/// Контекст — вторая по величине статья входных токенов после системного
+/// промпта, поэтому он ограничен и по числу фрагментов, и по суммарной длине.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ContextSettings {
+    /// Сколько фрагментов максимум подмешиваем.
+    pub top_k: usize,
+    /// Сколько символов берём из каждого фрагмента.
+    pub snippet_chars: usize,
+    /// Жёсткий потолок всего контекста в символах.
+    pub max_chars: usize,
+    /// Порог релевантности: что ниже — выбрасываем как шум.
+    pub min_score: f64,
+}
+
+impl Default for ContextSettings {
+    fn default() -> Self {
+        Self {
+            top_k: 4,
+            snippet_chars: 400,
+            max_chars: 1600,
+            min_score: 0.35,
+        }
+    }
+}
+
 /// Формирует текстовый контекст из результатов семантического поиска.
-pub fn build_context_string(results: &[MemoryResult]) -> String {
-    if results.is_empty() {
-        return "Контекст не найден в базе знаний.".to_string();
+///
+/// Отбрасывает нерелевантное, обрезает фрагменты и укладывается в общий бюджет
+/// символов. URI источника не включаем: модель на него не ссылается, а это
+/// ~50 символов на каждый фрагмент.
+pub fn build_context_string(results: &[MemoryResult], cfg: &ContextSettings) -> String {
+    // Порог релевантности. Страховка: если после фильтра не осталось ничего
+    // (например, апстрим не проставил score), берём исходный топ — иначе
+    // поиск молча выключился бы целиком.
+    let relevant: Vec<&MemoryResult> = results
+        .iter()
+        .filter(|r| r.score >= cfg.min_score)
+        .collect();
+    let picked: Vec<&MemoryResult> = if relevant.is_empty() {
+        results.iter().collect()
+    } else {
+        relevant
+    };
+
+    let mut out = String::new();
+    for (i, r) in picked.iter().take(cfg.top_k).enumerate() {
+        let snippet: String = r.content.chars().take(cfg.snippet_chars).collect();
+        let block = format!("[{}] {}\n", i + 1, snippet);
+        // Первый блок добавляем всегда, дальше — только если влезаем в бюджет.
+        if !out.is_empty() && out.len() + block.len() > cfg.max_chars {
+            break;
+        }
+        out.push_str(&block);
     }
 
-    results
-        .iter()
-        .enumerate()
-        .map(|(i, r)| {
-            let snippet: String = r.content.chars().take(500).collect();
-            format!("[Результат {}] (URI: {})\n{}", i + 1, r.uri, snippet)
-        })
-        .collect::<Vec<_>>()
-        .join("\n\n")
+    if out.is_empty() {
+        return "Контекст не найден в базе знаний.".to_string();
+    }
+    out.trim_end().to_string()
 }
 
 /// Универсальный fallback-ответ, когда LLM недоступен.
@@ -117,22 +156,68 @@ mod tests {
         assert!(prompt.contains("example.com"));
     }
 
+    fn result(uri: &str, content: &str, score: f64) -> MemoryResult {
+        MemoryResult {
+            uri: uri.into(),
+            content: content.into(),
+            score,
+        }
+    }
+
     #[test]
     fn context_string_joins_results() {
         let results = vec![
-            MemoryResult {
-                uri: "a".into(),
-                content: "hello".into(),
-                score: 0.9,
-            },
-            MemoryResult {
-                uri: "b".into(),
-                content: "world".into(),
-                score: 0.8,
-            },
+            result("a", "hello", 0.9),
+            result("b", "world", 0.8),
         ];
-        let s = build_context_string(&results);
-        assert!(s.contains("[Результат 1]"));
+        let s = build_context_string(&results, &ContextSettings::default());
+        assert!(s.contains("[1]"));
         assert!(s.contains("hello"));
+        assert!(s.contains("world"));
+        // URI больше не тратим — это чистые токены без пользы для ответа.
+        assert!(!s.contains("URI"));
+    }
+
+    #[test]
+    fn context_drops_irrelevant_results() {
+        let results = vec![
+            result("a", "по теме", 0.9),
+            result("b", "шум", 0.05),
+        ];
+        let s = build_context_string(&results, &ContextSettings::default());
+        assert!(s.contains("по теме"));
+        assert!(!s.contains("шум"));
+    }
+
+    #[test]
+    fn context_keeps_top_when_all_scores_are_missing() {
+        // score отсутствует в ответе апстрима => 0.0 у всех. Контекст не должен
+        // молча пропасть из-за порога релевантности.
+        let results = vec![result("a", "факт", 0.0)];
+        let s = build_context_string(&results, &ContextSettings::default());
+        assert!(s.contains("факт"));
+    }
+
+    #[test]
+    fn context_truncates_snippets_and_respects_budget() {
+        let cfg = ContextSettings {
+            top_k: 5,
+            snippet_chars: 10,
+            max_chars: 40,
+            min_score: 0.0,
+        };
+        let long = "x".repeat(100);
+        let results: Vec<MemoryResult> = (0..5)
+            .map(|i| result(&format!("u{i}"), &long, 0.9))
+            .collect();
+        let s = build_context_string(&results, &cfg);
+        assert!(s.len() <= cfg.max_chars + 8, "бюджет превышен: {}", s.len());
+        assert!(!s.contains(&"x".repeat(11)), "сниппет не обрезан");
+    }
+
+    #[test]
+    fn context_reports_empty_knowledge_base() {
+        let s = build_context_string(&[], &ContextSettings::default());
+        assert!(s.contains("не найден"));
     }
 }

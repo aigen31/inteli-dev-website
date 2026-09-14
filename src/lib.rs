@@ -8,6 +8,7 @@ pub mod api;
 pub mod cache;
 pub mod config;
 pub mod error;
+pub mod limits;
 pub mod llm;
 pub mod memory;
 pub mod notification;

@@ -1,9 +1,13 @@
 //! Валидация пользовательского ввода (zero-trust к внешним данным).
 
+/// Максимальная длина email (RFC 5321: 64 символа local-part + 1 + 189 домен).
+/// Единый источник правды: используется и валидацией, и `maxlength` в форме.
+pub const EMAIL_MAX_CHARS: usize = 254;
+
 /// Проверяет базовую валидность email (без внешних крейтов).
 pub fn is_valid_email(email: &str) -> bool {
     let email = email.trim();
-    if email.is_empty() || email.len() > 254 || email.contains(char::is_whitespace) {
+    if email.is_empty() || email.chars().count() > EMAIL_MAX_CHARS || email.contains(char::is_whitespace) {
         return false;
     }
 

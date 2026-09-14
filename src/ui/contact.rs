@@ -4,12 +4,15 @@
 
 use leptos::prelude::*;
 
+use crate::limits::Limits;
 use crate::memory::content::SiteContent;
+use crate::utils::validator::EMAIL_MAX_CHARS;
 
 #[component]
 pub fn Contact() -> impl IntoView {
     let content = SiteContent::get();
     let contacts = content.profile.contacts.clone();
+    let limits = Limits::get();
 
     view! {
         <section class="section">
@@ -22,20 +25,30 @@ pub fn Contact() -> impl IntoView {
                 <form id="lead-form" class="form" method="post" action="/api/lead">
                     <div class="form-field">
                         <label for="name">Имя</label>
-                        <input id="name" name="name" type="text" required placeholder="Как к вам обращаться"/>
+                        <input id="name" name="name" type="text" required
+                            maxlength=limits.lead_name_max_chars
+                            placeholder="Как к вам обращаться"/>
+                        <span class="char-count" data-counter-for="name" aria-hidden="true"></span>
                     </div>
                     <div class="form-field">
                         <label for="email">Email</label>
-                        <input id="email" name="email" type="email" placeholder="you@example.com"/>
+                        <input id="email" name="email" type="email"
+                            maxlength=EMAIL_MAX_CHARS
+                            placeholder="you@example.com"/>
                     </div>
                     <div class="form-field">
                         <label for="phone">Телефон</label>
-                        <input id="phone" name="phone" type="tel" placeholder="+7 (___) ___-__-__"/>
+                        <input id="phone" name="phone" type="tel"
+                            maxlength=limits.lead_phone_max_chars
+                            placeholder="+7 (___) ___-__-__"/>
+                        <span class="char-count" data-counter-for="phone" aria-hidden="true"></span>
                     </div>
                     <div class="form-field">
                         <label for="message">О проекте</label>
                         <textarea id="message" name="message" required rows="4"
+                            maxlength=limits.lead_message_max_chars
                             placeholder="Например: интернет-магазин, ~500 страниц, нужен рост заявок"></textarea>
+                        <span class="char-count" data-counter-for="message" aria-hidden="true"></span>
                     </div>
                     <input type="hidden" name="source" value="form"/>
                     <button type="submit" class="btn btn-primary">Отправить заявку</button>

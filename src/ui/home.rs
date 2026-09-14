@@ -5,6 +5,7 @@
 
 use leptos::prelude::*;
 
+use crate::limits::Limits;
 use crate::memory::content::SiteContent;
 use crate::ui::shared::{PrimaryButton, ProjectCard, SecondaryButton, ServiceCard, StatusBadge};
 
@@ -12,6 +13,9 @@ use crate::ui::shared::{PrimaryButton, ProjectCard, SecondaryButton, ServiceCard
 /// CLI-интерфейс (как на /chat) и получить ответ от ИИ прямо на главной.
 #[component]
 pub fn HeroTerminal() -> impl IntoView {
+    let max_chars = Limits::get().chat_message_max_chars;
+    let chat_hint = Limits::get().chat_hint();
+
     view! {
         <div class="terminal-window" id="hero-terminal">
             <div class="terminal-bar">
@@ -31,9 +35,17 @@ pub fn HeroTerminal() -> impl IntoView {
                     class="terminal-input"
                     placeholder="Задайте вопрос..."
                     autocomplete="off"
+                    maxlength=max_chars
+                    aria-describedby="hero-terminal-hint"
                     aria-label="Введите ваш вопрос"
                 />
             </div>
+
+            // Лимиты те же, что на /chat: числа берутся из общего Limits.
+            <p class="field-hint terminal-hint" id="hero-terminal-hint">
+                <span>{chat_hint}</span>
+                <span class="char-count" data-counter-for="hero-terminal-input" aria-hidden="true"></span>
+            </p>
 
             <div class="terminal-presets" role="group" aria-label="Частые вопросы">
                 <button type="button" class="preset-button terminal-preset-btn" data-kind="preset" data-index="0">{"Кто вы?"}</button>

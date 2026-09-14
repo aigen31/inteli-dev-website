@@ -13,11 +13,15 @@ pub struct DeepSeekProvider {
     base_url: String,
     model: String,
     temperature: f32,
+    max_tokens: u32,
     client: reqwest::Client,
 }
 
 impl DeepSeekProvider {
     /// Создаёт провайдер. `api_key` пустой => провайдер не сможет делать запросы.
+    ///
+    /// Параметры генерации берутся по умолчанию — их можно переопределить
+    /// через [`with_generation`](Self::with_generation) из конфига.
     pub fn new(
         api_key: impl Into<String>,
         base_url: impl Into<String>,
@@ -35,8 +39,16 @@ impl DeepSeekProvider {
             base_url: base_url.into().trim_end_matches('/').to_string(),
             model: model.into(),
             temperature: 0.7,
+            max_tokens: 600,
             client,
         }
+    }
+
+    /// Переопределяет температуру и потолок выходных токенов.
+    pub fn with_generation(mut self, max_tokens: u32, temperature: f32) -> Self {
+        self.max_tokens = max_tokens;
+        self.temperature = temperature;
+        self
     }
 
     /// Есть ли ключ для реальных запросов.
@@ -62,7 +74,7 @@ impl ChatProvider for DeepSeekProvider {
                 .map(|m| serde_json::json!({ "role": m.role, "content": m.content }))
                 .collect::<Vec<_>>(),
             "temperature": self.temperature,
-            "max_tokens": 1500,
+            "max_tokens": self.max_tokens,
         });
 
         let response = self

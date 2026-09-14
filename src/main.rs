@@ -8,10 +8,12 @@ use leptos::prelude::*;
 use leptos_axum::{generate_route_list, LeptosRoutes};
 
 use inteli_dev::api;
-use inteli_dev::cache::{InMemoryCache, RateLimiter};
+use inteli_dev::cache::{InMemoryCache, RateLimiter, SlidingWindowLimiter};
 use inteli_dev::config::AppConfig;
 use inteli_dev::error::AppResult;
+use inteli_dev::limits::Limits;
 use inteli_dev::llm::deepseek::DeepSeekProvider;
+use inteli_dev::llm::prompt::ContextSettings;
 use inteli_dev::llm::ChatProvider;
 use inteli_dev::memory::content::SiteContent;
 use inteli_dev::memory::OpenVikingClient;
@@ -64,11 +66,18 @@ async fn run(config: AppConfig) -> AppResult<()> {
     SiteContent::set_global(content);
 
     // 3. LLM — DeepSeek V4 (OpenAI-compatible).
-    let llm: Arc<dyn ChatProvider> = Arc::new(DeepSeekProvider::new(
-        config.llm.api_key.clone(),
-        config.llm.base_url.clone(),
-        config.llm.model.clone(),
-    ));
+    let llm: Arc<dyn ChatProvider> = Arc::new(
+        DeepSeekProvider::new(
+            config.llm.api_key.clone(),
+            config.llm.base_url.clone(),
+            config.llm.model.clone(),
+        )
+        .with_generation(config.llm.max_tokens, config.llm.temperature),
+    );
+
+    // 3.1. Пользовательские лимиты — публикуем глобально, чтобы SSR-страницы
+    //      (maxlength, подсказки) и валидация использовали одни и те же числа.
+    Limits::set_global(config.limits);
 
     // 4. Cache + rate limiting.
     let cache = Arc::new(InMemoryCache::new(Duration::from_secs(
@@ -78,6 +87,12 @@ async fn run(config: AppConfig) -> AppResult<()> {
         config.ratelimit.max_requests_per_minute,
         Duration::from_secs(config.ratelimit.window_seconds),
     ));
+    // Часовая квота на AI-ответы: скользящее окно, чтобы нельзя было удвоить
+    // лимит на стыке часов.
+    let hourly_limiter = Arc::new(SlidingWindowLimiter::new(
+        config.limits.llm_requests_per_hour,
+        Duration::from_secs(3600),
+    ));
 
     // 5. Уведомления и сервисы.
     let notifications = Arc::new(NotificationService::new(
@@ -86,11 +101,17 @@ async fn run(config: AppConfig) -> AppResult<()> {
         config.vk.oauth_token.clone(),
         config.vk.admin_user_id,
     ));
-    let chat = Arc::new(ChatService::new(
+    let chat = Arc::new(ChatService::with_context(
         llm,
         Arc::new(viking),
         cache.clone(),
         db.clone(),
+        ContextSettings {
+            top_k: config.llm.context_top_k,
+            snippet_chars: config.llm.context_snippet_chars,
+            max_chars: config.llm.context_max_chars,
+            min_score: config.llm.context_min_score,
+        },
     ));
     let leads = Arc::new(LeadService::new(db.clone(), notifications.clone()));
 
@@ -105,6 +126,7 @@ async fn run(config: AppConfig) -> AppResult<()> {
         notifications,
         cache,
         rate_limiter,
+        hourly_limiter,
         leptos_options: leptos_options.clone(),
         started_at: Instant::now(),
     };

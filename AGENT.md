@@ -280,7 +280,9 @@ inteli-dev.ru/
 - [ ] Redis кэширование ответов LLM
 - [ ] Полная admin-аналитика (конверсии, графики, экспорт CSV)
 - [ ] PWA support
-- [ ] Rate limiting + защита от спама
+- [x] Rate limiting + защита от спама — антифлуд 10/мин и квота 3 AI-ответа/час
+      на IP (`src/cache.rs`), плюс лимиты ввода полей (`src/limits.rs`).
+      См. `RULES/chatbot.md` → «Rate limiting», «Лимиты ввода», «Экономия токенов».
 
 ---
 

@@ -25,6 +25,12 @@ provider = "deepseek"
 base_url = "https://api.deepseek.com/v1"
 model = "deepseek-chat"
 # api_key — читается из env LLM_API_KEY, НЕ храните его здесь.
+max_tokens = 600              # потолок выходных токенов
+temperature = 0.7
+context_top_k = 4             # сколько фрагментов памяти подмешивать в промпт
+context_snippet_chars = 400   # сколько символов брать из каждого фрагмента
+context_max_chars = 1600      # жёсткий бюджет RAG-контекста
+context_min_score = 0.35      # порог релевантности
 
 [telegram]
 bot_token = ""                # или TELEGRAM_BOT_TOKEN env
@@ -38,8 +44,17 @@ admin_user_id = 0             # или VK_ADMIN_USER_ID env
 token = ""                    # или ADMIN_TOKEN env (Bearer-аутентификация)
 
 [ratelimit]
-max_requests_per_minute = 10
+max_requests_per_minute = 10  # технический антифлуд (все типы запросов)
 window_seconds = 60
+
+[limits]
+# Пользовательские лимиты. Те же числа попадают в UI (maxlength, подсказки)
+# и в серверную валидацию — источник правды один.
+chat_message_max_chars = 500
+llm_requests_per_hour = 3     # AI-ответов на посетителя в час (preset не считаются)
+lead_name_max_chars = 80
+lead_message_max_chars = 1000
+lead_phone_max_chars = 20
 
 [logging]
 level = "info"                # или RUST_LOG env

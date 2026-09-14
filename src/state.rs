@@ -11,7 +11,7 @@ use axum::extract::FromRef;
 use leptos::config::LeptosOptions;
 use sqlx::sqlite::SqlitePool;
 
-use crate::cache::{InMemoryCache, RateLimiter};
+use crate::cache::{InMemoryCache, RateLimiter, SlidingWindowLimiter};
 use crate::config::AppConfig;
 use crate::notification::NotificationService;
 use crate::services::{ChatService, LeadService};
@@ -25,7 +25,10 @@ pub struct AppState {
     pub leads: Arc<LeadService>,
     pub notifications: Arc<NotificationService>,
     pub cache: Arc<InMemoryCache>,
+    /// Технический антифлуд: запросов в минуту на IP.
     pub rate_limiter: Arc<RateLimiter>,
+    /// Часовая квота на AI-ответы (то, что реально жжёт токены).
+    pub hourly_limiter: Arc<SlidingWindowLimiter>,
     pub leptos_options: LeptosOptions,
     pub started_at: Instant,
 }

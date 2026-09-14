@@ -6,6 +6,7 @@ use serde::Deserialize;
 use sqlx::sqlite::SqlitePool;
 
 use crate::error::{AppError, AppResult};
+use crate::limits::Limits;
 use crate::notification::NotificationService;
 use crate::storage::lead::{self, Lead, NewLead};
 use crate::utils::validator::is_valid_email;
@@ -28,15 +29,48 @@ fn default_source() -> String {
 }
 
 impl LeadSubmission {
-    /// Проверяет обязательные поля и формат email.
+    /// Проверяет обязательные поля, длину и формат email.
+    ///
+    /// Браузер ограничивает ввод через `maxlength`, но API открыт — поэтому
+    /// те же границы проверяются здесь. Лимиты берутся из общего `Limits`,
+    /// чтобы UI и сервер не разъехались.
     pub fn validate(&self) -> AppResult<()> {
-        if self.name.trim().is_empty() {
+        let limits = Limits::get();
+
+        let name = self.name.trim();
+        if name.is_empty() {
             return Err(AppError::Validation("поле «имя» обязательно".into()));
         }
-        if self.message.trim().is_empty() {
+        if name.chars().count() > limits.lead_name_max_chars {
+            return Err(AppError::Validation(format!(
+                "имя длиннее {} символов",
+                limits.lead_name_max_chars
+            )));
+        }
+
+        let message = self.message.trim();
+        if message.is_empty() {
             return Err(AppError::Validation("поле «сообщение» обязательно".into()));
         }
+        if message.chars().count() > limits.lead_message_max_chars {
+            return Err(AppError::Validation(format!(
+                "описание проекта длиннее {} символов",
+                limits.lead_message_max_chars
+            )));
+        }
+
+        if let Some(phone) = self.phone.as_deref() {
+            let phone = phone.trim();
+            if phone.chars().count() > limits.lead_phone_max_chars {
+                return Err(AppError::Validation(format!(
+                    "телефон длиннее {} символов",
+                    limits.lead_phone_max_chars
+                )));
+            }
+        }
+
         if let Some(email) = self.email.as_deref() {
+            let email = email.trim();
             if !email.is_empty() && !is_valid_email(email) {
                 return Err(AppError::Validation("некорректный email".into()));
             }

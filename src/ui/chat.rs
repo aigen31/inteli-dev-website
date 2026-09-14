@@ -5,6 +5,8 @@
 
 use leptos::prelude::*;
 
+use crate::limits::Limits;
+
 /// Preset-кнопки: кто, чем, локальный инференс, анализ, доступность, заявка.
 const PRESETS: [(&str, &str, usize); 6] = [
     ("Кто вы?", "preset", 0),
@@ -21,6 +23,9 @@ pub fn Chat() -> impl IntoView {
         .iter()
         .map(|(label, kind, index)| (label.to_string(), kind.to_string(), *index))
         .collect::<Vec<_>>();
+
+    let max_chars = Limits::get().chat_message_max_chars;
+    let chat_hint = Limits::get().chat_hint();
 
     view! {
         <section class="section chat-section">
@@ -44,9 +49,23 @@ pub fn Chat() -> impl IntoView {
                 <div class="messages-area" id="chat-messages" role="log" aria-live="polite"></div>
 
                 <div class="chat-input-row">
-                    <input id="chat-input" type="text" placeholder="Ваш вопрос..." autocomplete="off"/>
+                    <input
+                        id="chat-input"
+                        type="text"
+                        placeholder="Ваш вопрос..."
+                        autocomplete="off"
+                        maxlength=max_chars
+                        aria-describedby="chat-hint"
+                    />
                     <button id="chat-send" type="button" class="btn btn-primary">Отправить</button>
                 </div>
+
+                // Предупреждение о лимитах: числа берутся из тех же Limits, что
+                // и серверная валидация, поэтому подсказка не может соврать.
+                <p class="field-hint" id="chat-hint">
+                    <span>{chat_hint}</span>
+                    <span class="char-count" data-counter-for="chat-input" aria-hidden="true"></span>
+                </p>
 
                 <a href="/contact" class="floating-cta">{"Оставить заявку"}</a>
             </div>

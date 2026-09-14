@@ -77,6 +77,12 @@
   /* Layout */
   --container-max: 1120px;
   --nav-height: 64px;
+  /* Шапка — плавающая «пилюля» с position: fixed. Её низ считается так:
+     отступ сверху + собственная высота. Дальше от этой величины считаются
+     все отступы контента от липкой шапки (--nav-offset), чтобы контент не
+     уезжал под неё на мобильном, где шапка выше. */
+  --nav-inset: var(--space-md);
+  --nav-offset: calc(var(--nav-inset) + var(--nav-height));
   --transition-fast: 180ms ease;
 }
 
@@ -195,7 +201,7 @@ ul { margin: 0; padding: 0; list-style: none; }
 /* ---------- 5. Navbar — floating glass pill with blur (fixed for reliability) ---------- */
 .navbar {
   position: fixed;
-  top: var(--space-md);
+  top: var(--nav-inset);
   left: 50%;
   transform: translateX(-50%);
   width: calc(var(--container-max) + var(--space-2xl));
@@ -225,10 +231,18 @@ ul { margin: 0; padding: 0; list-style: none; }
   color: var(--color-text);
 }
 .navbar-brand:hover { text-decoration: none; }
+
+/* Меню. На десктопе — строка, прижатая вправо; на мобильном превращается
+   в выпадающую панель под «пилюлей» (см. media query ниже). */
+.navbar-menu {
+  display: flex;
+  align-items: center;
+  gap: var(--space-lg);
+  margin-left: auto;
+}
 .navbar-links {
   display: flex;
   gap: var(--space-lg);
-  margin-left: auto;
 }
 .navbar-links a {
   color: var(--color-text-secondary);
@@ -236,6 +250,51 @@ ul { margin: 0; padding: 0; list-style: none; }
   font-weight: 500;
 }
 .navbar-links a:hover { color: #fff; text-decoration: none; }
+
+/* Бургер — скрыт на десктопе, показывается только на мобильном. */
+.navbar-toggle {
+  display: none;
+  flex: 0 0 auto;
+  margin-left: auto;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--color-text);
+  cursor: pointer;
+  transition: background var(--transition-fast), border-color var(--transition-fast);
+}
+.navbar-toggle:hover {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: var(--color-primary);
+}
+.navbar-toggle:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+.navbar-toggle-box {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  width: 18px;
+  height: 12px;
+}
+.navbar-toggle-bar {
+  display: block;
+  width: 100%;
+  height: 2px;
+  border-radius: 2px;
+  background: currentColor;
+  transition: transform var(--transition-fast), opacity var(--transition-fast);
+}
+/* Открытое состояние: две верхние/нижние полосы складываются в крестик. */
+.navbar.is-menu-open .navbar-toggle-bar:nth-child(1) { transform: translateY(5px) rotate(45deg); }
+.navbar.is-menu-open .navbar-toggle-bar:nth-child(2) { opacity: 0; }
+.navbar.is-menu-open .navbar-toggle-bar:nth-child(3) { transform: translateY(-5px) rotate(-45deg); }
 
 /* ---------- 6. Status badge ---------- */
 .status-badge {
@@ -270,8 +329,10 @@ ul { margin: 0; padding: 0; list-style: none; }
   position: relative;
   overflow: hidden; /* строго ограничивает canvas и blobs внутри hero — gradient overlay не вылезает на следующую секцию */
   z-index: 0; /* stacking context для детей с позиционированием */
-  /* Больше места снизу — canvas растянут на +80px для gradient fade. */
-  padding: var(--space-3xl) var(--space-lg) 280px;
+  /* Верхний отступ считается от низа липкой шапки (--nav-offset), иначе
+     первый блок hero уезжает под «пилюлю». */
+  padding: calc(var(--nav-offset) + var(--space-md)) var(--space-lg) 280px;
+  scroll-margin-top: var(--nav-offset);
 }
 /* Интерактивная геометрическая сетка — фон под контентом hero. Растянута немного вниз для зоны затухания. */
 .hero-canvas {
@@ -598,6 +659,16 @@ ul { margin: 0; padding: 0; list-style: none; }
   padding: 0 22px var(--space-md);
 }
 
+/* Подсказка о лимитах внутри терминала: тот же моно-шрифт и отбивка,
+   что у остальных строк окна. */
+.terminal-hint {
+  margin: 0;
+  padding: 0 22px var(--space-sm);
+  font-family: var(--font-mono);
+  font-size: var(--text-caption);
+  color: var(--color-text-tertiary);
+}
+
 .terminal-preset-btn {
   padding: 4px 12px;
   border-radius: var(--radius-full);
@@ -618,12 +689,16 @@ ul { margin: 0; padding: 0; list-style: none; }
 }
 
 /* ---------- 8. Sections ---------- */
-.main { min-height: calc(100vh - var(--nav-height)); }
+.main { min-height: calc(100vh - var(--nav-offset)); }
+/* Якорные переходы (skip-link → #main) не должны прятать заголовок под шапкой. */
+.main { scroll-margin-top: var(--nav-offset); }
 
 .section {
   max-width: var(--container-max);
   margin: 0 auto;
   padding: 120px var(--space-lg) var(--space-2xl);
+  /* При переходе по якорю внутри секции оставляем запас под липкую шапку. */
+  scroll-margin-top: calc(var(--nav-offset) + var(--space-md));
 }
 .section-head {
   display: flex;
@@ -852,6 +927,31 @@ ul { margin: 0; padding: 0; list-style: none; }
 .form-status.error { color: var(--color-error); }
 .form-status.success { color: var(--color-success); }
 
+/* ---------- 11.1 Подсказки и счётчики символов ----------
+   Показываем лимит заранее, чтобы пользователь не упирался в обрезку вслепую.
+   Числа приходят из конфига (Limits), поэтому текст и maxlength всегда парны. */
+.field-hint {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-sm);
+  margin: var(--space-xs) 0 0;
+  font-size: var(--text-caption);
+  color: var(--color-text-tertiary);
+}
+.char-count {
+  flex: 0 0 auto;
+  font-family: var(--font-mono);
+  font-size: var(--text-caption);
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-tertiary);
+}
+.char-count.is-near-limit { color: var(--color-status-busy); }
+.char-count.is-at-limit { color: var(--color-status-full); }
+/* В форме заявки счётчик стоит под полем, а не сбоку от подсказки. */
+.form-field .char-count { align-self: flex-end; min-height: 1em; }
+.terminal-line-warn { color: var(--color-status-busy); }
+
 .contact-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -997,8 +1097,12 @@ ul { margin: 0; padding: 0; list-style: none; }
 }
 
 .chat-input-row { display: flex; gap: var(--space-sm); }
+/* Кнопка не должна сжиматься: иначе на узких экранах input «съедает» её
+   ширину и текст «Отправить» вылезает за пределы кнопки. */
+.chat-input-row .btn { flex: 0 0 auto; white-space: nowrap; }
 .chat-input-row input {
   flex: 1;
+  min-width: 0;
   font-family: inherit;
   font-size: var(--text-body);
   color: var(--color-text);
@@ -1117,11 +1221,47 @@ ul { margin: 0; padding: 0; list-style: none; }
     --text-h2: 1.75rem;
     --text-h3: 1.25rem;
   }
-  .navbar-inner { padding: 0 var(--space-md); flex-wrap: wrap; height: auto; padding-top: var(--space-sm); padding-bottom: var(--space-sm); }
-  .navbar-links { gap: var(--space-md); flex-wrap: wrap; }
-  .navbar-links a { font-size: var(--text-caption); }
+  /* --- Мобильная шапка: лого слева + бургер справа, одна строка.
+         Пункты меню и бейдж статуса переезжают в выпадающую панель,
+         поэтому шапка больше не разъезжается на 3 строки и не
+         перекрывает контент. --- */
+  .navbar { padding: 0 var(--space-md); }
+  .navbar-inner { height: var(--nav-height); padding: 0; gap: var(--space-md); }
+  .navbar-toggle { display: inline-flex; }
+  .navbar-menu {
+    display: none;
+    position: absolute;
+    top: calc(100% + var(--space-sm));
+    left: 0;
+    right: 0;
+    margin-left: 0;
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--space-md);
+    padding: var(--space-md);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    background: rgba(24, 21, 58, 0.96);
+    backdrop-filter: blur(12px) saturate(1.4);
+    -webkit-backdrop-filter: blur(12px) saturate(1.4);
+    box-shadow: var(--shadow-lg);
+  }
+  .navbar.is-menu-open .navbar-menu { display: flex; }
+  .navbar-links { flex-direction: column; gap: 0; margin-left: 0; }
+  .navbar-links a {
+    display: block;
+    padding: var(--space-sm);
+    font-size: var(--text-body);
+    border-radius: var(--radius-sm);
+  }
+  .navbar-links a:hover { background: rgba(255, 255, 255, 0.06); }
+  .navbar-menu .status-badge { align-self: flex-start; }
+
+  /* Отступ от липкой шапки до контента: --nav-offset — это её низ. */
+  .hero { padding: calc(var(--nav-offset) + var(--space-lg)) var(--space-md) var(--space-2xl); }
+  .section { padding-top: calc(var(--nav-offset) + var(--space-2xl)); }
+
   .status-badge { font-size: var(--text-caption); padding: 2px var(--space-sm); }
-  .hero { padding: var(--space-2xl) var(--space-md); }
   .hero-grid { grid-template-columns: 1fr; gap: var(--space-xl); }
   .hero-content { max-width: 100%; }
   .hero-eyebrow { font-size: 2rem; }
@@ -1138,6 +1278,19 @@ ul { margin: 0; padding: 0; list-style: none; }
   /* Световые пятна на мобильном — тише, чтобы не спорить с текстом. */
   .section-glow::before,
   .section-glow::after { opacity: 0.32; }
+}
+
+/* === Планшет (768–1023px) ===
+   По ui-rules здесь ещё «full links visible», без бургера. Но при 768px
+   строка не влезает в «пилюлю» и бейдж статуса обрезается — поэтому
+   ужимаем отступы и кегль, сохраняя все ссылки в строке. */
+@media (min-width: 768px) and (max-width: 1023px) {
+  .navbar { padding: 0 var(--space-md); }
+  .navbar-inner { padding: 0; gap: var(--space-md); }
+  .navbar-menu { gap: var(--space-md); }
+  .navbar-links { gap: var(--space-md); }
+  .navbar-links a { font-size: var(--text-caption); }
+  .status-badge { font-size: var(--text-caption); padding: 2px var(--space-sm); }
 }
 
 /* ---------- 16. Reduced motion ---------- */

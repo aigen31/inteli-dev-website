@@ -13,9 +13,10 @@ use sha2::{Digest, Sha256};
 use sqlx::sqlite::SqlitePool;
 
 use crate::cache::InMemoryCache;
-use crate::error::AppResult;
+use crate::error::{AppError, AppResult};
+use crate::limits::Limits;
 use crate::llm::prompt::{
-    analysis_prompt, build_context_string, chatbot_system_prompt, fallback_answer,
+    analysis_prompt, build_context_string, chatbot_system_prompt, fallback_answer, ContextSettings,
 };
 use crate::llm::ChatProvider;
 use crate::memory::{Availability, OpenVikingClient};
@@ -33,6 +34,44 @@ pub struct ChatRequest {
     pub preset_index: Option<usize>,
     #[serde(default)]
     pub url: Option<String>,
+}
+
+/// Максимальная длина URL в запросе анализа (защита от раздувания промпта).
+const ANALYSIS_URL_MAX_CHARS: usize = 300;
+/// Максимальная длина идентификатора сессии (защита БД от мусора).
+const SESSION_ID_MAX_CHARS: usize = 64;
+
+impl ChatRequest {
+    /// Проверяет запрос до обращения к LLM.
+    ///
+    /// Браузер ограничивает ввод через `maxlength`, но API можно вызвать
+    /// напрямую — поэтому длина проверяется и на сервере.
+    pub fn validate(&self) -> AppResult<()> {
+        let limits = Limits::get();
+        let max = limits.chat_message_max_chars;
+
+        if self.message.trim().is_empty() {
+            return Err(AppError::Validation("сообщение не может быть пустым".into()));
+        }
+        // Считаем именно символы, а не байты: кириллица в UTF-8 занимает 2 байта.
+        let len = self.message.chars().count();
+        if len > max {
+            return Err(AppError::Validation(format!(
+                "сообщение слишком длинное: {len} из {max} символов"
+            )));
+        }
+        if let Some(url) = self.url.as_deref() {
+            if url.chars().count() > ANALYSIS_URL_MAX_CHARS {
+                return Err(AppError::Validation("ссылка слишком длинная".into()));
+            }
+        }
+        if let Some(sid) = self.session_id.as_deref() {
+            if sid.chars().count() > SESSION_ID_MAX_CHARS {
+                return Err(AppError::Validation("некорректный идентификатор сессии".into()));
+            }
+        }
+        Ok(())
+    }
 }
 
 /// Ответ чата (POST /api/chat).
@@ -69,6 +108,10 @@ pub struct ChatService {
     memory: Arc<OpenVikingClient>,
     cache: Arc<InMemoryCache>,
     db: SqlitePool,
+    /// Бюджет RAG-контекста (сколько тратим входных токенов на справку).
+    context: ContextSettings,
+    /// Сколько результатов запрашивать у OpenViking (обычно == `context.top_k`).
+    search_limit: usize,
 }
 
 impl ChatService {
@@ -78,12 +121,35 @@ impl ChatService {
         cache: Arc<InMemoryCache>,
         db: SqlitePool,
     ) -> Self {
+        Self::with_context(llm, memory, cache, db, ContextSettings::default())
+    }
+
+    /// Конструктор с настраиваемым бюджетом контекста (значения из config.toml).
+    pub fn with_context(
+        llm: Arc<dyn ChatProvider>,
+        memory: Arc<OpenVikingClient>,
+        cache: Arc<InMemoryCache>,
+        db: SqlitePool,
+        context: ContextSettings,
+    ) -> Self {
         Self {
             llm,
             memory,
             cache,
             db,
+            context,
+            // Просим у поиска чуть больше, чем подмешаем: часть отсеется
+            // по порогу релевантности.
+            search_limit: context.top_k.saturating_mul(2).max(1),
         }
+    }
+
+    /// Ответ уже в кэше — запрос не потратит токены LLM.
+    ///
+    /// Используется, чтобы не списывать часовую квоту за повторный вопрос.
+    pub fn is_cached(&self, req: &ChatRequest) -> bool {
+        matches!(resolve_kind(req), QuestionKind::Free)
+            && self.cache.get(&cache_key(&req.message)).is_some()
     }
 
     /// Обрабатывает запрос и возвращает ответ.
@@ -92,6 +158,8 @@ impl ChatService {
         req: ChatRequest,
         client_hash: Option<String>,
     ) -> AppResult<ChatResponse> {
+        req.validate()?;
+
         let started = Instant::now();
         let kind = resolve_kind(&req);
 
@@ -156,7 +224,7 @@ impl ChatService {
 
     /// Свободный вопрос: кэш → семантический поиск → LLM → кэш.
     async fn answer_free(&self, req: &ChatRequest) -> AppResult<(String, String)> {
-        let cache_key = format!("chat:{}", sha256_hex(&req.message));
+        let cache_key = cache_key(&req.message);
         if let Some(cached) = self.cache.get(&cache_key) {
             return Ok((cached, "cached".to_string()));
         }
@@ -164,8 +232,8 @@ impl ChatService {
         let content = crate::memory::content::SiteContent::get();
 
         // Семантический контекст из OpenViking (при ошибке — пустой контекст).
-        let context = match self.memory.semantic_search(&req.message, 5).await {
-            Ok(results) => build_context_string(&results),
+        let context = match self.memory.semantic_search(&req.message, self.search_limit).await {
+            Ok(results) => build_context_string(&results, &self.context),
             Err(e) => {
                 tracing::debug!("OpenViking search failed, empty context: {e}");
                 String::new()
@@ -232,6 +300,30 @@ fn normalized_type(req: &ChatRequest) -> String {
     req.question_type
         .clone()
         .unwrap_or_else(|| "free".to_string())
+}
+
+/// Тратит ли запрос токены LLM.
+///
+/// Используется API-слоем, чтобы списывать часовую квоту только за платные
+/// ответы: preset/availability/lead_request отдаются прямо из контента.
+pub fn requires_llm(req: &ChatRequest) -> bool {
+    matches!(
+        resolve_kind(req),
+        QuestionKind::Analysis | QuestionKind::Free
+    )
+}
+
+/// Ключ кэша ответов LLM.
+///
+/// Сообщение нормализуется (регистр, лишние пробелы), иначе «Сколько стоит?» и
+/// «сколько  стоит?» уходят в модель дважды и дважды оплачиваются.
+fn cache_key(message: &str) -> String {
+    let normalized = message
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .to_lowercase();
+    format!("chat:{}", sha256_hex(&normalized))
 }
 
 fn resolve_kind(req: &ChatRequest) -> QuestionKind {
@@ -502,5 +594,83 @@ mod tests {
         let rows = crate::storage::chat::recent(&svc.db, 10).await.unwrap();
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].question_type.as_deref(), Some("preset"));
+    }
+
+    #[tokio::test]
+    async fn empty_message_is_rejected() {
+        ensure_content();
+        let svc = service(true).await;
+        let mut req = free_req();
+        req.message = "   ".into();
+        let err = svc.answer(req, None).await.unwrap_err();
+        assert!(matches!(err, AppError::Validation(_)), "получено: {err}");
+    }
+
+    #[tokio::test]
+    async fn overly_long_message_is_rejected() {
+        ensure_content();
+        let svc = service(true).await;
+        let mut req = free_req();
+        let max = Limits::get().chat_message_max_chars;
+        req.message = "а".repeat(max + 1);
+        let err = svc.answer(req, None).await.unwrap_err();
+        assert!(matches!(err, AppError::Validation(_)), "получено: {err}");
+    }
+
+    #[tokio::test]
+    async fn message_at_the_limit_is_accepted() {
+        ensure_content();
+        let svc = service(true).await;
+        let mut req = free_req();
+        let max = Limits::get().chat_message_max_chars;
+        req.message = "а".repeat(max);
+        assert!(svc.answer(req, None).await.is_ok());
+    }
+
+    #[tokio::test]
+    async fn repeated_question_hits_cache_and_saves_tokens() {
+        ensure_content();
+        let svc = service(false).await;
+
+        let first = svc.answer(free_req(), None).await.unwrap();
+        assert_eq!(first.source, "llm");
+
+        // Тот же вопрос другим регистром и с лишними пробелами.
+        let mut req = free_req();
+        req.message = "Как   увеличить ТРАФИК?".into();
+        assert!(svc.is_cached(&req), "нормализованный ключ должен совпасть");
+
+        let second = svc.answer(req, None).await.unwrap();
+        assert_eq!(second.source, "cached");
+        assert_eq!(second.answer, first.answer);
+    }
+
+    #[test]
+    fn requires_llm_marks_only_token_spending_requests() {
+        // free — в модель.
+        assert!(requires_llm(&free_req()));
+
+        // analysis — в модель.
+        let mut analysis = free_req();
+        analysis.question_type = Some("analysis".into());
+        assert!(requires_llm(&analysis));
+
+        // preset 0-2, 4, 5 — прямые ответы из контента, токенов не тратят.
+        for i in [0, 1, 2, 4, 5] {
+            assert!(!requires_llm(&preset_req(i)), "preset {i} не должен идти в LLM");
+        }
+        // preset 3 — «Проанализируйте мой сайт» => analysis => LLM.
+        assert!(requires_llm(&preset_req(3)));
+
+        // lead_request / availability — прямые.
+        let mut lead = free_req();
+        lead.question_type = Some("lead_request".into());
+        assert!(!requires_llm(&lead));
+    }
+
+    #[test]
+    fn cache_key_ignores_case_and_extra_spaces() {
+        assert_eq!(cache_key("Сколько  стоит?"), cache_key("сколько стоит? "));
+        assert_ne!(cache_key("сколько стоит?"), cache_key("что вы умеете?"));
     }
 }

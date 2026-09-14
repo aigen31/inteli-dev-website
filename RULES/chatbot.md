@@ -75,8 +75,12 @@ AI-чат — это **первый пункт контакта** посетит
 2. Frontend отправляет POST /api/chat { message, question_type }
               │
               ▼
-3. Backend middleware: rate limiting check
-     └─> Если превышен лимит → return 429 "Подождите несколько минут"
+3. Backend: проверка запроса и двухуровневый rate limiting
+     ├─> Длина message > chat_message_max_chars → 400 (валидация)
+     ├─> Антифлуд: > max_requests_per_minute на IP → 429
+     └─> Квота LLM: > llm_requests_per_hour на IP → 429
+         Лимиты берутся из секции [limits] / [ratelimit] config.toml,
+         те же числа уходят в UI (maxlength + подсказка) через src/limits.rs.
               │
               ▼
 4. ChatService.process_query(message, question_type)
@@ -290,20 +294,76 @@ match viking_client.semantic_search(query).await {
 }
 ```
 
-### Сценарий: Rate limiting — защита от спама
+### Сценарий: Rate limiting — два независимых уровня
+
+Лимиты разделены по смыслу: технический антифлуд защищает сервер, часовая
+квота защищает бюджет на токены.
+
 ```rust
-// Middleware: 10 запросов в минуту на IP
-pub fn rate_limit_middleware(req: &Request) -> Result<(), AppError> {
-    let ip = req.client_ip();
-    let count = redis.increment(&format!("rl:{}", ip), 60)?;  // window 60s
-    
-    if count > 10 {
-        return Err(AppError::RateLimitExceeded { retry_after: 60 });
-    }
-    
-    Ok(())
+// Уровень 1 — антифлуд (все типы запросов, включая preset): 10 в минуту на IP.
+// Fixed window: RateLimiter в src/cache.rs.
+if !state.rate_limiter.check(&ip_hash) {
+    return Err(AppError::RateLimitExceeded { retry_after: 60 }.into());
+}
+
+// Уровень 2 — квота на AI-ответы: 3 в час на IP (скользящее окно).
+// Списывается ТОЛЬКО за запросы, которые реально тратят токены:
+//   • requires_llm(req) — free и analysis;
+//   • preset / availability / lead_request идут из контента бесплатно;
+//   • ответ из кэша модель не вызывает, поэтому квоту не расходует.
+if requires_llm(&req) && !state.chat.is_cached(&req) && !state.hourly_limiter.check(&ip_hash) {
+    let retry_after = state.hourly_limiter.retry_after(&ip_hash);
+    return Err(AppError::RateLimitExceeded { retry_after }.into());
 }
 ```
+
+Скользящее окно (`SlidingWindowLimiter`) выбрано вместо fixed window, чтобы
+нельзя было удвоить квоту на стыке часов: 3 запроса в 12:59 + 3 в 13:00.
+
+Ответ 429 отдаётся с человеческим текстом и полем `retry_after`:
+
+```json
+{ "error": "Лимит AI-ответов исчерпан. Попробуйте снова через час — или напишите мне в Telegram.",
+  "retry_after": 2413 }
+```
+
+### Сценарий: Лимиты ввода (единый источник правды)
+
+Числа живут в `[limits]` config.toml и публикуются в `src/limits.rs`
+(`Limits::set_global` при старте). И SSR-разметка (`maxlength`, подсказка), и
+серверная валидация читают `Limits::get()` — поэтому подсказка не может
+разойтись с фактическим лимитом.
+
+| Поле | Лимит по умолчанию | Где проверяется |
+|------|--------------------|-----------------|
+| `chat.message` | 500 символов | `ChatRequest::validate` + `maxlength` |
+| `chat.url` (analysis) | 300 символов | `ChatRequest::validate` |
+| `chat.session_id` | 64 символа | `ChatRequest::validate` |
+| `lead.name` | 80 символов | `LeadSubmission::validate` + `maxlength` |
+| `lead.message` | 1000 символов | `LeadSubmission::validate` + `maxlength` |
+| `lead.phone` | 20 символов | `LeadSubmission::validate` + `maxlength` |
+| `lead.email` | 254 символа | `is_valid_email` |
+
+Длину считаем в **символах**, а не байтах: кириллица в UTF-8 занимает 2 байта,
+иначе русский текст упирался бы в лимит вдвое раньше.
+
+### Сценарий: Экономия токенов
+
+Промпт уходит в модель на каждом free-запросе, поэтому вход ограничен:
+
+1. **Кэш с нормализованным ключом** — `cache_key()` приводит сообщение к
+   нижнему регистру и схлопывает пробелы, поэтому «Сколько стоит?» и
+   «сколько  стоит?» — один платный запрос, а не два.
+2. **Системный промпт сжат** без потери фактов (~1720 → ~1130 символов).
+3. **Бюджет RAG-контекста**: `context_top_k` фрагментов ×
+   `context_snippet_chars`, суммарно не больше `context_max_chars`,
+   плюс отсев по `context_min_score`. URI источника не включаем — модель на
+   него не ссылается, а это ~50 символов на фрагмент.
+   Страховка: если после порога не осталось ничего, берётся исходный топ,
+   иначе поиск молча выключился бы целиком.
+4. **Потолок выходных токенов** — `max_tokens = 600` (промпт требует
+   «1-2 предложения + максимум 3 пункта»), защищает от простыни.
+5. **Preset-ответы не идут в LLM** — прямые ответы из контента.
 
 ---
 

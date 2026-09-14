@@ -9,7 +9,7 @@ use serde::Deserialize;
 
 use crate::api::{assets, client_ip, ApiError};
 use crate::error::AppError;
-use crate::services::chat::{ChatRequest, ChatResponse};
+use crate::services::chat::{requires_llm, ChatRequest, ChatResponse};
 use crate::services::lead::LeadSubmission;
 use crate::services::status::{status_payload, StatusPayload};
 use crate::state::AppState;
@@ -45,8 +45,18 @@ pub async fn chat(
 ) -> Result<Json<ChatResponse>, ApiError> {
     let ip_hash = hash_ip(&client_ip(&headers));
 
+    // 1. Технический антифлуд — на все типы запросов, включая preset.
     if !state.rate_limiter.check(&ip_hash) {
-        return Err(AppError::RateLimitExceeded { retry_after: 60 }.into());
+        let retry_after = state.config.ratelimit.window_seconds.max(1);
+        return Err(AppError::RateLimitExceeded { retry_after }.into());
+    }
+
+    // 2. Часовая квота — только на то, что реально тратит токены LLM.
+    //    preset/availability/lead_request отдаются из контента бесплатно, а
+    //    ответ из кэша не обращается к модели — квоту он не расходует.
+    if requires_llm(&req) && !state.chat.is_cached(&req) && !state.hourly_limiter.check(&ip_hash) {
+        let retry_after = state.hourly_limiter.retry_after(&ip_hash);
+        return Err(AppError::RateLimitExceeded { retry_after }.into());
     }
 
     let response = state.chat.answer(req, Some(ip_hash)).await?;

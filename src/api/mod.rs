@@ -51,9 +51,33 @@ impl From<AppError> for ApiError {
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
         let status = self.0.http_status();
-        let body = Json(serde_json::json!({ "error": self.0.to_string() }));
-        (status, body).into_response()
+        let body = match &self.0 {
+            // Лимит — это не сбой, а часть UX: отдаём человеческий текст и
+            // сколько секунд ждать, чтобы клиент мог показать понятный отсчёт.
+            AppError::RateLimitExceeded { retry_after } => serde_json::json!({
+                "error": rate_limit_message(*retry_after),
+                "retry_after": retry_after,
+            }),
+            // Тексты валидации уже написаны для пользователя — не портим их
+            // техническим префиксом «validation error:».
+            AppError::Validation(msg) => serde_json::json!({ "error": msg }),
+            other => serde_json::json!({ "error": other.to_string() }),
+        };
+        (status, Json(body)).into_response()
     }
+}
+
+/// Текст для пользователя при исчерпании квоты.
+fn rate_limit_message(retry_after_secs: u64) -> String {
+    let minutes = retry_after_secs.div_ceil(60).max(1);
+    if minutes >= 60 {
+        return "Лимит AI-ответов исчерпан. Попробуйте снова через час — или напишите мне в Telegram.".to_string();
+    }
+    format!(
+        "Слишком много запросов. Попробуйте снова через {} {}.",
+        minutes,
+        crate::limits::plural_ru(minutes as u32, "минуту", "минуты", "минут")
+    )
 }
 
 /// Извлекает IP клиента из заголовков (за прокси) с fallback.
@@ -72,4 +96,30 @@ pub fn client_ip(headers: &HeaderMap) -> String {
                 .map(str::to_string)
         })
         .unwrap_or_else(|| "unknown".to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn rate_limit_message_pluralizes_minutes() {
+        assert!(rate_limit_message(60).contains("через 1 минуту"));
+        assert!(rate_limit_message(300).contains("через 5 минут"));
+        assert!(rate_limit_message(2413).contains("через 41 минуту"));
+    }
+
+    #[test]
+    fn rate_limit_message_switches_to_hours_at_the_boundary() {
+        // 3599 с — это уже «через час», а не «через 60 минут».
+        assert!(rate_limit_message(3599).contains("через час"));
+        assert!(rate_limit_message(3600).contains("через час"));
+    }
+
+    #[test]
+    fn client_ip_prefers_forwarded_header() {
+        let mut headers = HeaderMap::new();
+        headers.insert("x-forwarded-for", "203.0.113.7, 10.0.0.1".parse().unwrap());
+        assert_eq!(client_ip(&headers), "203.0.113.7");
+    }
 }

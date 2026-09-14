@@ -24,6 +24,10 @@ pub struct AppConfig {
     pub ratelimit: RateLimitConfig,
     pub logging: LoggingConfig,
     pub security: SecurityConfig,
+    /// Пользовательские лимиты. Секция опциональна: без неё берутся значения
+    /// по умолчанию, поэтому старый config.toml не ломает запуск.
+    #[serde(default)]
+    pub limits: crate::limits::Limits,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -68,6 +72,25 @@ pub struct LlmConfig {
     /// API key — заполняется из env `LLM_API_KEY`, не из config.toml.
     #[serde(default)]
     pub api_key: String,
+    /// Потолок выходных токенов. Системный промпт требует «1-2 предложения +
+    /// максимум 3 пункта», поэтому 600 — с большим запасом. Нужен только чтобы
+    /// обуздать «разболтавшуюся» модель и не платить за простыню.
+    #[serde(default = "default_llm_max_tokens")]
+    pub max_tokens: u32,
+    #[serde(default = "default_llm_temperature")]
+    pub temperature: f32,
+    /// Сколько результатов семантического поиска подмешивать в промпт.
+    #[serde(default = "default_context_top_k")]
+    pub context_top_k: usize,
+    /// Сколько символов брать из каждого результата.
+    #[serde(default = "default_context_snippet_chars")]
+    pub context_snippet_chars: usize,
+    /// Общий бюджет RAG-контекста в символах — жёсткий потолок входа.
+    #[serde(default = "default_context_max_chars")]
+    pub context_max_chars: usize,
+    /// Порог релевантности: результаты с меньшим score отбрасываются.
+    #[serde(default = "default_context_min_score")]
+    pub context_min_score: f64,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -147,6 +170,24 @@ fn default_log_level() -> String {
 }
 fn default_hash_algo() -> String {
     "sha256".to_string()
+}
+fn default_llm_max_tokens() -> u32 {
+    600
+}
+fn default_llm_temperature() -> f32 {
+    0.7
+}
+fn default_context_top_k() -> usize {
+    4
+}
+fn default_context_snippet_chars() -> usize {
+    400
+}
+fn default_context_max_chars() -> usize {
+    1600
+}
+fn default_context_min_score() -> f64 {
+    0.35
 }
 
 impl AppConfig {
