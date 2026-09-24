@@ -78,4 +78,72 @@ impl AppError {
             _ => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
+
+    /// Ошибка транспорта при обращении к Telegram.
+    ///
+    /// `reqwest::Error` в `Display` печатает полный URL запроса, а в URL Bot API
+    /// лежит токен бота (`/bot<token>/sendMessage`). Логи читают через
+    /// `docker logs`, поэтому токен туда попадать не должен — оставляем только
+    /// класс ошибки.
+    pub fn telegram_transport(e: &reqwest::Error) -> Self {
+        let kind = if e.is_timeout() {
+            "таймаут запроса"
+        } else if e.is_connect() {
+            "не удалось подключиться (сеть или прокси)"
+        } else if e.is_decode() {
+            "не удалось разобрать ответ"
+        } else if e.is_body() {
+            "обрыв при передаче тела"
+        } else {
+            "ошибка транспорта"
+        };
+        AppError::TelegramError {
+            status: 0,
+            body: kind.to_string(),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Любая ошибка транспорта не должна раскрывать токен.
+    fn assert_no_token(error: &AppError) {
+        let text = error.to_string();
+        assert!(
+            !text.contains("bot") || !text.contains("token"),
+            "в ошибке не должно быть URL с токеном: {text}"
+        );
+    }
+
+    #[test]
+    fn telegram_transport_classifies_without_leaking_url() {
+        // Собрать reqwest::Error без сети нельзя, поэтому проверяем через
+        // реальный недостижимый адрес — соединение отбивается мгновенно.
+        let client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_millis(300))
+            .build()
+            .unwrap();
+
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+
+        let err = runtime
+            .block_on(async {
+                client
+                    .post("https://api.telegram.org/bot123456:SECRET/sendMessage")
+                    .send()
+                    .await
+            })
+            .expect_err("запрос не должен пройти");
+
+        let mapped = AppError::telegram_transport(&err);
+        let text = mapped.to_string();
+        assert!(!text.contains("SECRET"), "токен утёк в текст ошибки: {text}");
+        assert!(!text.contains("api.telegram.org"), "URL утёк: {text}");
+        assert_no_token(&mapped);
+    }
 }

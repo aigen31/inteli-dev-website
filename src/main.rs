@@ -18,7 +18,8 @@ use inteli_dev::llm::ChatProvider;
 use inteli_dev::memory::content::SiteContent;
 use inteli_dev::memory::OpenVikingClient;
 use inteli_dev::notification::NotificationService;
-use inteli_dev::services::{ChatService, LeadService};
+use inteli_dev::services::{ChatService, GitHubService, LeadService, SettingsBot};
+use inteli_dev::settings::SiteSettings;
 use inteli_dev::state::AppState;
 use inteli_dev::storage;
 use inteli_dev::ui::App;
@@ -65,6 +66,23 @@ async fn run(config: AppConfig) -> AppResult<()> {
     let content = SiteContent::load(&viking).await;
     SiteContent::set_global(content);
 
+    // 2.1. Живые настройки сайта. Сохранённый в БД статус занятости главнее
+    //      значения из контента: владелец мог поменять его из Telegram, пока
+    //      приложение было выключено.
+    match inteli_dev::settings::load_or_default(&db).await {
+        Ok(settings) => {
+            tracing::info!(
+                "настройки сайта: статус = {}",
+                settings.availability.status
+            );
+            SiteSettings::set_global(settings);
+        }
+        Err(e) => {
+            tracing::warn!("не удалось загрузить настройки сайта, берём дефолт: {e}");
+            SiteSettings::set_global(inteli_dev::settings::defaults_from_content());
+        }
+    }
+
     // 3. LLM — DeepSeek V4 (OpenAI-compatible).
     let llm: Arc<dyn ChatProvider> = Arc::new(
         DeepSeekProvider::new(
@@ -78,6 +96,11 @@ async fn run(config: AppConfig) -> AppResult<()> {
     // 3.1. Пользовательские лимиты — публикуем глобально, чтобы SSR-страницы
     //      (maxlength, подсказки) и валидация использовали одни и те же числа.
     Limits::set_global(config.limits);
+
+    // 3.2. Статистика GitHub для блока «Открытый код» на главной. Страницы
+    //      рендерятся синхронно, поэтому снимок готовит фоновая задача, а UI
+    //      читает уже готовые числа из глобального GitHubStats.
+    Arc::new(GitHubService::new(&config.github)).spawn_refresh();
 
     // 4. Cache + rate limiting.
     let cache = Arc::new(InMemoryCache::new(Duration::from_secs(
@@ -115,6 +138,18 @@ async fn run(config: AppConfig) -> AppResult<()> {
     ));
     let leads = Arc::new(LeadService::new(db.clone(), notifications.clone()));
 
+    // 5.1. Бот настроек сайта. Пустой токен/секрет — бот выключен, эндпоинт
+    //      отвечает 404 и ничего не принимает.
+    let settings_bot = Arc::new(SettingsBot::new(&config.settings_bot));
+    if settings_bot.is_active() {
+        tracing::info!(
+            "бот настроек включён, владелец id={}",
+            config.settings_bot.admin_id
+        );
+    } else {
+        tracing::info!("бот настроек выключен (нет токена/владельца/секрета)");
+    }
+
     // 6. Leptos-настройки (для SSR-роутера).
     let leptos_options = build_leptos_options(addr);
 
@@ -127,6 +162,7 @@ async fn run(config: AppConfig) -> AppResult<()> {
         cache,
         rate_limiter,
         hourly_limiter,
+        settings_bot,
         leptos_options: leptos_options.clone(),
         started_at: Instant::now(),
     };

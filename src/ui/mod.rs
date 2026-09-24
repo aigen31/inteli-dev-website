@@ -8,6 +8,7 @@ pub mod admin;
 pub mod beget;
 pub mod chat;
 pub mod contact;
+pub mod github;
 pub mod home;
 pub mod icon;
 pub mod layout;

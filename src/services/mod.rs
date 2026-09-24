@@ -4,8 +4,12 @@
 //! связывает их: чатбот, статус занятости, приём заявок.
 
 pub mod chat;
+pub mod github;
 pub mod lead;
+pub mod settings_bot;
 pub mod status;
 
 pub use chat::ChatService;
+pub use github::{GitHubService, GitHubStats};
 pub use lead::LeadService;
+pub use settings_bot::SettingsBot;

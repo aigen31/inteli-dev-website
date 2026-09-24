@@ -25,6 +25,11 @@ pub fn routes() -> Router<AppState> {
         .route("/api/chat", post(handlers::chat))
         .route("/api/lead", post(handlers::lead))
         .route("/api/telegram/webhook", post(handlers::telegram_webhook))
+        // Бот настроек сайта: Telegram стучится сюда (секрет — в заголовке).
+        .route(
+            "/api/settings-bot/webhook",
+            post(handlers::settings_bot_webhook),
+        )
         // Admin (token auth)
         .route("/api/admin/stats", get(handlers::admin_stats))
         .route("/api/admin/leads", get(handlers::admin_leads))

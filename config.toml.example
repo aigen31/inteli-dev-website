@@ -43,6 +43,24 @@ admin_user_id = 0             # или VK_ADMIN_USER_ID env
 [admin]
 token = ""                    # или ADMIN_TOKEN env (Bearer-аутентификация)
 
+[settings_bot]
+# Бот для управления настройками сайта. Отдельный токен: у бота заявок прав
+# менять сайт нет. Пока не заданы все три значения, эндпоинт выключен (404).
+token = ""            # или SETTINGS_BOT_TOKEN env
+admin_id = 0          # или SETTINGS_BOT_ADMIN_ID env
+webhook_secret = ""   # или SETTINGS_BOT_WEBHOOK_SECRET env
+
+[github]
+# Блок «Открытый код» на главной: статистика GitHub.
+# Публичные данные (репозитории, языки, контрибуции) читаются анонимно, поэтому
+# блок работает без токена. Токен (env GITHUB_TOKEN) нужен только чтобы поднять
+# лимит GitHub API с 60 до 5000 запросов в час и брать контрибуции из GraphQL,
+# а не разбором HTML. См. docs/github-stats.md.
+username = "aigen31"
+enabled = true
+cache_ttl_seconds = 21600     # 6 часов: статистика меняется медленно
+show_stars = false            # звёзды/подписчики прячем, пока числа маленькие
+
 [ratelimit]
 max_requests_per_minute = 10  # технический антифлуд (все типы запросов)
 window_seconds = 60

@@ -28,7 +28,8 @@ pub async fn send_lead_notification(
             "reply_markup": keyboard,
         }))
         .send()
-        .await?;
+        .await
+        .map_err(|e| AppError::telegram_transport(&e))?;
 
     if !resp.status().is_success() {
         let status = resp.status().as_u16();

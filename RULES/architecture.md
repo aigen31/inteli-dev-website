@@ -202,6 +202,7 @@ src/
 | `/contact` | GET | Контактная форма + ссылки на мессенджеры | HTML |
 | `/api/chat` | POST | API для AI-чата (JSON request/response) | `application/json` |
 | `/api/lead` | POST | Создание заявки/лида | `application/json` |
+| `/api/settings-bot/webhook` | POST | Апдейты Telegram для бота настроек (смена статуса занятости). Нужен заголовок `X-Telegram-Bot-Api-Secret-Token`; иначе 404. См. `docs/settings-bot.md` | `200` |
 
 ### Админ маршруты (требуют авторизации)
 | Route | Метод | Описание |

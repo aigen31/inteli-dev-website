@@ -13,6 +13,7 @@ pub mod llm;
 pub mod memory;
 pub mod notification;
 pub mod services;
+pub mod settings;
 pub mod state;
 pub mod storage;
 pub mod ui;

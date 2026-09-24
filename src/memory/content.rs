@@ -56,7 +56,7 @@ pub struct Project {
 }
 
 /// Статус занятости автора.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Availability {
     pub status: String, // "available" | "busy" | "full"
     pub current_projects: u8,
@@ -70,6 +70,9 @@ pub struct SiteContent {
     pub profile: AuthorProfile,
     pub services: Vec<Service>,
     pub projects: Vec<Project>,
+    /// Статус занятости **по умолчанию**: используется, пока в БД нет
+    /// сохранённого значения. Живое состояние — в
+    /// [`crate::settings::SiteSettings`]: его меняет Telegram-бот настроек.
     pub availability: Availability,
     pub status_updated_at: String,
 }

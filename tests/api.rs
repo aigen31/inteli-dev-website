@@ -13,16 +13,37 @@ use tower::ServiceExt;
 
 use inteli_dev::api;
 use inteli_dev::cache::{InMemoryCache, RateLimiter, SlidingWindowLimiter};
-use inteli_dev::config::AppConfig;
+use inteli_dev::config::{AppConfig, SettingsBotConfig};
 use inteli_dev::error::AppResult;
 use inteli_dev::llm::{ChatProvider, Message};
 use inteli_dev::memory::content::{fallback_content, SiteContent};
 use inteli_dev::memory::OpenVikingClient;
 use inteli_dev::notification::NotificationService;
-use inteli_dev::services::{ChatService, LeadService};
+use inteli_dev::services::{ChatService, LeadService, SettingsBot};
 use inteli_dev::state::AppState;
 
 const ADMIN_TOKEN: &str = "test-admin-token";
+/// Секрет вебхука бота настроек в тестах (см. `test_settings_bot_config`).
+const BOT_SECRET: &str = "test-webhook-secret";
+/// Telegram id владельца в тестах.
+const BOT_ADMIN_ID: i64 = 330711327;
+
+/// Доступ к живому состоянию сайта для тестов.
+///
+/// [`SiteSettings`] — глобальный `RwLock`, а тесты одного бинарника идут
+/// параллельно и делят процесс: статус, выставленный одним тестом, иначе
+/// утекал бы в другой. Поэтому все тесты, которые читают или меняют статус,
+/// берут этот замок, а вместе с ним — чистую исходную публикацию.
+fn availability_lock() -> std::sync::MutexGuard<'static, ()> {
+    static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    // Отравление возможно только при панике внутри самих тестов — не повод
+    // ронять остальные.
+    let guard = LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    inteli_dev::settings::SiteSettings::reset_global();
+    inteli_dev::settings::SiteSettings::set_global(inteli_dev::settings::defaults_from_content());
+    guard
+}
 
 /// Заглушка LLM-провайдера (не делает реальных запросов).
 struct MockProvider;
@@ -87,6 +108,14 @@ async fn test_state() -> AppState {
 
 /// Состояние с настраиваемой часовой квотой на AI-ответы.
 async fn test_state_with_quota(llm_requests_per_hour: u32) -> AppState {
+    test_state_with(test_settings_bot_config(), llm_requests_per_hour).await
+}
+
+/// Состояние с произвольной конфигурацией бота настроек.
+///
+/// `api_base` указывает на закрытый локальный порт: бот не должен ходить в
+/// реальный Telegram из тестов, а соединение там отбивается мгновенно.
+async fn test_state_with(bot_config: SettingsBotConfig, llm_requests_per_hour: u32) -> AppState {
     SiteContent::set_global(fallback_content());
 
     let config = Arc::new(test_config());
@@ -111,6 +140,7 @@ async fn test_state_with_quota(llm_requests_per_hour: u32) -> AppState {
     let notifications = Arc::new(NotificationService::new(0, String::new(), String::new(), 0));
     let chat = Arc::new(ChatService::new(llm, memory, cache.clone(), db.clone()));
     let leads = Arc::new(LeadService::new(db.clone(), notifications.clone()));
+    let settings_bot = Arc::new(SettingsBot::new(&bot_config));
     let leptos_options = leptos::prelude::get_configuration(None)
         .map(|c| c.leptos_options)
         .expect("leptos options");
@@ -124,8 +154,19 @@ async fn test_state_with_quota(llm_requests_per_hour: u32) -> AppState {
         cache,
         rate_limiter,
         hourly_limiter,
+        settings_bot,
         leptos_options,
         started_at: Instant::now(),
+    }
+}
+
+/// Конфигурация бота настроек для тестов: владелец — id 330711327.
+fn test_settings_bot_config() -> SettingsBotConfig {
+    SettingsBotConfig {
+        token: "test-token".into(),
+        admin_id: BOT_ADMIN_ID,
+        webhook_secret: BOT_SECRET.into(),
+        api_base: "http://127.0.0.1:1".into(),
     }
 }
 
@@ -172,6 +213,7 @@ async fn health_returns_healthy() {
 
 #[tokio::test]
 async fn status_returns_availability() {
+    let _guard = availability_lock();
     let state = test_state().await;
     let (status, body) = request(&state, "GET", "/api/status", None, None).await;
     assert_eq!(status, StatusCode::OK);
@@ -364,4 +406,200 @@ async fn admin_with_token_returns_stats() {
     assert_eq!(status, StatusCode::OK);
     assert!(body.get("leads_today").is_some());
     assert!(body.get("chats_today").is_some());
+}
+
+// ---------------------------------------------------------------------------
+// Бот настроек сайта
+// ---------------------------------------------------------------------------
+
+/// Отправляет апдейт Telegram на вебхук бота настроек.
+async fn webhook(state: &AppState, secret: Option<&str>, update: serde_json::Value) -> StatusCode {
+    let app = api::routes().with_state(state.clone());
+
+    let mut builder = Request::builder()
+        .method("POST")
+        .uri("/api/settings-bot/webhook")
+        .header(header::CONTENT_TYPE, "application/json");
+    if let Some(secret) = secret {
+        builder = builder.header(
+            inteli_dev::services::settings_bot::SECRET_HEADER,
+            HeaderValue::from_str(secret).unwrap(),
+        );
+    }
+
+    app.oneshot(builder.body(Body::from(update.to_string())).unwrap())
+        .await
+        .unwrap()
+        .status()
+}
+
+/// Апдейт-сообщение от указанного пользователя.
+fn message_update(user_id: i64, text: &str) -> serde_json::Value {
+    serde_json::json!({
+        "update_id": 1,
+        "message": {
+            "message_id": 10,
+            "from": { "id": user_id, "first_name": "Test", "is_bot": false },
+            "chat": { "id": user_id, "type": "private" },
+            "date": 1780000000,
+            "text": text
+        }
+    })
+}
+
+#[tokio::test]
+async fn settings_bot_webhook_rejects_wrong_or_missing_secret() {
+    let _guard = availability_lock();
+    let state = test_state().await;
+
+    let wrong = webhook(&state, Some("не-тот-секрет"), message_update(BOT_ADMIN_ID, "/busy")).await;
+    assert_eq!(wrong, StatusCode::NOT_FOUND);
+
+    let missing = webhook(&state, None, message_update(BOT_ADMIN_ID, "/busy")).await;
+    assert_eq!(missing, StatusCode::NOT_FOUND);
+
+    // Статус не изменился ни в одном случае.
+    let (_, body) = request(&state, "GET", "/api/status", None, None).await;
+    assert_eq!(body["status"], "available");
+}
+
+#[tokio::test]
+async fn settings_bot_webhook_is_404_when_not_configured() {
+    let _guard = availability_lock();
+    // Нет секрета → бот не активен, эндпоинт не должен существовать.
+    let inactive = SettingsBotConfig {
+        token: String::new(),
+        admin_id: 0,
+        webhook_secret: String::new(),
+        api_base: "http://127.0.0.1:1".into(),
+    };
+    let state = test_state_with(inactive, 1000).await;
+
+    let status = webhook(&state, Some(BOT_SECRET), message_update(BOT_ADMIN_ID, "/busy")).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn settings_bot_ignores_foreign_users() {
+    let _guard = availability_lock();
+    let state = test_state().await;
+
+    // Не владелец: получает 200 (Telegram не должен ретраить) и отказ в ответе.
+    let status = webhook(&state, Some(BOT_SECRET), message_update(999_999, "/full")).await;
+    assert_eq!(status, StatusCode::OK);
+
+    let (_, body) = request(&state, "GET", "/api/status", None, None).await;
+    assert_eq!(body["status"], "available", "чужой не должен менять статус");
+}
+
+#[tokio::test]
+async fn settings_bot_changes_status_end_to_end() {
+    let _guard = availability_lock();
+    let state = test_state().await;
+
+    let status = webhook(&state, Some(BOT_SECRET), message_update(BOT_ADMIN_ID, "/busy")).await;
+    assert_eq!(status, StatusCode::OK);
+
+    // 1. Изменился публичный API статуса.
+    let (_, body) = request(&state, "GET", "/api/status", None, None).await;
+    assert_eq!(body["status"], "busy");
+    assert_eq!(body["label"], "ограниченная доступность");
+    assert_eq!(body["icon_name"], "settings");
+
+    // 2. Значение ушло в БД — переживёт перезапуск.
+    let saved = inteli_dev::settings::load_or_default(&state.db).await.unwrap();
+    assert_eq!(saved.availability.status, "busy");
+
+    // 3. И сразу поменялось в памяти — это то, что читают SSR-страницы.
+    assert_eq!(inteli_dev::settings::SiteSettings::availability().status, "busy");
+}
+
+#[tokio::test]
+async fn settings_bot_updates_projects_and_slot() {
+    let _guard = availability_lock();
+    let state = test_state().await;
+
+    webhook(&state, Some(BOT_SECRET), message_update(BOT_ADMIN_ID, "/projects 4")).await;
+    webhook(
+        &state,
+        Some(BOT_SECRET),
+        message_update(BOT_ADMIN_ID, "/slot со 2 ноября"),
+    )
+    .await;
+
+    let (_, body) = request(&state, "GET", "/api/status", None, None).await;
+    assert_eq!(body["current_projects"], 4);
+    assert_eq!(body["next_free_slot"], "со 2 ноября");
+}
+
+#[tokio::test]
+async fn settings_bot_rejects_invalid_values_without_changing_state() {
+    let _guard = availability_lock();
+    let state = test_state().await;
+
+    for bad in ["/projects 500", "/projects abc", "/nonsense", "/slot"] {
+        let status = webhook(&state, Some(BOT_SECRET), message_update(BOT_ADMIN_ID, bad)).await;
+        assert_eq!(status, StatusCode::OK, "команда «{bad}» должна обрабатываться");
+    }
+
+    let (_, body) = request(&state, "GET", "/api/status", None, None).await;
+    assert_eq!(body["status"], "available");
+    assert_eq!(body["current_projects"], fallback_content().availability.current_projects);
+}
+
+#[tokio::test]
+async fn settings_bot_handles_inline_button_callbacks() {
+    let _guard = availability_lock();
+    let state = test_state().await;
+
+    let update = serde_json::json!({
+        "update_id": 7,
+        "callback_query": {
+            "id": "cb-42",
+            "from": { "id": BOT_ADMIN_ID, "is_bot": false },
+            "message": {
+                "message_id": 55,
+                "chat": { "id": BOT_ADMIN_ID, "type": "private" }
+            },
+            "data": "set:full"
+        }
+    });
+
+    let status = webhook(&state, Some(BOT_SECRET), update).await;
+    assert_eq!(status, StatusCode::OK);
+
+    let (_, body) = request(&state, "GET", "/api/status", None, None).await;
+    assert_eq!(body["status"], "full");
+}
+
+#[tokio::test]
+async fn settings_bot_state_is_visible_to_the_chatbot() {
+    let _guard = availability_lock();
+    let state = test_state().await;
+    webhook(&state, Some(BOT_SECRET), message_update(BOT_ADMIN_ID, "/full")).await;
+
+    // Ответ AI-чата про занятость берётся из того же живого состояния.
+    let body = serde_json::json!({ "message": "Когда вы свободны?", "question_type": "availability" });
+    let (status, resp) = request(&state, "POST", "/api/chat", Some(body), None).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(
+        resp["answer"].as_str().unwrap_or("").contains("полная загрузка"),
+        "чат должен отдавать живой статус, получено: {resp}"
+    );
+}
+
+#[tokio::test]
+async fn availability_question_is_persisted_to_history() {
+    // Регрессия: CHECK(question_type) не знал значения 'availability', вставка
+    // падала, а save_chat глотает ошибку — вопрос терялся молча.
+    let state = test_state().await;
+
+    let body = serde_json::json!({ "message": "Когда вы свободны?", "question_type": "availability" });
+    let (status, _) = request(&state, "POST", "/api/chat", Some(body), None).await;
+    assert_eq!(status, StatusCode::OK);
+
+    let (_, chats) = request(&state, "GET", "/api/admin/chats?limit=10", None, Some(ADMIN_TOKEN)).await;
+    let rows = chats.as_array().expect("список чатов");
+    assert_eq!(rows.len(), 1, "вопрос о занятости должен сохраняться");
+    assert_eq!(rows[0]["question_type"], "availability");
 }

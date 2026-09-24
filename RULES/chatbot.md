@@ -166,6 +166,20 @@ match question_type {
 ### Источник C: Direct API response (status, availability)
 Для запросов статуса — прямой JSON response из `/api/status.json`, без LLM.
 
+Живой статус занятости живёт в `src/settings.rs` (`SiteSettings`), а не в
+контенте: владелец меняет его из Telegram-бота настроек
+(см. `docs/settings-bot.md`). `SiteContent.availability` из OpenViking — только
+значение по умолчанию, пока в БД нет сохранённой записи.
+
+`StatusBadge` (шапка и главная), `/api/status` и ответ чата на вопрос о
+занятости читают **один и тот же** `SiteSettings::availability()`, поэтому
+бейдж на сайте и слова ассистента не могут разойтись.
+
+Вопрос о занятости сохраняется в историю чатов с `question_type = 'availability'`
+(раньше CHECK-ограничение такого значения не знало, вставка падала, а
+`save_chat` глотает ошибку — вопрос терялся молча; исправлено миграцией в
+`src/storage/mod.rs`).
+
 ### Таблица источников по типам вопросов
 
 | Вопрос | Источник | Требует LLM? | Скорость |

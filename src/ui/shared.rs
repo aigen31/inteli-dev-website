@@ -2,21 +2,23 @@
 
 use leptos::prelude::*;
 
-use crate::memory::content::{Project, Service, SiteContent};
+use crate::memory::content::{Project, Service};
 use crate::services::chat::label_for_status;
+use crate::settings::SiteSettings;
 use crate::ui::icon::LucideIcon;
 
 /// Бейдж текущего статуса занятости.
+///
+/// Читает [`SiteSettings`], а не контент: статус правится из Telegram-бота, и
+/// бейдж в шапке должен меняться без перезапуска.
 #[component]
 pub fn StatusBadge() -> impl IntoView {
-    let content = SiteContent::get();
-    let status = content.availability.status.clone();
+    let status = SiteSettings::availability().status;
     let label = label_for_status(&status).to_string();
 
     view! {
         <span class=format!("status-badge status-{}", status)>
             <span class="status-dot" aria-hidden="true"></span>
-            // <LucideIcon name=status_icon_name(&status) />
             <span>{label}</span>
         </span>
     }

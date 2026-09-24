@@ -44,6 +44,21 @@ admin_user_id = 0              # env VK_ADMIN_USER_ID
 [admin]
 token = ""                     # env ADMIN_TOKEN
 
+[settings_bot]
+# Бот для управления настройками сайта. Отдельный токен: у бота заявок прав
+# менять сайт нет. Пока не заданы все три значения, эндпоинт выключен (404).
+token = ""              # env SETTINGS_BOT_TOKEN
+admin_id = 0          # env SETTINGS_BOT_ADMIN_ID
+webhook_secret = ""   # env SETTINGS_BOT_WEBHOOK_SECRET
+
+[github]
+# Блок «Открытый код» на главной. Публичные данные доступны анонимно; токен
+# (env GITHUB_TOKEN) поднимает лимит API и переводит контрибуции на GraphQL.
+username = "aigen31"
+enabled = true
+cache_ttl_seconds = 21600      # 6 часов
+show_stars = false
+
 [ratelimit]
 max_requests_per_minute = 10   # технический антифлуд (все типы запросов)
 window_seconds = 60

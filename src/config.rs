@@ -19,8 +19,14 @@ pub struct AppConfig {
     pub openviking: OpenVikingConfig,
     pub llm: LlmConfig,
     pub telegram: TelegramConfig,
+    /// Бот настроек сайта. Секция опциональна: без неё эндпоинт выключен.
+    #[serde(default)]
+    pub settings_bot: SettingsBotConfig,
     pub vk: VkConfig,
     pub admin: AdminConfig,
+    /// Статистика GitHub для блока «Открытый код». Секция опциональна.
+    #[serde(default)]
+    pub github: GitHubConfig,
     pub ratelimit: RateLimitConfig,
     pub logging: LoggingConfig,
     pub security: SecurityConfig,
@@ -101,6 +107,49 @@ pub struct TelegramConfig {
     pub admin_chat_id: i64,
 }
 
+/// Отдельный Telegram-бот для управления настройками сайта.
+///
+/// Это **не** тот бот, что присылает заявки: разные токены, разные права.
+/// Бот настроек умеет менять состояние сайта (статус занятости), поэтому
+/// доступ к нему ограничен одним Telegram-ID и секретом вебхука.
+#[derive(Debug, Clone, Deserialize)]
+pub struct SettingsBotConfig {
+    /// Токен бота. Секрет: только из env `SETTINGS_BOT_TOKEN`.
+    #[serde(default)]
+    pub token: String,
+    /// Telegram user id владельца. Все остальные получают отказ.
+    /// Секрет: только из env `SETTINGS_BOT_ADMIN_ID`.
+    #[serde(default)]
+    pub admin_id: i64,
+    /// Значение, которое Telegram присылает в заголовке
+    /// `X-Telegram-Bot-Api-Secret-Token`. Пустая строка выключает вебхук
+    /// целиком (fail closed): без секрета эндпоинт смог бы дёргать кто угодно.
+    #[serde(default)]
+    pub webhook_secret: String,
+    /// Базовый адрес Bot API. Меняется только в тестах (чтобы не ходить в
+    /// сеть) и при работе через прокси: api.telegram.org в РФ бывает недоступен.
+    #[serde(default = "default_telegram_api_base")]
+    pub api_base: String,
+}
+
+impl SettingsBotConfig {
+    /// Бот готов принимать команды: есть токен, владелец и секрет вебхука.
+    pub fn is_active(&self) -> bool {
+        !self.token.is_empty() && self.admin_id != 0 && !self.webhook_secret.is_empty()
+    }
+}
+
+impl Default for SettingsBotConfig {
+    fn default() -> Self {
+        Self {
+            token: String::new(),
+            admin_id: 0,
+            webhook_secret: String::new(),
+            api_base: default_telegram_api_base(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct VkConfig {
     #[serde(default)]
@@ -113,6 +162,35 @@ pub struct VkConfig {
 pub struct AdminConfig {
     #[serde(default)]
     pub token: String,
+}
+
+/// Статистика GitHub для блока «Открытый код» на главной.
+///
+/// Публичные данные (репозитории, языки) доступны анонимно, поэтому блок
+/// работает без токена. Токен нужен только для двух вещей: поднять лимит
+/// GitHub API с 60 до 5000 запросов в час на IP и получать точный счётчик
+/// контрибуций через GraphQL (включая приватные, если они разрешены в
+/// настройках профиля). См. `docs/github-stats.md`.
+#[derive(Debug, Clone, Deserialize)]
+pub struct GitHubConfig {
+    /// Логин на GitHub. Пустая строка полностью выключает блок.
+    #[serde(default = "default_github_username")]
+    pub username: String,
+    /// Personal Access Token. Секрет: приходит из env `GITHUB_TOKEN`.
+    #[serde(default)]
+    pub token: String,
+    /// Показывать ли блок. Позволяет выключить без удаления логина.
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    /// Как часто обновлять статистику. GitHub-статистика меняется медленно,
+    /// а лимит анонимных запросов общий на IP сервера — 6 часов безопасно.
+    #[serde(default = "default_github_cache_ttl")]
+    pub cache_ttl_seconds: u64,
+    /// Показывать ли звёзды и подписчиков. По умолчанию выключено: маленькие
+    /// числа («2 звезды», «1 подписчик») на странице продаж вредят больше,
+    /// чем помогают. Включайте, когда числа станут приличными.
+    #[serde(default)]
+    pub show_stars: bool,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -189,6 +267,27 @@ fn default_context_max_chars() -> usize {
 fn default_context_min_score() -> f64 {
     0.35
 }
+fn default_telegram_api_base() -> String {
+    "https://api.telegram.org".to_string()
+}
+fn default_github_username() -> String {
+    "aigen31".to_string()
+}
+fn default_github_cache_ttl() -> u64 {
+    21600
+}
+
+impl Default for GitHubConfig {
+    fn default() -> Self {
+        Self {
+            username: default_github_username(),
+            token: String::new(),
+            enabled: default_true(),
+            cache_ttl_seconds: default_github_cache_ttl(),
+            show_stars: false,
+        }
+    }
+}
 
 impl AppConfig {
     /// Загружает конфигурацию из файла и применяет env-переопределения для секретов.
@@ -237,6 +336,22 @@ impl AppConfig {
                 self.telegram.admin_chat_id = parsed;
             }
         }
+        // Бот настроек сайта: и токен, и id владельца — секреты, только из env.
+        if let Ok(v) = std::env::var("SETTINGS_BOT_TOKEN") {
+            if !v.trim().is_empty() {
+                self.settings_bot.token = v;
+            }
+        }
+        if let Ok(v) = std::env::var("SETTINGS_BOT_ADMIN_ID") {
+            if let Ok(parsed) = v.trim().parse() {
+                self.settings_bot.admin_id = parsed;
+            }
+        }
+        if let Ok(v) = std::env::var("SETTINGS_BOT_WEBHOOK_SECRET") {
+            if !v.trim().is_empty() {
+                self.settings_bot.webhook_secret = v;
+            }
+        }
         if let Ok(v) = std::env::var("VK_OAUTH_TOKEN") {
             self.vk.oauth_token = v;
         }
@@ -247,6 +362,17 @@ impl AppConfig {
         }
         if let Ok(v) = std::env::var("ADMIN_TOKEN") {
             self.admin.token = v;
+        }
+        if let Ok(v) = std::env::var("GITHUB_TOKEN") {
+            self.github.token = v;
+        }
+        if let Ok(v) = std::env::var("GITHUB_USERNAME") {
+            // Пустое значение игнорируем: docker-compose передаёт переменную
+            // всегда (${GITHUB_USERNAME:-}), и пустая строка иначе выключила бы
+            // блок «Открытый код» вопреки config.toml.
+            if !v.trim().is_empty() {
+                self.github.username = v;
+            }
         }
         if let Ok(v) = std::env::var("RUST_LOG") {
             self.logging.level = v;
@@ -357,5 +483,11 @@ model = "m"
         assert_eq!(cfg.cache.ttl_seconds, 3600);
         assert_eq!(cfg.ratelimit.max_requests_per_minute, 10);
         assert_eq!(cfg.security.ip_hash_algorithm, "sha256");
+        // Секция [github] опциональна: без неё блок «Открытый код» включён
+        // для дефолтного логина, но звёзды/подписчики не показываются.
+        assert!(cfg.github.enabled);
+        assert_eq!(cfg.github.username, "aigen31");
+        assert!(cfg.github.token.is_empty());
+        assert!(!cfg.github.show_stars);
     }
 }

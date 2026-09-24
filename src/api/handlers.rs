@@ -113,6 +113,37 @@ async fn handle_lead_callback(state: &AppState, data: &str) {
     }
 }
 
+/// Webhook бота настроек сайта: владелец меняет состояние сайта из Telegram.
+///
+/// Защита — заголовок `X-Telegram-Bot-Api-Secret-Token`, который Telegram
+/// присылает, если вебхук зарегистрирован с `secret_token`. Без совпадения
+/// отвечаем 404: эндпоинт не должен даже подтверждать своё существование.
+///
+/// Telegram ждёт 200 и повторяет доставку при любой другой ошибке, поэтому
+/// ошибки обработки логируются, но наружу не отдаются — иначе один и тот же
+/// апдейт будет приходить бесконечно.
+pub async fn settings_bot_webhook(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(update): Json<serde_json::Value>,
+) -> impl IntoResponse {
+    if !state.settings_bot.is_active() {
+        return StatusCode::NOT_FOUND;
+    }
+
+    let presented = headers
+        .get(crate::services::settings_bot::SECRET_HEADER)
+        .and_then(|v| v.to_str().ok());
+
+    if !state.settings_bot.secret_matches(presented) {
+        tracing::warn!("settings bot: отклонён вебхук с неверным секретом");
+        return StatusCode::NOT_FOUND;
+    }
+
+    state.settings_bot.handle_update(&state.db, &update).await;
+    StatusCode::OK
+}
+
 // ---------------------------------------------------------------------------
 // Admin (token auth)
 // ---------------------------------------------------------------------------

@@ -7,6 +7,7 @@ use leptos::prelude::*;
 
 use crate::limits::Limits;
 use crate::memory::content::SiteContent;
+use crate::ui::github::GitHubStatsSection;
 use crate::ui::shared::{PrimaryButton, ProjectCard, SecondaryButton, ServiceCard, StatusBadge};
 
 /// Интерактивный AI-терминал в hero-секции. Клиент может задать вопрос через
@@ -113,6 +114,10 @@ pub fn Home() -> impl IntoView {
                 {projects_preview.into_iter().map(|p| view! { <ProjectCard project=p/> }).collect::<Vec<_>>()}
             </div>
         </section>
+
+        // Блок «Открытый код»: проверяемый извне аргумент перед финальным CTA.
+        // Если GitHub недоступен или блок выключен конфигом — секция не рендерится.
+        <GitHubStatsSection/>
 
         <section class="section section-glow section-cta cta-section">
             <h2>Готовы обсудить ваш проект?</h2>

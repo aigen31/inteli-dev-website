@@ -803,6 +803,127 @@ ul { margin: 0; padding: 0; list-style: none; }
   50%      { transform: translate3d(0, -24px, 0) scale(1.08); }
 }
 
+/* ---------- 8.2 Блок «Открытый код» (статистика GitHub) ----------
+   Между «Результатами» и финальным CTA: числа с GitHub — внешне проверяемый
+   аргумент, поэтому он стоит последним перед призывом. Секция рендерится
+   только когда снимок статистики уже получен (см. src/ui/github.rs), иначе
+   в разметке не остаётся даже заголовка. */
+.section-github::before {
+  top: -60px;
+  right: -160px;
+  width: 560px;
+  height: 480px;
+  opacity: 0.55;
+  background: radial-gradient(circle, rgba(80, 220, 160, 0.22) 0%, rgba(60, 160, 220, 0.14) 48%, transparent 72%);
+  animation: section-drift-a 28s ease-in-out infinite;
+}
+.section-github::after {
+  bottom: -120px;
+  left: -180px;
+  width: 520px;
+  height: 440px;
+  opacity: 0.6;
+  background: radial-gradient(circle, rgba(139, 127, 245, 0.30) 0%, rgba(90, 70, 220, 0.14) 50%, transparent 74%);
+  animation: section-drift-b 34s ease-in-out infinite;
+}
+
+.github-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xl);
+  padding: var(--space-xl);
+  background: linear-gradient(180deg, var(--color-surface-2), var(--color-surface));
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-md);
+}
+
+.github-profile {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-md);
+  align-self: flex-start;
+  color: var(--color-text);
+}
+.github-profile:hover { text-decoration: none; }
+.github-avatar {
+  width: 56px;
+  height: 56px;
+  flex: 0 0 auto;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--color-border-strong);
+  background: var(--color-code-bg);
+  object-fit: cover;
+}
+.github-profile-text { display: flex; flex-direction: column; min-width: 0; }
+.github-profile-name { font-weight: 700; font-size: var(--text-h3); line-height: 1.3; }
+.github-profile-handle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+  color: var(--color-text-tertiary);
+  font-family: var(--font-mono);
+  font-size: var(--text-small);
+  transition: color var(--transition-fast);
+}
+.github-profile:hover .github-profile-handle { color: var(--color-primary); }
+
+.github-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: var(--space-md);
+}
+.github-stat {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+  padding: var(--space-md);
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+}
+.github-stat-value {
+  font-family: var(--font-heading);
+  font-size: 2rem;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--color-text);
+  text-shadow: 0 0 24px rgba(139, 127, 245, 0.35);
+}
+.github-stat-label { font-size: var(--text-small); color: var(--color-text-secondary); }
+
+.github-langs { display: flex; flex-direction: column; gap: var(--space-md); }
+.github-lang-bar {
+  display: flex;
+  height: 8px;
+  border-radius: var(--radius-full);
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.06);
+}
+.github-lang-seg { display: block; height: 100%; }
+.github-lang-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm) var(--space-lg);
+}
+.github-lang-item {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-sm);
+  font-size: var(--text-small);
+}
+.github-lang-dot {
+  width: 10px;
+  height: 10px;
+  flex: 0 0 auto;
+  border-radius: var(--radius-full);
+}
+.github-lang-count {
+  color: var(--color-text-tertiary);
+  font-family: var(--font-mono);
+  font-size: var(--text-caption);
+}
+
 /* ---------- 9. Cards ---------- */
 .cards-grid {
   display: grid;
@@ -1275,6 +1396,22 @@ ul { margin: 0; padding: 0; list-style: none; }
   .cards-grid, .cards-grid-2 { grid-template-columns: 1fr; }
   .contact-grid { grid-template-columns: 1fr; }
   .project-metrics { grid-template-columns: 1fr; }
+  /* Блок «Открытый код»: 4 плитки в 2 колонки, подписи мельче. */
+  .github-panel { padding: var(--space-lg); gap: var(--space-lg); }
+  /* «Открытый код» + «github.com/aigen31 →» в одну строку на 390px не
+     помещаются: заголовок рвался на «Открытый / код». Складываем шапку
+     секции в столбец — заголовок снова в одну строку. */
+  .section-github .section-head {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-xs);
+  }
+  .github-stats { grid-template-columns: repeat(2, 1fr); gap: var(--space-sm); }
+  .github-stat { padding: var(--space-md) var(--space-sm); }
+  .github-stat-value { font-size: 1.5rem; }
+  .github-stat-label { font-size: var(--text-caption); }
+  .github-avatar { width: 44px; height: 44px; }
+  .github-profile-name { font-size: var(--text-body); }
   /* Световые пятна на мобильном — тише, чтобы не спорить с текстом. */
   .section-glow::before,
   .section-glow::after { opacity: 0.32; }

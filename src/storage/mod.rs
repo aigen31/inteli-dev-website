@@ -5,6 +5,7 @@
 
 pub mod chat;
 pub mod lead;
+pub mod settings;
 
 use sqlx::sqlite::{SqlitePool, SqlitePoolOptions};
 
@@ -16,7 +17,7 @@ CREATE TABLE IF NOT EXISTS chats (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_message TEXT NOT NULL,
     bot_response TEXT NOT NULL,
-    question_type TEXT CHECK(question_type IN ('preset', 'free', 'analysis', 'lead_request')),
+    question_type TEXT CHECK(question_type IN ('preset', 'free', 'analysis', 'lead_request', 'availability')),
     session_id TEXT,
     client_hash TEXT,
     created_at TEXT NOT NULL,
@@ -46,6 +47,12 @@ CREATE TABLE IF NOT EXISTS notification_retry_queue (
     last_error TEXT
 );
 
+CREATE TABLE IF NOT EXISTS site_settings (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_chats_created ON chats(created_at);
 CREATE INDEX IF NOT EXISTS idx_chats_question_type ON chats(question_type);
 CREATE INDEX IF NOT EXISTS idx_leads_status ON leads(status);
@@ -72,7 +79,62 @@ pub async fn init_pool(path: &str) -> AppResult<SqlitePool> {
 
     sqlx::raw_sql(SCHEMA).execute(&pool).await?;
 
+    // CREATE TABLE IF NOT EXISTS не меняет уже созданные таблицы, поэтому
+    // расширение CHECK-ограничения требует отдельной миграции.
+    migrate_chats_question_type(&pool).await?;
+
     Ok(pool)
+}
+
+/// Расширяет CHECK-ограничение `chats.question_type` значением `availability`.
+///
+/// До этой миграции вопросы «когда вы свободны?» не сохранялись: вставка
+/// нарушала CHECK, а `ChatService::save_chat` глотает ошибку записи, чтобы сбой
+/// истории не ломал ответ пользователю. В итоге вопрос терялся молча.
+///
+/// SQLite не умеет менять CHECK через ALTER, поэтому таблица пересобирается:
+/// новая схема → копия данных → подмена. Всё в одной транзакции, поэтому
+/// обрыв на середине не оставит БД в полусобранном состоянии.
+async fn migrate_chats_question_type(pool: &SqlitePool) -> AppResult<()> {
+    let table_sql: Option<String> =
+        sqlx::query_scalar("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'chats'")
+            .fetch_optional(pool)
+            .await?;
+
+    let Some(table_sql) = table_sql else {
+        return Ok(());
+    };
+    if table_sql.contains("'availability'") {
+        return Ok(());
+    }
+
+    tracing::info!("миграция chats: добавляем 'availability' в CHECK(question_type)");
+
+    let mut tx = pool.begin().await?;
+    sqlx::raw_sql(
+        r#"
+CREATE TABLE chats_new (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_message TEXT NOT NULL,
+    bot_response TEXT NOT NULL,
+    question_type TEXT CHECK(question_type IN ('preset', 'free', 'analysis', 'lead_request', 'availability')),
+    session_id TEXT,
+    client_hash TEXT,
+    created_at TEXT NOT NULL,
+    response_time_ms INTEGER
+);
+INSERT INTO chats_new SELECT id, user_message, bot_response, question_type, session_id, client_hash, created_at, response_time_ms FROM chats;
+DROP TABLE chats;
+ALTER TABLE chats_new RENAME TO chats;
+CREATE INDEX IF NOT EXISTS idx_chats_created ON chats(created_at);
+CREATE INDEX IF NOT EXISTS idx_chats_question_type ON chats(question_type);
+"#,
+    )
+    .execute(&mut *tx)
+    .await?;
+    tx.commit().await?;
+
+    Ok(())
 }
 
 /// Инициализирует in-memory пул для тестов.
@@ -84,4 +146,114 @@ pub async fn init_memory_pool() -> AppResult<SqlitePool> {
         .await?;
     sqlx::raw_sql(SCHEMA).execute(&pool).await?;
     Ok(pool)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Схема `chats` до миграции: без `availability` в CHECK.
+    const OLD_CHATS_SCHEMA: &str = r#"
+CREATE TABLE chats (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_message TEXT NOT NULL,
+    bot_response TEXT NOT NULL,
+    question_type TEXT CHECK(question_type IN ('preset', 'free', 'analysis', 'lead_request')),
+    session_id TEXT,
+    client_hash TEXT,
+    created_at TEXT NOT NULL,
+    response_time_ms INTEGER
+);
+"#;
+
+    async fn temp_db() -> (SqlitePool, std::path::PathBuf) {
+        let path = std::env::temp_dir().join(format!("inteli_mig_{}.db", uuid::Uuid::new_v4()));
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect(&format!("sqlite:{}?mode=rwc", path.display()))
+            .await
+            .unwrap();
+        (pool, path)
+    }
+
+    async fn insert_chat(pool: &SqlitePool, question_type: &str) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            "INSERT INTO chats (user_message, bot_response, question_type, created_at) VALUES ('q', 'a', ?, '2026-09-24T00:00:00Z')",
+        )
+        .bind(question_type)
+        .execute(pool)
+        .await
+        .map(|_| ())
+    }
+
+    #[tokio::test]
+    async fn old_schema_rejects_availability_before_migration() {
+        // Фиксируем сам баг: до миграции вставка падала на CHECK, а
+        // save_chat глотает ошибку — вопрос «когда вы свободны?» терялся молча.
+        let (pool, path) = temp_db().await;
+        sqlx::raw_sql(OLD_CHATS_SCHEMA).execute(&pool).await.unwrap();
+        assert!(insert_chat(&pool, "availability").await.is_err());
+
+        pool.close().await;
+        let _ = std::fs::remove_file(&path);
+        let _ = std::fs::remove_file(path.with_extension("db-wal"));
+        let _ = std::fs::remove_file(path.with_extension("db-shm"));
+    }
+
+    #[tokio::test]
+    async fn migration_keeps_rows_and_allows_availability() {
+        let (pool, path) = temp_db().await;
+        sqlx::raw_sql(OLD_CHATS_SCHEMA).execute(&pool).await.unwrap();
+        insert_chat(&pool, "preset").await.unwrap();
+        insert_chat(&pool, "free").await.unwrap();
+        pool.close().await;
+
+        // Повторный init_pool видит старую схему и пересобирает таблицу.
+        let pool = init_pool(path.to_str().unwrap()).await.unwrap();
+
+        // Данные уцелели.
+        let kept: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM chats")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(kept, 2);
+
+        // И новые значения теперь проходят.
+        insert_chat(&pool, "availability").await.unwrap();
+        let stored: Vec<String> =
+            sqlx::query_scalar("SELECT question_type FROM chats ORDER BY id")
+                .fetch_all(&pool)
+                .await
+                .unwrap();
+        assert_eq!(stored, vec!["preset", "free", "availability"]);
+
+        // Миграция идемпотентна: повторный запуск ничего не ломает.
+        pool.close().await;
+        let pool = init_pool(path.to_str().unwrap()).await.unwrap();
+        let after: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM chats")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(after, 3);
+
+        pool.close().await;
+        let _ = std::fs::remove_file(&path);
+        let _ = std::fs::remove_file(path.with_extension("db-wal"));
+        let _ = std::fs::remove_file(path.with_extension("db-shm"));
+    }
+
+    #[tokio::test]
+    async fn fresh_schema_is_not_migrated() {
+        let (pool, path) = temp_db().await;
+        pool.close().await;
+        let pool = init_pool(path.to_str().unwrap()).await.unwrap();
+
+        // На свежей БД миграция не нужна — сразу можно писать availability.
+        insert_chat(&pool, "availability").await.unwrap();
+
+        pool.close().await;
+        let _ = std::fs::remove_file(&path);
+        let _ = std::fs::remove_file(path.with_extension("db-wal"));
+        let _ = std::fs::remove_file(path.with_extension("db-shm"));
+    }
 }

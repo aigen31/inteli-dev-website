@@ -32,11 +32,19 @@ services:
       # Telegram
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
       - TELEGRAM_ADMIN_CHAT_ID=${TELEGRAM_ADMIN_CHAT_ID:-0}
+      # Бот настроек сайта (меняет статус занятости из Telegram).
+      - SETTINGS_BOT_TOKEN=${SETTINGS_BOT_TOKEN:-}
+      - SETTINGS_BOT_ADMIN_ID=${SETTINGS_BOT_ADMIN_ID:-0}
+      - SETTINGS_BOT_WEBHOOK_SECRET=${SETTINGS_BOT_WEBHOOK_SECRET:-}
       # VK
       - VK_OAUTH_TOKEN=${VK_OAUTH_TOKEN:-}
       - VK_ADMIN_USER_ID=${VK_ADMIN_USER_ID:-0}
       # Admin
       - ADMIN_TOKEN=${ADMIN_TOKEN:-}
+      # GitHub (опционально): блок «Открытый код» работает и без токена,
+      # токен поднимает лимит API 60 → 5000 запросов/час на IP.
+      - GITHUB_TOKEN=${GITHUB_TOKEN:-}
+      - GITHUB_USERNAME=${GITHUB_USERNAME:-}
       # SQLite: DB пишется в volume, примонтированный в DATA_DIR.
       - DATA_DIR=/data
       - DB_PATH=/data/chats.db

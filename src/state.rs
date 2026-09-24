@@ -14,7 +14,7 @@ use sqlx::sqlite::SqlitePool;
 use crate::cache::{InMemoryCache, RateLimiter, SlidingWindowLimiter};
 use crate::config::AppConfig;
 use crate::notification::NotificationService;
-use crate::services::{ChatService, LeadService};
+use crate::services::{ChatService, LeadService, SettingsBot};
 
 /// Состояние приложения (клонируется дешёво — все поля `Arc`/`Clone`).
 #[derive(Clone)]
@@ -29,6 +29,8 @@ pub struct AppState {
     pub rate_limiter: Arc<RateLimiter>,
     /// Часовая квота на AI-ответы (то, что реально жжёт токены).
     pub hourly_limiter: Arc<SlidingWindowLimiter>,
+    /// Бот настроек сайта (меняет статус занятости из Telegram).
+    pub settings_bot: Arc<SettingsBot>,
     pub leptos_options: LeptosOptions,
     pub started_at: Instant,
 }

@@ -13,3 +13,6 @@ config.toml
 *.sqlite
 *.sqlite3
 *.db
+
+# Local docker CLI state
+.docker-build/
