@@ -73,6 +73,19 @@ window_seconds = 60
 n8n_api_key = ""               # env N8N_API_KEY (секрет)
 outbox_batch_limit = 50
 
+[seo]
+# Ключ IndexNow. Не секрет: он же в URL запроса и в имени файла, — но задаётся
+# через env INDEXNOW_KEY, чтобы включать и отзывать без пересборки образа.
+# Пока ключ пуст, протокол выключен. Сгенерировать: openssl rand -hex 16
+indexnow_key = ""              # env INDEXNOW_KEY
+
+# Дополнительные файлы в корне сайта: имя → содержимое. Нужны для подтверждения
+# прав (Яндекс и Google отдают файл вроде googleXXXX.html с проверочной строкой).
+# Подтверждение через DNS TXT дешевле: файл здесь требует рестарта и пересборки
+# образа не требует, но конфиг монтируется в контейнер.
+# [seo.root_files]
+# "google1234abcd.html" = "google-site-verification: google1234abcd.html"
+
 [limits]
 # Пользовательские лимиты: те же числа уходят в UI и в серверную валидацию.
 chat_message_max_chars = 500

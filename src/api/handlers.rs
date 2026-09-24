@@ -545,10 +545,12 @@ pub async fn main_js() -> impl IntoResponse {
     )
 }
 
-pub async fn robots() -> impl IntoResponse {
+/// robots.txt. Собирается на лету из публичного адреса сайта: адрес карты в
+/// директиве `Sitemap` обязан совпадать с тем, что отдаёт `/sitemap.xml`.
+pub async fn robots(State(state): State<AppState>) -> impl IntoResponse {
     (
         [(header::CONTENT_TYPE, "text/plain; charset=utf-8")],
-        assets::ROBOTS_TXT,
+        crate::services::seo::robots_txt(state.articles.public_url()),
     )
 }
 

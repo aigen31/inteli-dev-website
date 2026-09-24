@@ -154,10 +154,22 @@ async fn run(config: AppConfig) -> AppResult<()> {
     // 5.0. Статьи блога. Снимок опубликованного нужен до старта сервера:
     //      Leptos рендерит SSR-страницы синхронно, поэтому блог и карта сайта
     //      читают статьи из памяти, а не из БД.
-    let articles = Arc::new(ArticleService::new(
-        db.clone(),
-        config.server.public_url.clone(),
+    //
+    //      IndexNow подключается сюда же: публикация статьи — единственное
+    //      событие, о котором стоит сообщать поисковикам. Без ключа он
+    //      выключен, и сервис ведёт себя как раньше.
+    let indexnow = Arc::new(inteli_dev::services::seo::IndexNow::new(
+        &config.seo.indexnow_key,
+        &config.server.public_url,
     ));
+    if let Some((key_file, _)) = indexnow.key_file() {
+        tracing::info!("IndexNow включён: ключ в корне — /{key_file}");
+    } else {
+        tracing::info!("IndexNow выключен (нет INDEXNOW_KEY)");
+    }
+    let articles = Arc::new(
+        ArticleService::new(db.clone(), config.server.public_url.clone()).with_indexnow(indexnow),
+    );
     match articles.reload_published().await {
         Ok(()) => tracing::info!(
             "блог: опубликованных статей — {}",
@@ -204,7 +216,7 @@ async fn run(config: AppConfig) -> AppResult<()> {
 
     // 7. Собираем router: API + Leptos SSR + fallback.
     let routes = generate_route_list(App);
-    let app: Router = api::routes()
+    let app: Router = api::routes(&state.config.seo)
         .leptos_routes(&state, routes, {
             let leptos_options = leptos_options.clone();
             move || shell(leptos_options.clone())

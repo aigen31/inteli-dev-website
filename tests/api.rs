@@ -166,6 +166,14 @@ async fn test_state_with(bot_config: SettingsBotConfig, llm_requests_per_hour: u
     }
 }
 
+/// Роутер для тестов с пустой SEO-секцией: файлов в корне нет, IndexNow выключен.
+///
+/// Отдельные тесты собирают роутер сами — с ключом IndexNow и файлами
+/// подтверждения прав, — поэтому здесь именно значение по умолчанию.
+fn test_router(state: &AppState) -> axum::Router {
+    api::routes(&inteli_dev::config::SeoConfig::default()).with_state(state.clone())
+}
+
 /// Публичный адрес сайта в тестах — из него собираются ссылки в RSS и событиях.
 fn test_public_url() -> &'static str {
     "https://test.inteli-dev.ru"
@@ -189,7 +197,7 @@ async fn request(
     body: Option<serde_json::Value>,
     token: Option<&str>,
 ) -> (StatusCode, serde_json::Value) {
-    let app = api::routes().with_state(state.clone());
+    let app = test_router(state);
 
     let mut builder = Request::builder().method(method).uri(uri);
     if let Some(t) = token {
@@ -483,7 +491,7 @@ async fn admin_with_token_returns_stats() {
 
 /// Отправляет апдейт Telegram на вебхук бота настроек.
 async fn webhook(state: &AppState, secret: Option<&str>, update: serde_json::Value) -> StatusCode {
-    let app = api::routes().with_state(state.clone());
+    let app = test_router(state);
 
     let mut builder = Request::builder()
         .method("POST")
@@ -703,7 +711,7 @@ async fn request_with_headers(
     body: Option<serde_json::Value>,
     headers: &[(&str, &str)],
 ) -> (StatusCode, serde_json::Value) {
-    let app = api::routes().with_state(state.clone());
+    let app = test_router(state);
 
     let mut builder = Request::builder().method(method).uri(uri);
     for (name, value) in headers {
@@ -727,7 +735,7 @@ async fn request_with_headers(
 
 /// Запрос, ответ которого — не JSON (RSS/sitemap отдают XML).
 async fn request_text(state: &AppState, uri: &str) -> (StatusCode, String) {
-    let app = api::routes().with_state(state.clone());
+    let app = test_router(state);
     let req = Request::builder()
         .method("GET")
         .uri(uri)
@@ -1178,6 +1186,86 @@ async fn only_published_articles_reach_rss_and_sitemap() {
     assert!(sitemap.contains("<loc>https://test.inteli-dev.ru/</loc>"));
     assert!(sitemap.contains("<loc>https://test.inteli-dev.ru/blog/publichnaya-statya</loc>"));
     assert!(!sitemap.contains("chernovik"));
+}
+
+// ---------------------------------------------------------------------------
+// SEO-поверхность: robots.txt, файлы в корне, IndexNow
+// ---------------------------------------------------------------------------
+
+/// GET на произвольном роутере (не на общем `test_router`).
+async fn get_text(app: axum::Router, uri: &str) -> (StatusCode, String) {
+    let req = Request::builder()
+        .method("GET")
+        .uri(uri)
+        .body(Body::empty())
+        .unwrap();
+
+    let resp = app.oneshot(req).await.unwrap();
+    let status = resp.status();
+    let bytes = resp.into_body().collect().await.unwrap().to_bytes();
+    (status, String::from_utf8_lossy(&bytes).into_owned())
+}
+
+/// SEO-секция с ключом IndexNow и файлом подтверждения прав.
+fn test_seo_config() -> inteli_dev::config::SeoConfig {
+    inteli_dev::config::SeoConfig {
+        indexnow_key: "0123456789abcdef".into(),
+        root_files: [(
+            "google1234abcd.html".to_string(),
+            "google-site-verification: google1234abcd.html".to_string(),
+        )]
+        .into_iter()
+        .collect(),
+    }
+}
+
+#[tokio::test]
+async fn robots_points_at_the_site_it_is_served_from() {
+    let state = test_state().await;
+
+    let (status, robots) = request_text(&state, "/robots.txt").await;
+
+    assert_eq!(status, StatusCode::OK);
+    // Адрес карты сайта берётся из PUBLIC_URL — того же, что и в /sitemap.xml.
+    assert!(
+        robots.contains("Sitemap: https://test.inteli-dev.ru/sitemap.xml"),
+        "в robots.txt нет карты сайта: {robots}"
+    );
+    // Регрессия: в статике был прописан чужой домен `inteli.dev.ru`.
+    assert!(
+        !robots.contains("inteli.dev.ru"),
+        "robots.txt указывает на чужой хост: {robots}"
+    );
+    assert!(robots.contains("Disallow: /admin"));
+}
+
+#[tokio::test]
+async fn root_files_are_served_and_unknown_ones_are_not() {
+    let state = test_state().await;
+    let app = api::routes(&test_seo_config()).with_state(state);
+
+    // Файл подтверждения прав.
+    let (status, body) = get_text(app.clone(), "/google1234abcd.html").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body, "google-site-verification: google1234abcd.html");
+
+    // Файл ключа IndexNow добавляется сам: имя — из ключа, содержимое — ключ.
+    let (status, body) = get_text(app.clone(), "/0123456789abcdef.txt").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body, "0123456789abcdef");
+
+    // Неизвестное имя отдаётся не файлом, а обычным 404 сайта.
+    let (status, _) = get_text(app, "/neizvestnyj-fajl.html").await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn root_files_are_absent_without_configuration() {
+    let state = test_state().await;
+
+    // Пустая [seo]: маршрутов для файлов в корне нет вовсе.
+    let (status, _) = get_text(test_router(&state), "/0123456789abcdef.txt").await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
 }
 
 #[tokio::test]

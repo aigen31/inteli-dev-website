@@ -25,12 +25,13 @@
 //! `article_events` уже есть `attempts` и `next_attempt_at`, поэтому ретраи с
 //! backoff не потребуют миграции.
 
-use std::sync::RwLock;
+use std::sync::{Arc, RwLock};
 
 use serde::{Deserialize, Serialize};
 use sqlx::sqlite::SqlitePool;
 
 use crate::error::{AppError, AppResult};
+use crate::services::seo::IndexNow;
 use crate::storage::article as repo;
 use crate::utils::markdown;
 
@@ -274,6 +275,9 @@ pub struct ArticleService {
     /// Публичный адрес сайта — из него собираются абсолютные ссылки в
     /// событиях для n8n (и далее в RSS/sitemap).
     public_url: String,
+    /// Уведомление поисковиков об изменениях (IndexNow). Необязательно: без
+    /// ключа протокол выключен, и сервис работает ровно как раньше.
+    indexnow: Option<Arc<IndexNow>>,
 }
 
 impl ArticleService {
@@ -281,7 +285,28 @@ impl ArticleService {
         Self {
             db,
             public_url: public_url.into().trim_end_matches('/').to_string(),
+            indexnow: None,
         }
+    }
+
+    /// Подключает уведомление поисковиков (IndexNow).
+    ///
+    /// Отдельный метод, а не аргумент [`Self::new`]: ключ есть только в проде, а
+    /// тесты и локальный запуск собирают сервис как раньше.
+    pub fn with_indexnow(mut self, indexnow: Arc<IndexNow>) -> Self {
+        self.indexnow = Some(indexnow);
+        self
+    }
+
+    /// Сообщает поисковикам, что страница появилась, изменилась или исчезла.
+    ///
+    /// Публикуем и листинг блога: он меняется при каждой публикации. Запрос
+    /// уходит в фоне и не влияет на результат операции — см. [`IndexNow`].
+    fn notify_search_engines(&self, slug: &str) {
+        let Some(indexnow) = &self.indexnow else {
+            return;
+        };
+        indexnow.spawn_notify(&[format!("/blog/{slug}"), "/blog".to_string()]);
     }
 
     /// Публичный адрес сайта без завершающего слэша.
@@ -331,6 +356,8 @@ impl ArticleService {
             .status
             .is_public()
             .then(|| "article.published".to_string());
+        // Публикация меняет сайт: об этом стоит сказать поисковикам.
+        let public_change = event_type.is_some();
         let public_url = self.public_url.clone();
 
         let row = repo::insert(
@@ -358,6 +385,9 @@ impl ArticleService {
 
         let article = row_to_article(&row)?;
         self.reload_published().await?;
+        if public_change {
+            self.notify_search_engines(&article.slug);
+        }
         tracing::info!("статья создана: #{} «{}» ({})", article.id, article.title, article.status);
         Ok(article)
     }
@@ -385,6 +415,9 @@ impl ArticleService {
         };
 
         let event_type = transition_event(existing.status, validated.status);
+        // Событие есть ровно тогда, когда страница появилась, изменилась или
+        // исчезла, — то же условие подходит и для уведомления поисковиков.
+        let public_change = event_type.is_some();
         let public_url = self.public_url.clone();
 
         let row = repo::update(
@@ -411,6 +444,9 @@ impl ArticleService {
 
         let article = row_to_article(&row)?;
         self.reload_published().await?;
+        if public_change {
+            self.notify_search_engines(&article.slug);
+        }
         tracing::info!("статья обновлена: #{} «{}» ({})", article.id, article.title, article.status);
         Ok(article)
     }
@@ -441,6 +477,9 @@ impl ArticleService {
             .status
             .is_public()
             .then(|| "article.deleted".to_string());
+        // Удаление публичной статьи — тоже изменение сайта: сообщаем адрес,
+        // который теперь отдаёт 404, это для поисковика сигнал «убрать из выдачи».
+        let public_change = event_type.is_some();
         let public_url = self.public_url.clone();
 
         let row = repo::delete(
@@ -457,6 +496,9 @@ impl ArticleService {
 
         let article = row_to_article(&row)?;
         self.reload_published().await?;
+        if public_change {
+            self.notify_search_engines(&article.slug);
+        }
         tracing::info!("статья удалена: #{} «{}»", article.id, article.title);
         Ok(article)
     }

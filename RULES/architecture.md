@@ -204,6 +204,8 @@ src/
 | `/contact` | GET | Контактная форма + ссылки на мессенджеры | HTML |
 | `/rss.xml`, `/feed.xml` | GET | RSS-лента блога с полным текстом в `content:encoded` | `application/rss+xml` |
 | `/sitemap.xml` | GET | Карта сайта: статические страницы + опубликованные статьи | `application/xml` |
+| `/robots.txt` | GET | Собирается на лету из `public_url`: адрес карты обязан совпадать с `/sitemap.xml`. См. `src/services/seo.rs` | `text/plain` |
+| `/{имя из [seo].root_files}` | GET | Подтверждение прав (Яндекс/Google) и ключ IndexNow `{ключ}.txt`. Имена проверяет `SeoConfig::validate` | `text/html` / `text/plain` |
 | `/api/chat` | POST | API для AI-чата (JSON request/response) | `application/json` |
 | `/api/lead` | POST | Создание заявки/лида | `application/json` |
 | `/api/articles` | — | Публичного JSON-API статей нет: машинный доступ — RSS и outbox | — |
@@ -211,6 +213,28 @@ src/
 | `/api/integrations/outbox` | GET | Фид событий кросспостинга для n8n. Заголовок `X-Api-Key`; без ключа в конфиге — 404. См. `docs/articles.md` | `application/json` |
 | `/api/integrations/outbox/ack` | POST | Подтверждение доставки событий (идемпотентно) | `application/json` |
 | `/api/integrations/outbox/fail` | POST | Сообщить о сбое доставки: инкремент попыток, `failed` после 5 | `application/json` |
+
+### SEO-поверхность
+
+Всё, что читают поисковики до контента, живёт в одном модуле — `src/services/seo.rs`.
+
+| Что | Откуда берётся | Почему так |
+|-----|----------------|------------|
+| `/robots.txt` | `seo::robots_txt(public_url)` | Адрес карты сайта обязан совпадать с `PUBLIC_URL` и с тем, что отдаёт `/sitemap.xml`. Раньше это была константа в `assets/robots.txt`, и хост разошёлся (`inteli.dev.ru` вместо `inteli-dev.ru`) — ошибка тихая: поисковик просто не находит карту |
+| `/{имя}` | `[seo].root_files` + файл ключа IndexNow | Подтверждение прав Яндекса и Google — файл с проверочной строкой. DNS TXT дешевле (не нужен рестарт), файл нужен, когда DNS недоступен |
+| IndexNow | `[seo].indexnow_key` (env `INDEXNOW_KEY`) | Публикация, изменение и снятие статьи уведомляют Яндекс и Bing. Свежесть прямо влияет на попадание в генеративные ответы — см. `docs/seo-toolkit.md` |
+
+Правила, которые нельзя нарушать:
+
+- имя файла из `[seo].root_files` не может совпадать с `ROOT_ASSET_PATHS`
+  (`src/api/mod.rs`) и обязано содержать расширение: страницы сайта — это
+  сегменты без точки, поэтому файл с точкой с ними не столкнётся. В обоих
+  случаях matchit паникует на конфликте маршрутов, и приложение не поднимается.
+  Ловится в `SeoConfig::validate` и тестом `root_asset_paths_are_all_reserved`;
+- уведомление IndexNow не влияет на публикацию: запрос уходит в фоне
+  (`IndexNow::spawn_notify`), ошибка остаётся в логах, операция не падает;
+- политика по ИИ-краулерам (кого пускать, кого нет) — отдельное решение
+  владельца, а не побочный эффект правки robots.txt.
 
 ### Админ маршруты (требуют `Authorization: Bearer <ADMIN_TOKEN>`)
 | Route | Метод | Описание |

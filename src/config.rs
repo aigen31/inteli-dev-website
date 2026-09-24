@@ -4,6 +4,7 @@
 //! переменными окружения для секретов (`LLM_API_KEY`, `TELEGRAM_BOT_TOKEN`,
 //! `ADMIN_TOKEN` и т.д.). Секреты никогда не хранятся в коде и не коммитятся.
 
+use std::collections::BTreeMap;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 
 use serde::Deserialize;
@@ -33,6 +34,9 @@ pub struct AppConfig {
     /// Внешние интеграции (фид событий для n8n). Секция опциональна.
     #[serde(default)]
     pub integrations: IntegrationsConfig,
+    /// SEO-поверхность: файлы в корне и IndexNow. Секция опциональна.
+    #[serde(default)]
+    pub seo: SeoConfig,
     /// Пользовательские лимиты. Секция опциональна: без неё берутся значения
     /// по умолчанию, поэтому старый config.toml не ломает запуск.
     #[serde(default)]
@@ -87,6 +91,108 @@ impl IntegrationsConfig {
     /// Фид событий доступен: ключ задан и непустой.
     pub fn is_active(&self) -> bool {
         !self.n8n_api_key.trim().is_empty()
+    }
+}
+
+/// SEO-поверхность сайта: файлы в корне и IndexNow.
+///
+/// robots.txt здесь нет намеренно: он собирается на лету из `public_url`
+/// (см. `services::seo`), чтобы адрес карты сайта не мог разойтись с адресом,
+/// который отдаёт `/sitemap.xml`.
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct SeoConfig {
+    /// Ключ IndexNow. Не секрет — он же в URL запроса и в имени файла, — но
+    /// задаётся из env `INDEXNOW_KEY`, чтобы менять и отзывать без пересборки.
+    /// Пустое значение выключает протокол целиком.
+    #[serde(default)]
+    pub indexnow_key: String,
+    /// Дополнительные файлы в корне сайта: имя → содержимое.
+    ///
+    /// Нужны для подтверждения прав на сайт (Яндекс и Google отдают файл вида
+    /// `googleXXXX.html` / `yandex_XXXX.html` с проверочной строкой внутри).
+    /// Подтверждение через DNS TXT дешевле — этот вариант для случаев, когда
+    /// DNS недоступен. Правка конфига применяется после рестарта контейнера.
+    #[serde(default)]
+    pub root_files: BTreeMap<String, String>,
+}
+
+impl SeoConfig {
+    /// Файлы, которые надо отдать из корня: явные плюс файл ключа IndexNow.
+    ///
+    /// Если ключ задан, файл `{ключ}.txt` добавляется сам — по спецификации
+    /// IndexNow поисковик проверяет ключ именно так.
+    pub fn root_files(&self) -> Vec<(String, String)> {
+        let mut files: Vec<(String, String)> = self
+            .root_files
+            .iter()
+            .map(|(name, content)| (name.clone(), content.clone()))
+            .collect();
+
+        if let Some(key_file) = crate::services::seo::indexnow_key_file(&self.indexnow_key) {
+            if !self.root_files.contains_key(&key_file.0) {
+                files.push(key_file);
+            }
+        }
+
+        files
+    }
+
+    /// IndexNow включён: ключ задан и проходит проверку спецификации.
+    pub fn is_indexnow_active(&self) -> bool {
+        crate::services::seo::is_valid_indexnow_key(self.indexnow_key.trim())
+    }
+
+    /// Проверяет секцию до старта сервера.
+    ///
+    /// Ошибка здесь лучше паники: имя файла из конфига становится маршрутом, и
+    /// столкновение с существующим (например, `robots.txt`) уронило бы
+    /// приложение уже на сборке роутера.
+    pub fn validate(&self) -> AppResult<()> {
+        let key = self.indexnow_key.trim();
+        if !key.is_empty() && !crate::services::seo::is_valid_indexnow_key(key) {
+            return Err(AppError::Config(format!(
+                "[seo].indexnow_key: ключ должен быть длиной 8–128 символов \
+                 из латиницы, цифр и дефиса (получено {} символов)",
+                key.len()
+            )));
+        }
+
+        for (name, content) in &self.root_files {
+            if !crate::services::seo::is_valid_root_file_name(name) {
+                return Err(AppError::Config(format!(
+                    "[seo].root_files: недопустимое имя файла `{name}`. \
+                     Нужен один сегмент пути с расширением, из латиницы, цифр, \
+                     точки, дефиса и подчёркивания, не начинающийся с точки, \
+                     и не занятый статикой сайта"
+                )));
+            }
+            if content.trim().is_empty() {
+                return Err(AppError::Config(format!(
+                    "[seo].root_files: содержимое файла `{name}` пустое — \
+                     подтверждение прав не сработает"
+                )));
+            }
+            if content.len() > 4096 {
+                return Err(AppError::Config(format!(
+                    "[seo].root_files: содержимое файла `{name}` длиннее 4096 \
+                     символов — это не файл подтверждения прав"
+                )));
+            }
+        }
+
+        // Явный файл с именем ключа IndexNow отдал бы поисковику не тот текст,
+        // и проверка ключа молча провалилась бы.
+        if let Some((key_file, _)) = crate::services::seo::indexnow_key_file(key) {
+            if self.root_files.contains_key(&key_file) {
+                return Err(AppError::Config(format!(
+                    "[seo].root_files: файл `{key_file}` совпадает с файлом ключа \
+                     IndexNow. Уберите его из root_files — ключ отдаётся \
+                     автоматически"
+                )));
+            }
+        }
+
+        Ok(())
     }
 }
 
@@ -354,6 +460,7 @@ impl AppConfig {
             .map_err(|e| AppError::Config(format!("invalid config file `{path}`: {e}")))?;
 
         config.apply_env_overrides();
+        config.seo.validate()?;
         Ok(config)
     }
 
@@ -426,6 +533,13 @@ impl AppConfig {
         if let Ok(v) = std::env::var("N8N_API_KEY") {
             if !v.trim().is_empty() {
                 self.integrations.n8n_api_key = v;
+            }
+        }
+        // Ключ IndexNow. Не секрет, но из env — чтобы включить протокол на
+        // сервере без пересборки образа. Пустое значение выключает его.
+        if let Ok(v) = std::env::var("INDEXNOW_KEY") {
+            if !v.trim().is_empty() {
+                self.seo.indexnow_key = v.trim().to_string();
             }
         }
         if let Ok(v) = std::env::var("GITHUB_USERNAME") {
@@ -556,6 +670,11 @@ model = "m"
         assert_eq!(cfg.server.public_url, "https://inteli-dev.ru");
         assert_eq!(cfg.integrations.outbox_batch_limit, 50);
         assert!(!cfg.integrations.is_active());
+        // SEO-секция тоже опциональна: без неё IndexNow выключен, а файлов в
+        // корне нет — сайт отдаёт только свою статику.
+        assert!(!cfg.seo.is_indexnow_active());
+        assert!(cfg.seo.root_files().is_empty());
+        cfg.seo.validate().expect("пустая секция валидна");
     }
 
     #[test]
@@ -591,5 +710,115 @@ outbox_batch_limit = 10
         assert_eq!(cfg.integrations.n8n_api_key, "secret-key");
         assert_eq!(cfg.integrations.outbox_batch_limit, 10);
         assert!(cfg.integrations.is_active());
+    }
+
+    /// Конфигурация с секцией `[seo]` (минимальный остальной набор).
+    fn config_with_seo(seo: &str) -> AppConfig {
+        toml::from_str(&format!(
+            r#"
+[server]
+[database]
+path = "x.db"
+[cache]
+[openviking]
+base_url = "http://x"
+[llm]
+provider = "deepseek"
+base_url = "http://x"
+model = "m"
+[telegram]
+[vk]
+[admin]
+[ratelimit]
+[logging]
+[security]
+
+{seo}
+"#
+        ))
+        .expect("toml with seo")
+    }
+
+    #[test]
+    fn seo_section_serves_the_key_file_and_verification_files() {
+        let cfg = config_with_seo(
+            r#"
+[seo]
+indexnow_key = "0123456789abcdef"
+
+[seo.root_files]
+"google1234abcd.html" = "google-site-verification: google1234abcd.html"
+"#,
+        );
+
+        assert!(cfg.seo.is_indexnow_active());
+        cfg.seo.validate().expect("валидная секция");
+
+        let files = cfg.seo.root_files();
+        // Файл ключа добавляется сам, подтверждение прав — из конфига.
+        assert!(files
+            .iter()
+            .any(|(name, body)| name == "0123456789abcdef.txt" && body == "0123456789abcdef"));
+        assert!(files.iter().any(|(name, _)| name == "google1234abcd.html"));
+    }
+
+    #[test]
+    fn seo_validation_rejects_configs_that_would_break_the_router() {
+        // Имя, занятое статикой: маршрут столкнулся бы с `/robots.txt`, и
+        // приложение упало бы на сборке роутера.
+        let reserved = config_with_seo(
+            r#"
+[seo.root_files]
+"robots.txt" = "User-agent: *"
+"#,
+        );
+        assert!(reserved.seo.validate().is_err());
+
+        // Путь наружу корня.
+        let traversal = config_with_seo(
+            r#"
+[seo.root_files]
+"../secret.html" = "x"
+"#,
+        );
+        assert!(traversal.seo.validate().is_err());
+
+        // Слишком короткий ключ подбирается, а значит уведомления мог бы слать кто угодно.
+        let short_key = config_with_seo(
+            r#"
+[seo]
+indexnow_key = "abc"
+"#,
+        );
+        assert!(short_key.seo.validate().is_err());
+
+        // Пустое содержимое файла подтверждения.
+        let empty = config_with_seo(
+            r#"
+[seo.root_files]
+"google1234abcd.html" = "   "
+"#,
+        );
+        assert!(empty.seo.validate().is_err());
+    }
+
+    #[test]
+    fn seo_validation_rejects_a_hand_written_key_file() {
+        // Файл с именем ключа, заданный руками, отдал бы поисковику чужой текст.
+        let cfg = config_with_seo(
+            r#"
+[seo]
+indexnow_key = "0123456789abcdef"
+
+[seo.root_files]
+"0123456789abcdef.txt" = "не тот текст"
+"#,
+        );
+
+        let err = cfg.seo.validate().expect_err("должна быть ошибка");
+        assert!(
+            err.to_string().contains("0123456789abcdef.txt"),
+            "ошибка должна называть файл: {err}"
+        );
     }
 }

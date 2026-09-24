@@ -8,16 +8,36 @@ pub mod assets;
 pub mod handlers;
 
 use axum::http::header::HeaderMap;
+use axum::http::header::CONTENT_TYPE;
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, patch, post};
 use axum::{Json, Router};
 
+use crate::config::SeoConfig;
 use crate::error::AppError;
 use crate::state::AppState;
 
+/// Файлы в корне сайта, которые отдаёт само приложение.
+///
+/// Список существует ради проверки конфигурации: имя из `[seo].root_files` не
+/// должно совпасть с этими путями, иначе matchit паникует на конфликте маршрутов
+/// и приложение не поднимется. Он же проверяется тестом, который дёргает каждый
+/// путь и ждёт 200, — так список не может разойтись с реальными маршрутами.
+pub const ROOT_ASSET_PATHS: &[&str] = &[
+    "/robots.txt",
+    "/manifest.json",
+    "/sitemap.xml",
+    "/rss.xml",
+    "/feed.xml",
+    "/favicon.svg",
+];
+
 /// Регистрирует все API-маршруты (без `.with_state` — его задаёт `main`).
-pub fn routes() -> Router<AppState> {
-    Router::new()
+///
+/// `seo` нужен для файлов в корне: подтверждение прав и ключ IndexNow — это
+/// обычные текстовые файлы, но их имена известны только из конфигурации.
+pub fn routes(seo: &SeoConfig) -> Router<AppState> {
+    let router = Router::new()
         // Public
         .route("/api/health", get(handlers::health))
         .route("/api/status", get(handlers::status))
@@ -69,7 +89,31 @@ pub fn routes() -> Router<AppState> {
         .route("/sitemap.xml", get(handlers::sitemap))
         .route("/rss.xml", get(handlers::rss))
         .route("/feed.xml", get(handlers::rss))
-        .route("/favicon.svg", get(handlers::favicon))
+        .route("/favicon.svg", get(handlers::favicon));
+
+    with_root_files(router, seo)
+}
+
+/// Регистрирует файлы в корне из `[seo]`: подтверждение прав и ключ IndexNow.
+///
+/// Имена приходят из конфигурации, поэтому [`SeoConfig::validate`] обязан
+/// отработать до этого места: столкновение с уже зарегистрированным путём
+/// (`ROOT_ASSET_PATHS`) — это паника в недрах matchit, а не понятная ошибка.
+fn with_root_files(mut router: Router<AppState>, seo: &SeoConfig) -> Router<AppState> {
+    for (name, content) in seo.root_files() {
+        let content_type = crate::services::seo::content_type_for(&name);
+        let path = format!("/{name}");
+
+        router = router.route(
+            &path,
+            get(move || {
+                let body = content.clone();
+                async move { ([(CONTENT_TYPE, content_type)], body) }
+            }),
+        );
+    }
+
+    router
 }
 
 /// Обёртка `AppError` для конвертации в HTTP-ответ.
@@ -154,5 +198,19 @@ mod tests {
         let mut headers = HeaderMap::new();
         headers.insert("x-forwarded-for", "203.0.113.7, 10.0.0.1".parse().unwrap());
         assert_eq!(client_ip(&headers), "203.0.113.7");
+    }
+
+    #[test]
+    fn root_asset_paths_are_all_reserved() {
+        // Список в `services::seo` защищает от конфигурации, которая столкнёт
+        // маршруты. Если здесь появится путь, которого там нет, — приложение
+        // упадёт на старте, а не отдаст понятную ошибку конфига.
+        for path in ROOT_ASSET_PATHS {
+            let name = path.trim_start_matches('/');
+            assert!(
+                crate::services::seo::RESERVED_ROOT_NAMES.contains(&name),
+                "`{path}` отдаётся статикой, но его имени нет в RESERVED_ROOT_NAMES"
+            );
+        }
     }
 }
