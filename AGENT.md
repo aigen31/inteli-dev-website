@@ -193,6 +193,22 @@ serde = { version = "1", features = ["derive"] }
 читают один источник, поэтому не расходятся. `SiteContent.availability` из
 OpenViking — только значение по умолчанию. См. `docs/settings-bot.md`.
 
+### Секция 7: Блог (статьи) + кросспостинг через n8n
+Публичные страницы `/blog` и `/blog/{slug}`, RSS `/rss.xml` и карта сайта со
+статьями. Контент пишется владельцем в админке (`/admin` → «Статьи блога»):
+Markdown с предпросмотром, статусы `draft` / `published` / `archived`, транслит
+slug из заголовка.
+
+Публикация статьи порождает событие в таблице `article_events`
+(**transactional outbox**: событие и статья пишутся одной транзакцией). n8n
+забирает события через `GET /api/integrations/outbox` (заголовок `X-Api-Key`) и
+подтверждает через `/ack`. Сайт — источник правды и сам никуда не ходит; сам
+пайплайн n8n в этом репозитории не собирается.
+
+Черновики и архив не попадают ни на сайт, ни в RSS, ни в карту сайта: страницы
+строятся из снимка `PublishedArticles`. См. `docs/articles.md`,
+`src/services/article.rs`, `src/services/feed.rs`, `src/utils/markdown.rs`.
+
 ---
 
 ## 5. Стек технологий

@@ -3,6 +3,7 @@
 //! Хранит историю чатов и заявки/лиды. Семантические знания об авторе живут в
 //! OpenViking (`memory`), а не здесь — см. `memory-storage.md`.
 
+pub mod article;
 pub mod chat;
 pub mod lead;
 pub mod settings;
@@ -52,6 +53,61 @@ CREATE TABLE IF NOT EXISTS site_settings (
     value TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );
+
+-- Статьи блога. Контент пишет владелец из админки (source = 'admin') либо,
+-- в будущем, внешний пайплайн через API (source = 'n8n').
+CREATE TABLE IF NOT EXISTS articles (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    slug TEXT NOT NULL UNIQUE,
+    title TEXT NOT NULL,
+    summary TEXT NOT NULL DEFAULT '',
+    body_markdown TEXT NOT NULL,
+    cover_image_url TEXT,
+    -- Теги хранятся JSON-массивом строк: отдельная таблица тут не нужна,
+    -- а фильтровать по ним в SQL мы не собираемся.
+    tags TEXT NOT NULL DEFAULT '[]',
+    status TEXT NOT NULL DEFAULT 'draft' CHECK(status IN ('draft', 'published', 'archived')),
+    published_at TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    -- Готовность к кросспостингу: источник и внешний ключ идемпотентности.
+    source TEXT NOT NULL DEFAULT 'admin' CHECK(source IN ('admin', 'n8n', 'import')),
+    external_id TEXT,
+    canonical_url TEXT
+);
+
+-- Один и тот же внешний материал нельзя заимпортировать дважды: повторный
+-- прогон n8n с тем же external_id обновит статью, а не создаст дубль.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_articles_external
+    ON articles(source, external_id) WHERE external_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_articles_public ON articles(status, published_at);
+CREATE INDEX IF NOT EXISTS idx_articles_updated ON articles(updated_at);
+
+-- Transactional outbox для кросспостинга (n8n): событие пишется в той же
+-- транзакции, что и изменение статьи, поэтому «опубликовано, но событие
+-- потерялось» невозможно. Читатель (n8n) забирает pending-события и
+-- подтверждает их через ack.
+--
+-- article_id НЕ объявлен как FOREIGN KEY сознательно: это неизменяемый лог
+-- доставки, он должен переживать удаление статьи — событие article.deleted
+-- обязано дойти до читателя, даже когда строки статьи уже нет.
+CREATE TABLE IF NOT EXISTS article_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    article_id INTEGER NOT NULL,
+    article_slug TEXT NOT NULL,
+    event_type TEXT NOT NULL
+        CHECK(event_type IN ('article.published', 'article.updated', 'article.unpublished', 'article.deleted')),
+    payload TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'delivered', 'failed')),
+    attempts INTEGER NOT NULL DEFAULT 0,
+    -- Задел под push-доставку с backoff: pull-читателю не нужен, но колонка
+    -- есть, чтобы включить ретраи без миграции.
+    next_attempt_at TEXT,
+    created_at TEXT NOT NULL,
+    delivered_at TEXT,
+    last_error TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_article_events_status ON article_events(status, id);
 
 CREATE INDEX IF NOT EXISTS idx_chats_created ON chats(created_at);
 CREATE INDEX IF NOT EXISTS idx_chats_question_type ON chats(question_type);

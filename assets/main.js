@@ -362,6 +362,7 @@
       renderKpi(stats.body);
       renderLeads(leads.body);
       renderChats(chats.body);
+      await Promise.all([loadArticles(), loadOutbox()]);
       showDashboard();
     }
 
@@ -437,6 +438,304 @@
     });
     tokenInput.addEventListener('keydown', function (e) {
       if (e.key === 'Enter') loginBtn.click();
+    });
+
+    // ---------- Статьи блога ----------
+    //
+    // Редактор работает на markdown: предпросмотр запрашивается у сервера
+    // (/api/admin/article-preview), поэтому он рендерится тем же кодом, что и
+    // публичная страница, и не может разойтись с ней.
+
+    var articleFilter = '';
+    var editingId = null;
+
+    function parseTags(value) {
+      return String(value || '')
+        .split(',')
+        .map(function (t) { return t.trim(); })
+        .filter(Boolean);
+    }
+
+    function field(id) { return document.getElementById(id); }
+
+    function setEditorStatus(message, kind) {
+      var el = field('article-editor-status');
+      if (!el) return;
+      el.textContent = message || '';
+      el.className = 'form-status' + (kind ? ' ' + kind : '');
+    }
+
+    async function loadArticles() {
+      var qs = articleFilter ? '?status=' + encodeURIComponent(articleFilter) : '';
+      var res = await api('/api/admin/articles' + qs);
+      if (!res.ok) return;
+      renderArticles(res.body);
+    }
+
+    function renderArticles(data) {
+      var table = field('admin-articles-table');
+      if (!table) return;
+
+      var items = data.items || [];
+      var c = data.counts || {};
+      var summary = field('admin-articles-summary');
+      if (summary) {
+        summary.textContent = 'Показано: ' + items.length + ' из ' + (data.total || 0) +
+          ' · черновиков ' + (c.draft || 0) +
+          ' · опубликовано ' + (c.published || 0) +
+          ' · в архиве ' + (c.archived || 0);
+      }
+
+      if (!items.length) {
+        table.innerHTML = '<tbody><tr><td>Статей нет. Нажмите «Новая статья».</td></tr></tbody>';
+        return;
+      }
+
+      var statusLabels = { draft: 'черновик', published: 'опубликована', archived: 'архив' };
+      var rows = items.map(function (a) {
+        var label = statusLabels[a.status] || a.status;
+        var date = String(a.published_at || a.updated_at || '').slice(0, 16).replace('T', ' ');
+        var slug = encodeURIComponent(a.slug);
+
+        var actions = a.status === 'published'
+          ? '<button type="button" class="mini-btn" data-act="unpublish" data-id="' + a.id + '">Снять</button>' +
+            ' <a class="mini-btn" href="/blog/' + slug + '" target="_blank" rel="noopener">Открыть</a>'
+          : '<button type="button" class="mini-btn" data-act="publish" data-id="' + a.id + '">Опубликовать</button>';
+        actions += ' <button type="button" class="mini-btn" data-act="edit" data-id="' + a.id + '">Изменить</button>';
+        actions += ' <button type="button" class="mini-btn mini-btn-danger" data-act="delete" data-id="' + a.id + '">Удалить</button>';
+
+        return '<tr>' +
+          '<td data-label="Заголовок">' + escapeHtml(a.title) + '</td>' +
+          '<td data-label="Адрес"><code>' + escapeHtml(a.slug) + '</code></td>' +
+          '<td data-label="Статус"><span class="status-chip status-' + escapeHtml(a.status) + '">' + escapeHtml(label) + '</span></td>' +
+          '<td data-label="Обновлено">' + escapeHtml(date) + '</td>' +
+          '<td data-label="Чтение">' + escapeHtml(a.reading_time_minutes) + ' мин</td>' +
+          '<td data-label="Действия" class="admin-actions">' + actions + '</td>' +
+          '</tr>';
+      }).join('');
+
+      table.innerHTML = '<thead><tr><th>Заголовок</th><th>Адрес</th><th>Статус</th>' +
+        '<th>Обновлено</th><th>Чтение</th><th>Действия</th></tr></thead><tbody>' + rows + '</tbody>';
+
+      table.querySelectorAll('.mini-btn[data-act]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          onArticleAction(btn.getAttribute('data-act'), btn.getAttribute('data-id'));
+        });
+      });
+    }
+
+    async function onArticleAction(act, rawId) {
+      var id = parseInt(rawId, 10);
+      if (!id) return;
+
+      if (act === 'edit') { await openEditor(id); return; }
+
+      if (act === 'publish' || act === 'unpublish') {
+        // «Снять» возвращает в черновики, а не в архив: владелец почти всегда
+        // хочет доработать текст, а не отложить его навсегда.
+        var status = act === 'publish' ? 'published' : 'draft';
+        var res = await api('/api/admin/articles/' + id, {
+          method: 'PATCH',
+          body: JSON.stringify({ status: status })
+        });
+        if (!res.ok) { alert('Не удалось сменить статус: ' + (res.body.error || res.status)); return; }
+        await Promise.all([loadArticles(), loadOutbox()]);
+        return;
+      }
+
+      if (act === 'delete') {
+        if (!confirm('Удалить статью безвозвратно?')) return;
+        var res2 = await api('/api/admin/articles/' + id, { method: 'DELETE' });
+        if (!res2.ok) { alert('Не удалось удалить: ' + (res2.body.error || res2.status)); return; }
+        if (editingId === id) closeEditor();
+        await Promise.all([loadArticles(), loadOutbox()]);
+      }
+    }
+
+    function resetPreview() {
+      var preview = field('article-preview');
+      if (preview) {
+        preview.innerHTML = '<p class="admin-hint">Нажмите «Предпросмотр», ' +
+          'чтобы увидеть, как статья будет выглядеть на сайте.</p>';
+      }
+      var meta = field('article-preview-meta');
+      if (meta) meta.textContent = '';
+    }
+
+    function closeEditor() {
+      editingId = null;
+      field('article-editor').hidden = true;
+      setEditorStatus('');
+      resetPreview();
+    }
+
+    async function openEditor(id) {
+      var editor = field('article-editor');
+      if (!editor) return;
+
+      setEditorStatus('');
+      resetPreview();
+
+      if (id == null) {
+        editingId = null;
+        field('article-editor-heading').textContent = 'Новая статья';
+        field('article-title').value = '';
+        field('article-slug').value = '';
+        field('article-summary').value = '';
+        field('article-tags').value = '';
+        field('article-cover').value = '';
+        field('article-canonical').value = '';
+        field('article-body').value = '';
+        field('article-status').value = 'draft';
+        editor.hidden = false;
+        field('article-title').focus();
+        return;
+      }
+
+      var res = await api('/api/admin/articles/' + id);
+      if (!res.ok) {
+        alert('Не удалось загрузить статью: ' + (res.body.error || res.status));
+        return;
+      }
+
+      var a = res.body;
+      editingId = a.id;
+      field('article-editor-heading').textContent = 'Редактирование: ' + a.title;
+      field('article-title').value = a.title || '';
+      field('article-slug').value = a.slug || '';
+      field('article-summary').value = a.summary || '';
+      field('article-tags').value = (a.tags || []).join(', ');
+      field('article-cover').value = a.cover_image_url || '';
+      field('article-canonical').value = a.canonical_url || '';
+      field('article-body').value = a.body_markdown || '';
+      field('article-status').value = a.status || 'draft';
+      editor.hidden = false;
+      editor.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    async function saveArticle() {
+      var payload = {
+        title: field('article-title').value,
+        slug: field('article-slug').value,
+        summary: field('article-summary').value,
+        body_markdown: field('article-body').value,
+        cover_image_url: field('article-cover').value,
+        canonical_url: field('article-canonical').value,
+        tags: parseTags(field('article-tags').value),
+        status: field('article-status').value
+      };
+
+      var isNew = editingId == null;
+      var res = isNew
+        ? await api('/api/admin/articles', { method: 'POST', body: JSON.stringify(payload) })
+        : await api('/api/admin/articles/' + editingId, { method: 'PUT', body: JSON.stringify(payload) });
+
+      if (!res.ok) {
+        setEditorStatus(res.body.error || ('Ошибка ' + res.status), 'error');
+        return;
+      }
+
+      // Сервер мог подобрать другой slug (транслит или коллизия) — показываем
+      // фактический адрес, а не то, что ввели.
+      editingId = res.body.id;
+      field('article-slug').value = res.body.slug;
+      field('article-editor-heading').textContent = 'Редактирование: ' + res.body.title;
+      setEditorStatus(res.body.status === 'published'
+        ? 'Сохранено и опубликовано.'
+        : 'Сохранено как «' + res.body.status + '».', 'success');
+
+      await Promise.all([loadArticles(), loadOutbox()]);
+    }
+
+    async function previewArticle() {
+      var res = await api('/api/admin/article-preview', {
+        method: 'POST',
+        body: JSON.stringify({ body_markdown: field('article-body').value })
+      });
+
+      var preview = field('article-preview');
+      if (!res.ok) {
+        preview.innerHTML = '<p class="form-status error">' +
+          escapeHtml(res.body.error || 'Не удалось построить предпросмотр') + '</p>';
+        return;
+      }
+
+      // HTML пришёл от нашего рендерера: сырой HTML в нём экранирован.
+      preview.innerHTML = res.body.html || '<p class="admin-hint">Пустой текст.</p>';
+      var meta = field('article-preview-meta');
+      if (meta) meta.textContent = (res.body.reading_time_minutes || 1) + ' мин чтения';
+    }
+
+    // ---------- События кросспостинга ----------
+
+    async function loadOutbox() {
+      var [pending, failed] = await Promise.all([
+        api('/api/admin/outbox?status=pending&limit=20'),
+        api('/api/admin/outbox?status=failed&limit=10')
+      ]);
+      if (!pending.ok) return;
+
+      var items = (pending.body.items || []).concat(failed.body ? (failed.body.items || []) : []);
+      renderOutbox(items, pending.body.pending);
+    }
+
+    function renderOutbox(items, pendingCount) {
+      var table = field('admin-outbox-table');
+      if (!table) return;
+
+      var summary = field('admin-outbox-summary');
+      if (summary) {
+        summary.textContent = 'Ждут доставки: ' + (pendingCount || 0) +
+          ' · в выборке: ' + items.length;
+      }
+
+      if (!items.length) {
+        table.innerHTML = '<tbody><tr><td>Событий нет. Опубликуйте статью — ' +
+          'здесь появится событие для n8n.</td></tr></tbody>';
+        return;
+      }
+
+      var rows = items.map(function (e) {
+        var slug = (e.payload && e.payload.article && e.payload.article.slug) || e.slug || '—';
+        var created = String(e.created_at || '').slice(0, 19).replace('T', ' ');
+        return '<tr>' +
+          '<td data-label="ID">' + escapeHtml(e.id) + '</td>' +
+          '<td data-label="Событие"><code>' + escapeHtml(e.event_type) + '</code></td>' +
+          '<td data-label="Статья">' + escapeHtml(slug) + '</td>' +
+          '<td data-label="Статус"><span class="status-chip status-' + escapeHtml(e.status) + '">' +
+            escapeHtml(e.status) + '</span></td>' +
+          '<td data-label="Попытки">' + escapeHtml(e.attempts) + '</td>' +
+          '<td data-label="Создано">' + escapeHtml(created) + '</td>' +
+          '</tr>';
+      }).join('');
+
+      table.innerHTML = '<thead><tr><th>ID</th><th>Событие</th><th>Статья</th>' +
+        '<th>Статус</th><th>Попытки</th><th>Создано</th></tr></thead><tbody>' + rows + '</tbody>';
+    }
+
+    // ---------- Обработчики интерфейса статей ----------
+
+    if (field('article-new-btn')) {
+      field('article-new-btn').addEventListener('click', function () { openEditor(null); });
+    }
+    if (field('article-save-btn')) {
+      field('article-save-btn').addEventListener('click', saveArticle);
+    }
+    if (field('article-preview-btn')) {
+      field('article-preview-btn').addEventListener('click', previewArticle);
+    }
+    if (field('article-cancel-btn')) {
+      field('article-cancel-btn').addEventListener('click', closeEditor);
+    }
+    document.querySelectorAll('#admin-article-filters .filter-btn').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        document.querySelectorAll('#admin-article-filters .filter-btn').forEach(function (b) {
+          b.classList.remove('is-active');
+        });
+        btn.classList.add('is-active');
+        articleFilter = btn.getAttribute('data-status') || '';
+        loadArticles();
+      });
     });
 
     // Автовход, если токен уже сохранён.
@@ -984,8 +1283,44 @@
     });
   }
 
+  // ---------- Подсказка статуса занятости ----------
+  // Бейдж — кнопка с постоянным подлежащим («Приём заявок: открыт») и
+  // подсказкой с подробностями. На десктопе подсказку показывает сам CSS
+  // (:hover / :focus-visible), здесь — только явное переключение: на
+  // тач-устройстве hover недоступен, и состояние иначе не раскрыть.
+  function initStatusBadge() {
+    var badges = document.querySelectorAll('.status-badge');
+    if (!badges.length) return;
+
+    function setOpen(badge, open) {
+      badge.classList.toggle('is-open', open);
+      badge.setAttribute('aria-expanded', open ? 'true' : 'false');
+    }
+
+    function closeAll(except) {
+      badges.forEach(function (badge) { if (badge !== except) setOpen(badge, false); });
+    }
+
+    badges.forEach(function (badge) {
+      badge.addEventListener('click', function () {
+        var open = !badge.classList.contains('is-open');
+        closeAll(badge);
+        setOpen(badge, open);
+      });
+    });
+
+    // Клик вне бейджа и Escape закрывают подсказку.
+    document.addEventListener('click', function (e) {
+      if (!e.target.closest('.status-badge')) closeAll(null);
+    });
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') closeAll(null);
+    });
+  }
+
   initReveal();
   initMobileNav();
+  initStatusBadge();
   initCharCounters();
   initHeroTerminal();
   initHeroCanvas();

@@ -300,7 +300,7 @@ fn AdminDashboard() -> impl IntoView {
 | Навыки | `viking://user/inteli-dev/profile/skills.md` | Список навыков, уровни экспертизы |
 | Услуги | `viking://user/inteli-dev/services/*.md` | Названия, описания, цены |
 | Проекты | `viking://user/inteli-dev/projects/*.md` | Кейсы "До/После" с метриками |
-| Статус занятости | `viking://user/inteli-dev/policies/availability.md` | Свободен / занят / полная загрузка |
+| Статус занятости | `viking://user/inteli-dev/policies/availability.md` | Приём заявок: открыт / ограничен / закрыт |
 
 ### UI управления контентом
 ```

@@ -7,6 +7,8 @@
 [server]
 host = "0.0.0.0"
 port = 8080
+# Публичный адрес: абсолютные ссылки в RSS, sitemap и событиях для n8n.
+public_url = "https://inteli-dev.ru"   # дублируется env PUBLIC_URL
 read_timeout_ms = 5000
 write_timeout_ms = 30000
 
@@ -52,8 +54,10 @@ admin_id = 0          # env SETTINGS_BOT_ADMIN_ID
 webhook_secret = ""   # env SETTINGS_BOT_WEBHOOK_SECRET
 
 [github]
-# Блок «Открытый код» на главной. Публичные данные доступны анонимно; токен
-# (env GITHUB_TOKEN) поднимает лимит API и переводит контрибуции на GraphQL.
+# Блок «Открытый код» на главной + ссылка на профиль в шапке. Публичные данные
+# доступны анонимно; токен (env GITHUB_TOKEN) поднимает лимит API и переводит
+# контрибуции на GraphQL. Логин управляет и блоком, и иконкой в шапке; пустой
+# логин убирает и то, и другое. `enabled` выключает только блок статистики.
 username = "aigen31"
 enabled = true
 cache_ttl_seconds = 21600      # 6 часов
@@ -62,6 +66,12 @@ show_stars = false
 [ratelimit]
 max_requests_per_minute = 10   # технический антифлуд (все типы запросов)
 window_seconds = 60
+
+[integrations]
+# Кросспостинг: сайт выставляет события публикации, n8n их забирает.
+# Пока ключ пуст, эндпоинты выключены (404). См. docs/articles.md.
+n8n_api_key = ""               # env N8N_API_KEY (секрет)
+outbox_batch_limit = 50
 
 [limits]
 # Пользовательские лимиты: те же числа уходят в UI и в серверную валидацию.

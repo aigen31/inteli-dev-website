@@ -2,26 +2,21 @@
 //!
 //! Рендерит preset-кнопки, область сообщений и поле ввода. Вся интерактивность
 //! (отправка в POST /api/chat, рендер ответов) — в `assets/main.js`.
+//!
+//! Кнопки берутся из [`crate::services::chat::PRESETS`] — единого источника
+//! правды. Свой список здесь означал бы, что подпись и индекс кнопки могут
+//! разойтись с тем, как её обрабатывает сервер.
 
 use leptos::prelude::*;
 
 use crate::limits::Limits;
-
-/// Preset-кнопки: кто, чем, локальный инференс, анализ, доступность, заявка.
-const PRESETS: [(&str, &str, usize); 6] = [
-    ("Кто вы?", "preset", 0),
-    ("Чем занимаетесь?", "preset", 1),
-    ("Локальный инференс — что это?", "preset", 2),
-    ("Проанализируйте мой сайт", "analysis", 3),
-    ("Когда свободны?", "availability", 4),
-    ("Оставить заявку", "lead_request", 5),
-];
+use crate::services::chat::PRESETS;
 
 #[component]
 pub fn Chat() -> impl IntoView {
     let presets = PRESETS
         .iter()
-        .map(|(label, kind, index)| (label.to_string(), kind.to_string(), *index))
+        .map(|p| (p.label.to_string(), p.kind.to_string(), p.index))
         .collect::<Vec<_>>();
 
     let max_chars = Limits::get().chat_message_max_chars;

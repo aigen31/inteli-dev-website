@@ -18,7 +18,9 @@ use inteli_dev::llm::ChatProvider;
 use inteli_dev::memory::content::SiteContent;
 use inteli_dev::memory::OpenVikingClient;
 use inteli_dev::notification::NotificationService;
-use inteli_dev::services::{ChatService, GitHubService, LeadService, SettingsBot};
+use inteli_dev::services::{
+    ArticleService, ChatService, GitHubService, LeadService, SettingsBot, PublishedArticles,
+};
 use inteli_dev::settings::SiteSettings;
 use inteli_dev::state::AppState;
 use inteli_dev::storage;
@@ -102,6 +104,17 @@ async fn run(config: AppConfig) -> AppResult<()> {
     //      читает уже готовые числа из глобального GitHubStats.
     Arc::new(GitHubService::new(&config.github)).spawn_refresh();
 
+    // 3.3. Ссылка на профиль GitHub для шапки. Публикуется из конфига, а не из
+    //      снимка статистики: иконка должна вести на профиль, даже когда GitHub
+    //      недоступен или блок «Открытый код» выключен.
+    match inteli_dev::services::github::profile_from_username(&config.github.username) {
+        Some(profile) => {
+            tracing::info!("github: ссылка в шапке → {}", profile.url);
+            inteli_dev::services::github::set_profile(profile);
+        }
+        None => tracing::info!("github: логин не задан, ссылка в шапке не показывается"),
+    }
+
     // 4. Cache + rate limiting.
     let cache = Arc::new(InMemoryCache::new(Duration::from_secs(
         config.cache.ttl_seconds,
@@ -138,6 +151,27 @@ async fn run(config: AppConfig) -> AppResult<()> {
     ));
     let leads = Arc::new(LeadService::new(db.clone(), notifications.clone()));
 
+    // 5.0. Статьи блога. Снимок опубликованного нужен до старта сервера:
+    //      Leptos рендерит SSR-страницы синхронно, поэтому блог и карта сайта
+    //      читают статьи из памяти, а не из БД.
+    let articles = Arc::new(ArticleService::new(
+        db.clone(),
+        config.server.public_url.clone(),
+    ));
+    match articles.reload_published().await {
+        Ok(()) => tracing::info!(
+            "блог: опубликованных статей — {}",
+            PublishedArticles::count()
+        ),
+        Err(e) => tracing::warn!("не удалось загрузить статьи блога: {e}"),
+    }
+
+    if config.integrations.is_active() {
+        tracing::info!("фид кросспостинга для n8n включён: /api/integrations/outbox");
+    } else {
+        tracing::info!("фид кросспостинга для n8n выключен (нет N8N_API_KEY)");
+    }
+
     // 5.1. Бот настроек сайта. Пустой токен/секрет — бот выключен, эндпоинт
     //      отвечает 404 и ничего не принимает.
     let settings_bot = Arc::new(SettingsBot::new(&config.settings_bot));
@@ -158,6 +192,7 @@ async fn run(config: AppConfig) -> AppResult<()> {
         db,
         chat,
         leads,
+        articles,
         notifications,
         cache,
         rate_limiter,

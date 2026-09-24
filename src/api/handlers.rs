@@ -9,6 +9,7 @@ use serde::Deserialize;
 
 use crate::api::{assets, client_ip, ApiError};
 use crate::error::AppError;
+use crate::services::article::{ArticleInput, ArticleStatus, BODY_MAX_CHARS};
 use crate::services::chat::{requires_llm, ChatRequest, ChatResponse};
 use crate::services::lead::LeadSubmission;
 use crate::services::status::{status_payload, StatusPayload};
@@ -238,6 +239,295 @@ pub async fn admin_update_lead(
 }
 
 // ---------------------------------------------------------------------------
+// Admin: статьи блога
+// ---------------------------------------------------------------------------
+
+/// Список статей для админки + счётчики по статусам.
+#[derive(Deserialize)]
+pub struct ArticleListQuery {
+    pub status: Option<String>,
+    pub limit: Option<i64>,
+    pub offset: Option<i64>,
+}
+
+pub async fn admin_articles(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(q): Query<ArticleListQuery>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    check_admin(&headers, &state.config.admin.token)?;
+
+    let status = match q.status.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+        Some(raw) => Some(ArticleStatus::parse(raw).ok_or_else(|| {
+            ApiError(AppError::Validation(format!("неизвестный статус «{raw}»")))
+        })?),
+        None => None,
+    };
+
+    let items = state.articles.list(status, q.limit, q.offset).await?;
+    let total = state.articles.count(status).await?;
+
+    Ok(Json(serde_json::json!({
+        "items": items,
+        "total": total,
+        "counts": {
+            "draft": state.articles.count(Some(ArticleStatus::Draft)).await?,
+            "published": state.articles.count(Some(ArticleStatus::Published)).await?,
+            "archived": state.articles.count(Some(ArticleStatus::Archived)).await?,
+        },
+        "pending_events": crate::storage::article::pending_event_count(&state.db).await?,
+    })))
+}
+
+/// Одна статья целиком (для формы редактирования).
+pub async fn admin_article(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(id): Path<i64>,
+) -> Result<Json<crate::services::article::Article>, ApiError> {
+    check_admin(&headers, &state.config.admin.token)?;
+    Ok(Json(state.articles.get(id).await?))
+}
+
+/// Создание статьи.
+pub async fn admin_create_article(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(input): Json<ArticleInput>,
+) -> Result<Json<crate::services::article::Article>, ApiError> {
+    check_admin(&headers, &state.config.admin.token)?;
+    Ok(Json(state.articles.create(input).await?))
+}
+
+/// Полное обновление статьи.
+pub async fn admin_update_article(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(id): Path<i64>,
+    Json(input): Json<ArticleInput>,
+) -> Result<Json<crate::services::article::Article>, ApiError> {
+    check_admin(&headers, &state.config.admin.token)?;
+    Ok(Json(state.articles.update(id, input).await?))
+}
+
+/// Смена только статуса (быстрые кнопки «Опубликовать» / «Снять»).
+#[derive(Deserialize)]
+pub struct ArticleStatusUpdate {
+    pub status: String,
+}
+
+pub async fn admin_update_article_status(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(id): Path<i64>,
+    Json(body): Json<ArticleStatusUpdate>,
+) -> Result<Json<crate::services::article::Article>, ApiError> {
+    check_admin(&headers, &state.config.admin.token)?;
+
+    let status = ArticleStatus::parse(&body.status).ok_or_else(|| {
+        ApiError(AppError::Validation(format!(
+            "неизвестный статус «{}»",
+            body.status
+        )))
+    })?;
+
+    Ok(Json(state.articles.set_status(id, status).await?))
+}
+
+/// Удаление статьи.
+pub async fn admin_delete_article(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(id): Path<i64>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    check_admin(&headers, &state.config.admin.token)?;
+    let removed = state.articles.delete(id).await?;
+    Ok(Json(serde_json::json!({
+        "success": true,
+        "slug": removed.slug,
+    })))
+}
+
+/// Предпросмотр markdown.
+///
+/// Рендерит тот же [`crate::utils::markdown::render`], что и страница статьи,
+/// поэтому предпросмотр не может разойтись с публикацией.
+#[derive(Deserialize)]
+pub struct PreviewRequest {
+    #[serde(default)]
+    pub body_markdown: String,
+}
+
+pub async fn admin_preview_markdown(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(body): Json<PreviewRequest>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    check_admin(&headers, &state.config.admin.token)?;
+
+    if body.body_markdown.chars().count() > BODY_MAX_CHARS {
+        return Err(AppError::Validation(format!(
+            "текст длиннее {BODY_MAX_CHARS} символов"
+        ))
+        .into());
+    }
+
+    Ok(Json(serde_json::json!({
+        "html": crate::utils::markdown::render(&body.body_markdown),
+        "reading_time_minutes": crate::utils::markdown::reading_time_minutes(&body.body_markdown),
+    })))
+}
+
+/// Журнал событий кросспостинга — для админки (видно, что заберёт n8n).
+#[derive(Deserialize)]
+pub struct OutboxQuery {
+    pub status: Option<String>,
+    pub limit: Option<i64>,
+}
+
+pub async fn admin_outbox(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(q): Query<OutboxQuery>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    check_admin(&headers, &state.config.admin.token)?;
+
+    let status = q.status.as_deref().unwrap_or("pending");
+    let limit = q.limit.unwrap_or(50).clamp(1, 200);
+    let events = crate::storage::article::list_events(&state.db, status, limit).await?;
+
+    Ok(Json(serde_json::json!({
+        "items": events.iter().map(event_json).collect::<Vec<_>>(),
+        "pending": crate::storage::article::pending_event_count(&state.db).await?,
+    })))
+}
+
+// ---------------------------------------------------------------------------
+// Интеграция с n8n: лента событий (transactional outbox)
+// ---------------------------------------------------------------------------
+
+/// Проверяет ключ доступа интеграции.
+///
+/// Пока ключ не задан, фид выключен целиком и отвечает 404 — как и вебхук бота
+/// настроек: нечего подтверждать существование незащищённого эндпоинта.
+fn check_integration(headers: &HeaderMap, config: &crate::config::IntegrationsConfig) -> Result<(), ApiError> {
+    if !config.is_active() {
+        return Err(AppError::NotFound("integration feed disabled".into()).into());
+    }
+
+    let presented = headers
+        .get("x-api-key")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+
+    if presented == config.n8n_api_key {
+        Ok(())
+    } else {
+        tracing::warn!("n8n feed: отклонён запрос с неверным ключом");
+        Err(AppError::Unauthorized.into())
+    }
+}
+
+/// `GET /api/integrations/outbox` — события для кросспостинга.
+///
+/// Читатель (n8n) забирает `pending`-события, публикует их по каналам и
+/// подтверждает через `/ack`. Событие отдаётся снимком статьи, поэтому для
+/// кросспостинга не нужен второй запрос за текстом.
+pub async fn outbox_feed(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(q): Query<OutboxQuery>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    check_integration(&headers, &state.config.integrations)?;
+
+    let status = q.status.as_deref().unwrap_or("pending");
+    if !matches!(status, "pending" | "delivered" | "failed") {
+        return Err(AppError::Validation(format!("неизвестный статус «{status}»")).into());
+    }
+
+    let limit = q
+        .limit
+        .unwrap_or(state.config.integrations.outbox_batch_limit)
+        .clamp(1, 500);
+
+    let events = crate::storage::article::list_events(&state.db, status, limit).await?;
+
+    Ok(Json(serde_json::json!({
+        "events": events.iter().map(event_json).collect::<Vec<_>>(),
+        "count": events.len(),
+        "base_url": state.articles.public_url(),
+    })))
+}
+
+#[derive(Deserialize)]
+pub struct OutboxAck {
+    pub ids: Vec<i64>,
+}
+
+/// `POST /api/integrations/outbox/ack` — подтверждение доставки.
+///
+/// Идемпотентен: n8n может переподтвердить весь батч после сетевого сбоя, и
+/// повторный вызов ничего не сломает.
+pub async fn outbox_ack(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(body): Json<OutboxAck>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    check_integration(&headers, &state.config.integrations)?;
+
+    if body.ids.len() > 500 {
+        return Err(AppError::Validation("слишком много id в одном запросе".into()).into());
+    }
+
+    let acked = crate::storage::article::ack_events(&state.db, &body.ids).await?;
+    Ok(Json(serde_json::json!({ "acked": acked })))
+}
+
+#[derive(Deserialize)]
+pub struct OutboxFail {
+    pub id: i64,
+    #[serde(default)]
+    pub error: String,
+}
+
+/// `POST /api/integrations/outbox/fail` — сообщить о неудачной доставке.
+///
+/// После [`crate::storage::article::MAX_EVENT_ATTEMPTS`] попыток событие
+/// уходит в `failed` и перестаёт попадаться в ленте: одно «отравленное»
+/// событие не должно вечно ломать пайплайн.
+pub async fn outbox_fail(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(body): Json<OutboxFail>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    check_integration(&headers, &state.config.integrations)?;
+
+    let error: String = body.error.chars().take(500).collect();
+    crate::storage::article::fail_event(&state.db, body.id, &error).await?;
+    Ok(Json(serde_json::json!({ "success": true })))
+}
+
+/// Представление события для API: payload разворачивается в JSON, а не
+/// отдаётся строкой — читателю не нужно парсить дважды.
+fn event_json(event: &crate::storage::article::ArticleEvent) -> serde_json::Value {
+    let payload: serde_json::Value = serde_json::from_str(&event.payload)
+        .unwrap_or_else(|_| serde_json::json!({ "raw": event.payload }));
+
+    serde_json::json!({
+        "id": event.id,
+        "article_id": event.article_id,
+        "slug": event.article_slug,
+        "event_type": event.event_type,
+        "status": event.status,
+        "attempts": event.attempts,
+        "created_at": event.created_at,
+        "delivered_at": event.delivered_at,
+        "last_error": event.last_error,
+        "payload": payload,
+    })
+}
+
+// ---------------------------------------------------------------------------
 // Static assets
 // ---------------------------------------------------------------------------
 
@@ -269,10 +559,19 @@ pub async fn manifest() -> impl IntoResponse {
     )
 }
 
-pub async fn sitemap() -> impl IntoResponse {
+/// Карта сайта. Строится на лету: статические страницы + опубликованные статьи.
+pub async fn sitemap(State(state): State<AppState>) -> impl IntoResponse {
     (
         [(header::CONTENT_TYPE, "application/xml; charset=utf-8")],
-        assets::SITEMAP_XML,
+        crate::services::feed::current_sitemap(state.articles.public_url()),
+    )
+}
+
+/// RSS-лента блога — канал для n8n RSS Feed Trigger.
+pub async fn rss(State(state): State<AppState>) -> impl IntoResponse {
+    (
+        [(header::CONTENT_TYPE, "application/rss+xml; charset=utf-8")],
+        crate::services::feed::current_rss(state.articles.public_url()),
     )
 }
 

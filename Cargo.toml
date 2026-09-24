@@ -38,6 +38,11 @@ chrono = { version = "0.4", features = ["serde"] }
 # --- HTTP client (OpenViking / LLM / Telegram / VK) ---
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 
+# --- Markdown (статьи блога) ---
+# Рендер markdown → HTML для статей. `getopts` (CLI-бинарь крейта) не нужен —
+# отключаем дефолтные фичи, оставляя только HTML-рендерер (P2: лёгкость).
+pulldown-cmark = { version = "0.13", default-features = false, features = ["html"] }
+
 # --- Errors / logging ---
 thiserror = "1"
 async-trait = "0.1"

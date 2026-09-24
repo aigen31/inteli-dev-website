@@ -7,6 +7,7 @@ use leptos::prelude::*;
 
 use crate::limits::Limits;
 use crate::memory::content::SiteContent;
+use crate::ui::blog::LatestArticles;
 use crate::ui::github::GitHubStatsSection;
 use crate::ui::shared::{PrimaryButton, ProjectCard, SecondaryButton, ServiceCard, StatusBadge};
 
@@ -16,6 +17,11 @@ use crate::ui::shared::{PrimaryButton, ProjectCard, SecondaryButton, ServiceCard
 pub fn HeroTerminal() -> impl IntoView {
     let max_chars = Limits::get().chat_message_max_chars;
     let chat_hint = Limits::get().chat_hint();
+    // Те же кнопки и те же индексы, что на странице /chat: список общий, иначе
+    // подпись кнопки на главной могла бы означать другой вопрос.
+    let presets = crate::services::chat::hero_presets()
+        .map(|p| (p.label.to_string(), p.index))
+        .collect::<Vec<_>>();
 
     view! {
         <div class="terminal-window" id="hero-terminal">
@@ -49,9 +55,14 @@ pub fn HeroTerminal() -> impl IntoView {
             </p>
 
             <div class="terminal-presets" role="group" aria-label="Частые вопросы">
-                <button type="button" class="preset-button terminal-preset-btn" data-kind="preset" data-index="0">{"Кто вы?"}</button>
-                <button type="button" class="preset-button terminal-preset-btn" data-kind="preset" data-index="1">{"Чем занимаетесь?"}</button>
-                <button type="button" class="preset-button terminal-preset-btn" data-kind="preset" data-index="2">{"Сколько стоит?"}</button>
+                {presets.into_iter().map(|(label, index)| view! {
+                    <button
+                        type="button"
+                        class="preset-button terminal-preset-btn"
+                        data-kind="preset"
+                        data-index=index.to_string()
+                    >{label}</button>
+                }).collect::<Vec<_>>()}
             </div>
         </div>
     }
@@ -118,6 +129,9 @@ pub fn Home() -> impl IntoView {
         // Блок «Открытый код»: проверяемый извне аргумент перед финальным CTA.
         // Если GitHub недоступен или блок выключен конфигом — секция не рендерится.
         <GitHubStatsSection/>
+
+        // Последние статьи. Блок сам себя скрывает, пока ничего не опубликовано.
+        <LatestArticles/>
 
         <section class="section section-glow section-cta cta-section">
             <h2>Готовы обсудить ваш проект?</h2>

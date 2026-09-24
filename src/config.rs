@@ -30,6 +30,9 @@ pub struct AppConfig {
     pub ratelimit: RateLimitConfig,
     pub logging: LoggingConfig,
     pub security: SecurityConfig,
+    /// Внешние интеграции (фид событий для n8n). Секция опциональна.
+    #[serde(default)]
+    pub integrations: IntegrationsConfig,
     /// Пользовательские лимиты. Секция опциональна: без неё берутся значения
     /// по умолчанию, поэтому старый config.toml не ломает запуск.
     #[serde(default)]
@@ -42,10 +45,49 @@ pub struct ServerConfig {
     pub host: String,
     #[serde(default = "default_port")]
     pub port: u16,
+    /// Публичный адрес сайта: из него собираются абсолютные ссылки в RSS,
+    /// sitemap и событиях кросспостинга. Отдельно от `host`/`port`, потому что
+    /// приложение слушает `0.0.0.0:8080` за обратным прокси.
+    #[serde(default = "default_public_url")]
+    pub public_url: String,
     #[serde(default = "default_read_timeout_ms")]
     pub read_timeout_ms: u64,
     #[serde(default = "default_write_timeout_ms")]
     pub write_timeout_ms: u64,
+}
+
+/// Внешние интеграции. Секция опциональна: без неё кросспостинг выключен.
+///
+/// Сама доставка в n8n здесь не реализована — сайт только выставляет наружу
+/// ленту событий (transactional outbox). Читатель забирает её сам, поэтому
+/// адрес n8n сайту знать не нужно. См. `docs/articles.md`.
+#[derive(Debug, Clone, Deserialize)]
+pub struct IntegrationsConfig {
+    /// Ключ доступа к фиду событий. Секрет: только из env `N8N_API_KEY`.
+    ///
+    /// Пустая строка выключает фид целиком (fail closed): эндпоинт отвечает
+    /// 404, а не «пускает всех без пароля».
+    #[serde(default)]
+    pub n8n_api_key: String,
+    /// Сколько событий отдавать за один запрос.
+    #[serde(default = "default_outbox_batch_limit")]
+    pub outbox_batch_limit: i64,
+}
+
+impl Default for IntegrationsConfig {
+    fn default() -> Self {
+        Self {
+            n8n_api_key: String::new(),
+            outbox_batch_limit: default_outbox_batch_limit(),
+        }
+    }
+}
+
+impl IntegrationsConfig {
+    /// Фид событий доступен: ключ задан и непустой.
+    pub fn is_active(&self) -> bool {
+        !self.n8n_api_key.trim().is_empty()
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -276,6 +318,12 @@ fn default_github_username() -> String {
 fn default_github_cache_ttl() -> u64 {
     21600
 }
+fn default_public_url() -> String {
+    "https://inteli-dev.ru".to_string()
+}
+fn default_outbox_batch_limit() -> i64 {
+    50
+}
 
 impl Default for GitHubConfig {
     fn default() -> Self {
@@ -365,6 +413,20 @@ impl AppConfig {
         }
         if let Ok(v) = std::env::var("GITHUB_TOKEN") {
             self.github.token = v;
+        }
+        // Публичный адрес сайта: в проде — https://inteli-dev.ru, в локальной
+        // проверке — http://127.0.0.1:8282, чтобы ссылки в RSS и событиях вели
+        // туда, где сайт реально открывается.
+        if let Ok(v) = std::env::var("PUBLIC_URL") {
+            if !v.trim().is_empty() {
+                self.server.public_url = v.trim().trim_end_matches('/').to_string();
+            }
+        }
+        // Ключ фида событий для n8n: секрет, только из env.
+        if let Ok(v) = std::env::var("N8N_API_KEY") {
+            if !v.trim().is_empty() {
+                self.integrations.n8n_api_key = v;
+            }
         }
         if let Ok(v) = std::env::var("GITHUB_USERNAME") {
             // Пустое значение игнорируем: docker-compose передаёт переменную
@@ -489,5 +551,45 @@ model = "m"
         assert_eq!(cfg.github.username, "aigen31");
         assert!(cfg.github.token.is_empty());
         assert!(!cfg.github.show_stars);
+        // Адрес сайта и интеграции тоже опциональны: без секций работают
+        // значения по умолчанию, а фид событий остаётся выключенным.
+        assert_eq!(cfg.server.public_url, "https://inteli-dev.ru");
+        assert_eq!(cfg.integrations.outbox_batch_limit, 50);
+        assert!(!cfg.integrations.is_active());
+    }
+
+    #[test]
+    fn integrations_section_is_parsed() {
+        let cfg: AppConfig = toml::from_str(
+            r#"
+[server]
+public_url = "http://127.0.0.1:8282/"
+[database]
+path = "x.db"
+[cache]
+[openviking]
+base_url = "http://x"
+[llm]
+provider = "deepseek"
+base_url = "http://x"
+model = "m"
+[telegram]
+[vk]
+[admin]
+[ratelimit]
+[logging]
+[security]
+
+[integrations]
+n8n_api_key = "secret-key"
+outbox_batch_limit = 10
+"#,
+        )
+        .expect("toml with integrations");
+
+        assert_eq!(cfg.server.public_url, "http://127.0.0.1:8282/");
+        assert_eq!(cfg.integrations.n8n_api_key, "secret-key");
+        assert_eq!(cfg.integrations.outbox_batch_limit, 10);
+        assert!(cfg.integrations.is_active());
     }
 }

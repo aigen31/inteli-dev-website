@@ -95,11 +95,67 @@ pub struct SuggestedAction {
 enum QuestionKind {
     Who,
     Services,
+    Pricing,
     LocalInference,
     Analysis,
     Availability,
     LeadRequest,
     Free,
+}
+
+impl QuestionKind {
+    /// Тип прямого ответа для preset-кнопки.
+    ///
+    /// Неизвестный индекс уходит в LLM (`Free`), а не отвечает наугад:
+    /// лучше потратить токены, чем отдать ответ не на тот вопрос.
+    fn from_preset(index: usize) -> Self {
+        match index {
+            0 => Self::Who,
+            1 => Self::Services,
+            2 => Self::Pricing,
+            3 => Self::LocalInference,
+            _ => Self::Free,
+        }
+    }
+}
+
+/// Кнопка-вопрос: подпись и способ обработки.
+///
+/// Единый источник правды для страницы `/chat`, hero-терминала на главной и
+/// роутера. Раньше подписи и индексы жили в трёх местах и разошлись: кнопка
+/// «Сколько стоит?» на главной отправляла `preset_index = 2`, который на
+/// странице `/chat` означал «Локальный инференс — что это?». Клиент спрашивал
+/// цену и получал лекцию про инференс, а функция с ценами вообще осталась
+/// мёртвым кодом.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Preset {
+    /// `preset_index` в запросе к `/api/chat`.
+    pub index: usize,
+    /// Текст на кнопке. Он же уходит в `message`.
+    pub label: &'static str,
+    /// `question_type` в запросе: preset | analysis | availability | lead_request.
+    pub kind: &'static str,
+}
+
+/// Все кнопки страницы `/chat`, в порядке показа.
+pub const PRESETS: &[Preset] = &[
+    Preset { index: 0, label: "Кто вы?", kind: "preset" },
+    Preset { index: 1, label: "Чем занимаетесь?", kind: "preset" },
+    Preset { index: 2, label: "Сколько стоит?", kind: "preset" },
+    Preset { index: 3, label: "Локальный инференс — что это?", kind: "preset" },
+    Preset { index: 4, label: "Проанализируйте мой сайт", kind: "analysis" },
+    Preset { index: 5, label: "Когда свободны?", kind: "availability" },
+    Preset { index: 6, label: "Оставить заявку", kind: "lead_request" },
+];
+
+/// Подмножество кнопок для hero-терминала на главной: там место под три.
+pub const HERO_PRESET_INDICES: &[usize] = &[0, 1, 2];
+
+/// Кнопки hero-терминала в порядке [`HERO_PRESET_INDICES`].
+pub fn hero_presets() -> impl Iterator<Item = &'static Preset> {
+    HERO_PRESET_INDICES
+        .iter()
+        .filter_map(|index| PRESETS.iter().find(|p| p.index == *index))
 }
 
 /// Сервис чата.
@@ -166,6 +222,7 @@ impl ChatService {
         let (answer, source) = match kind {
             QuestionKind::Who => (answer_who(), "openviking_direct".to_string()),
             QuestionKind::Services => (answer_services(), "openviking_direct".to_string()),
+            QuestionKind::Pricing => (answer_pricing(), "openviking_direct".to_string()),
             QuestionKind::LocalInference => (answer_local_inference(), "openviking_direct".to_string()),
             QuestionKind::Availability => (answer_availability(), "openviking_direct".to_string()),
             QuestionKind::LeadRequest => (answer_lead_request(), "openviking_direct".to_string()),
@@ -331,15 +388,7 @@ fn resolve_kind(req: &ChatRequest) -> QuestionKind {
         Some("analysis") => QuestionKind::Analysis,
         Some("availability") => QuestionKind::Availability,
         Some("lead_request") => QuestionKind::LeadRequest,
-        Some("preset") => match req.preset_index.unwrap_or(0) {
-            0 => QuestionKind::Who,
-            1 => QuestionKind::Services,
-            2 => QuestionKind::LocalInference,
-            3 => QuestionKind::Analysis,
-            4 => QuestionKind::Availability,
-            5 => QuestionKind::LeadRequest,
-            _ => QuestionKind::Free,
-        },
+        Some("preset") => QuestionKind::from_preset(req.preset_index.unwrap_or(0)),
         _ => QuestionKind::Free,
     }
 }
@@ -363,53 +412,98 @@ fn suggested_next(kind: QuestionKind) -> Vec<SuggestedAction> {
     }
 }
 
+/// «Кто вы?» — кто это и чем полезен, без пересказа всего профиля.
+///
+/// Раньше здесь был полный список компетенций и приглашение оставить заявку:
+/// ответ на «кто вы?» превращался в простыню, а сам вопрос оставался без
+/// прямого ответа. Компетенции целиком видны на главной, а кнопки следующего
+/// шага рисует UI (`suggested_next`).
 fn answer_who() -> String {
-    let c = crate::memory::content::SiteContent::get();
-    let p = &c.profile;
+    let p = &crate::memory::content::SiteContent::get().profile;
+    // Три ключевые компетенции: этого достаточно, чтобы понять профиль.
+    let focus = p
+        .skills
+        .iter()
+        .take(3)
+        .map(String::as_str)
+        .collect::<Vec<_>>()
+        .join(", ");
+
     format!(
-        "Я — {name}, {title} с {years}-летним опытом. За это время реализовал {projects}+ проектов.\n\n\
-         Ключевые компетенции:\n• {skills}\n\n\
-         Хотите обсудить ваш проект? Оставьте заявку — отвечу в течение 24 часов.",
+        "{name} — {title}. {years} лет опыта, {projects}+ проектов.\n\n\
+         {focus}.\n\
+         {location}.",
         name = p.name,
         title = p.title,
         years = p.experience_years,
         projects = p.projects_completed,
-        skills = p.skills.join("\n• "),
+        location = p.location,
     )
 }
 
+/// «Чем занимаетесь?» — список услуг по одной строке.
+///
+/// Полные описания услуг — это шесть абзацев на два экрана. В чате нужен
+/// список, по которому за секунду видно, подходит ли специалист под задачу;
+/// подробности клиент читает на `/services`.
 fn answer_services() -> String {
     let c = crate::memory::content::SiteContent::get();
-    let mut out = String::from("Чем я занимаюсь:\n\n");
+    let mut out = String::from("Чем занимаюсь:");
     for s in &c.services {
-        out.push_str(&format!("• {} — {}\n", s.title, s.description));
+        // Разделитель — двоеточие, а не тире: описания сами содержат тире
+        // («ComfyUI Mass Production — Массовая генерация…»), и второе тире
+        // подряд читалось бы как опечатка.
+        out.push_str(&format!(
+            "\n• {}: {}",
+            s.title,
+            first_sentence(&s.description)
+        ));
     }
-    out.push_str("\nХотите обсудить ваш проект? Оставьте заявку.");
     out
 }
 
-fn answer_local_inference() -> String {
-    "Локальный инференс — это запуск AI-моделей на собственном оборудовании, а не через облачные API.\n\n\
-     Чем это лучше:\n• Приватность — ваши данные никогда не покидают ваш сервер\n• Цена — нет ежемесячной платы за API-подписки (OpenAI, Anthropic и т.д.)\n• Скорость — без задержек сети, ответ модели мгновенно\n• Независимость — работает автономно, без зависимости от внешних провайдеров\n\n\
-     Мой стек: GPU-кластер (RTX 5080 + RTX 3060, 64GB RAM), Qwen 3.6/3.8 (до 35B параметров).\n\n\
-     Хотите запустить AI на своём сервере? Оставьте заявку — рассчитаю стоимость."
-        .to_string()
-}
-
+/// «Сколько стоит?» — вилка цен по услугам.
 fn answer_pricing() -> String {
     let c = crate::memory::content::SiteContent::get();
-    let mut out = String::from("Ориентировочные расценки:\n\n");
+    let mut out = String::from("Цены — ориентировочно, зависят от объёма:");
     for s in &c.services {
-        let price = match (&s.price_from, &s.price_to) {
-            (Some(from), Some(to)) => format!("{from} – {to}"),
-            (Some(from), None) => format!("от {from}"),
-            (None, Some(to)) => format!("до {to}"),
-            (None, None) => "по запросу".to_string(),
-        };
-        out.push_str(&format!("• {} — {}\n", s.title, price));
+        out.push_str(&format!("\n• {}: {}", s.title, price_range(s)));
     }
-    out.push_str("\nТочная стоимость зависит от проекта. Отправьте ссылку или опишите задачу — рассчитаю бесплатно.");
+    out.push_str("\n\nТочную стоимость считаю после описания задачи.");
     out
+}
+
+/// Цена услуги одной строкой.
+fn price_range(service: &crate::memory::content::Service) -> String {
+    match (&service.price_from, &service.price_to) {
+        (Some(from), Some(to)) => format!("{from} – {to}"),
+        (Some(from), None) => format!("от {from}"),
+        (None, Some(to)) => format!("до {to}"),
+        (None, None) => "по запросу".to_string(),
+    }
+}
+
+/// Первое предложение текста — короткая суть без «воды».
+///
+/// Описания услуг написаны по схеме «короткая суть. Подробности.» — первое
+/// предложение и есть то, что нужно в списке.
+fn first_sentence(text: &str) -> String {
+    let trimmed = text.trim();
+    match trimmed.find(". ") {
+        Some(idx) if idx > 0 => trimmed[..=idx].trim_end().to_string(),
+        _ => trimmed.to_string(),
+    }
+}
+
+/// «Локальный инференс — что это?» — определение и что это даёт на практике.
+fn answer_local_inference() -> String {
+    "Локальный инференс — это когда AI-модель работает на вашем железе, а не в облаке.\n\n\
+     Что это даёт:\n\
+     • Данные не покидают ваш сервер\n\
+     • Нет абонплаты за API и лимитов провайдера\n\
+     • Нет сетевых задержек — ответ мгновенный\n\n\
+     Мой стек: GPU-кластер (RTX 5080 + RTX 3060, 64 GB RAM), модели Qwen 3.6/3.8 до 35B."
+        .to_string()
 }
 
 fn answer_availability() -> String {
@@ -418,39 +512,23 @@ fn answer_availability() -> String {
     format_availability(&crate::settings::SiteSettings::availability())
 }
 
-/// Форматирует статус занятости в текст (переиспользуется в status-сервисе).
+/// Форматирует статус занятости в текст ответа чата.
+///
+/// Подлежащее и факты берутся из словаря статуса (`services::status`) — того
+/// же, что кормит бейдж в шапке, `/api/status` и Telegram-бота. Поэтому ответ
+/// ассистента не может разойтись с надписью на сайте.
 pub(crate) fn format_availability(a: &Availability) -> String {
-    format!(
-        "Сейчас: {label}.\nВ работе {projects} проектов. Ближайший слот — {slot}.\n\n\
-         Если сроки горят — напишите в Telegram, постараемся найти решение.",
-        
-        label = label_for_status(&a.status),
-        projects = a.current_projects,
-        slot = a.next_free_slot,
-    )
-}
+    use crate::services::status;
 
-/// Имя иконки Lucide для статуса (вместо эмодзи).
-pub(crate) fn status_icon_name(status: &str) -> &'static str {
-    match status {
-        "available" => "circle-check",
-        "busy" => "settings",
-        _ => "check-circle",
-    }
-}
-
-/// Человекочитаемая подпись статуса.
-pub(crate) fn label_for_status(status: &str) -> &'static str {
-    match status {
-        "available" => "свободен для новых проектов",
-        "busy" => "ограниченная доступность",
-        _ => "полная загрузка",
-    }
+    // Один факт на строку: «Ближайший слот — немедленно — есть свободные слоты»
+    // с двойным тире читалось как ошибка вёрстки.
+    let mut lines = vec![format!("{}.", status::status_line(&a.status))];
+    lines.extend(status::facts(a).into_iter().map(|fact| format!("{fact}.")));
+    lines.join("\n")
 }
 
 fn answer_lead_request() -> String {
-    "Отлично! Оставьте заявку через форму — опишите проект и оставьте контакт. Отвечу в течение 24 часов.\n\n\
-     Также можно написать напрямую в Telegram."
+    "Опишите задачу в форме заявки: имя, контакт и что нужно сделать. Отвечу в течение 24 часов."
         .to_string()
 }
 
@@ -533,9 +611,150 @@ mod tests {
     async fn preset_local_inference_returns_explanation() {
         ensure_content();
         let svc = service(true).await;
-        let resp = svc.answer(preset_req(2), None).await.unwrap();
+        let resp = svc.answer(preset_req(3), None).await.unwrap();
         assert_eq!(resp.source, "openviking_direct");
         assert!(resp.answer.contains("инференс") || resp.answer.contains("Инференс"));
+    }
+
+    /// Регрессия: кнопка «Сколько стоит?» отдавала лекцию про локальный
+    /// инференс, потому что индекс 2 в hero-терминале на главной значил не то
+    /// же, что индекс 2 на странице /chat.
+    #[tokio::test]
+    async fn pricing_preset_returns_prices() {
+        ensure_content();
+        let svc = service(true).await;
+
+        let index = |label: &str| {
+            PRESETS
+                .iter()
+                .find(|p| p.label == label)
+                .expect("кнопка есть в списке")
+                .index
+        };
+
+        let resp = svc.answer(preset_req(index("Сколько стоит?")), None).await.unwrap();
+        assert_eq!(resp.source, "openviking_direct");
+        // Цена каждой услуги, а не объяснение технологии.
+        for service in &crate::memory::content::SiteContent::get().services {
+            assert!(
+                resp.answer.contains(&service.title),
+                "в ответе о ценах нет услуги «{}»: {}",
+                service.title,
+                resp.answer
+            );
+        }
+        assert!(resp.answer.contains("₽"), "нет ни одной цены: {}", resp.answer);
+        assert!(
+            !resp.answer.contains("инференс"),
+            "ответ о ценах ушёл в тему инференса: {}",
+            resp.answer
+        );
+    }
+
+    /// Кнопки hero-терминала должны существовать в общем списке: иначе на
+    /// главной снова появится кнопка, которой сервер не знает.
+    #[test]
+    fn hero_presets_are_a_subset_of_all_presets() {
+        let hero: Vec<usize> = hero_presets().map(|p| p.index).collect();
+        assert_eq!(hero, HERO_PRESET_INDICES.to_vec());
+        assert!(hero.len() >= 3);
+    }
+
+    /// Каждая кнопка из общего списка обязана иметь прямой ответ (или явно
+    /// уходить в LLM). Тест ловит добавление кнопки без обработки в роутере.
+    #[test]
+    fn every_preset_button_routes_to_a_known_kind() {
+        for preset in PRESETS {
+            let req = ChatRequest {
+                message: preset.label.into(),
+                session_id: None,
+                question_type: Some(preset.kind.into()),
+                preset_index: Some(preset.index),
+                url: None,
+            };
+            let kind = resolve_kind(&req);
+
+            match preset.kind {
+                // Прямые ответы: не Free, иначе кнопка молча уйдёт в модель.
+                "preset" => assert_ne!(
+                    kind,
+                    QuestionKind::Free,
+                    "preset {} «{}» не имеет прямого ответа",
+                    preset.index,
+                    preset.label
+                ),
+                "analysis" => assert_eq!(kind, QuestionKind::Analysis),
+                "availability" => assert_eq!(kind, QuestionKind::Availability),
+                "lead_request" => assert_eq!(kind, QuestionKind::LeadRequest),
+                other => panic!("неизвестный question_type «{other}» у кнопки «{}»", preset.label),
+            }
+        }
+    }
+
+    /// Типовые ответы должны быть короткими: клиент читает их с телефона.
+    #[tokio::test]
+    async fn direct_answers_stay_short_and_have_no_cta_tail() {
+        ensure_content();
+        let svc = service(true).await;
+
+        for preset in PRESETS.iter().filter(|p| p.kind == "preset") {
+            let resp = svc.answer(preset_req(preset.index), None).await.unwrap();
+
+            // 900 символов — это примерно экран телефона. Всё, что длиннее,
+            // возвращает нас к простыням, из-за которых ответы и переписывали.
+            assert!(
+                resp.answer.chars().count() < 900,
+                "ответ на «{}» слишком длинный ({} символов)",
+                preset.label,
+                resp.answer.chars().count()
+            );
+
+            for fluff in ["Оставьте заявку", "оставьте заявку", "Хотите обсудить", "Отлично!"] {
+                assert!(
+                    !resp.answer.contains(fluff),
+                    "в ответе на «{}» осталась вода «{fluff}»: {}",
+                    preset.label,
+                    resp.answer
+                );
+            }
+        }
+    }
+
+    /// «Чем занимаетесь?» перечисляет услуги, но не вываливает их описания.
+    #[tokio::test]
+    async fn services_answer_lists_titles_without_full_descriptions() {
+        ensure_content();
+        let svc = service(true).await;
+
+        let index = PRESETS.iter().find(|p| p.label == "Чем занимаетесь?").unwrap().index;
+        let resp = svc.answer(preset_req(index), None).await.unwrap();
+
+        let services = crate::memory::content::SiteContent::get().services.clone();
+        assert_eq!(services.len(), 6);
+        for service in &services {
+            assert!(resp.answer.contains(&service.title), "нет услуги «{}»", service.title);
+            // Полное описание в ответе не помещается — и не должно.
+            assert!(
+                !resp.answer.contains(&service.description),
+                "описание «{}» попало в ответ целиком",
+                service.title
+            );
+        }
+    }
+
+    #[test]
+    fn first_sentence_cuts_at_the_first_period() {
+        assert_eq!(
+            first_sentence("Короткая суть. Дальше подробности."),
+            "Короткая суть."
+        );
+        // Точка без пробела (версия модели, домен) предложение не разрывает.
+        assert_eq!(
+            first_sentence("Работает на Qwen 3.6 и далее."),
+            "Работает на Qwen 3.6 и далее."
+        );
+        assert_eq!(first_sentence("Без точки"), "Без точки");
+        assert_eq!(first_sentence("  с пробелами.  "), "с пробелами.");
     }
 
     #[tokio::test]
@@ -583,7 +802,10 @@ mod tests {
             url: None,
         };
         let resp = svc.answer(req, None).await.unwrap();
-        assert!(resp.answer.contains("заявку"));
+        // Ответ должен объяснять следующий шаг и срок, без вводных «Отлично!».
+        assert!(resp.answer.contains("заявк"), "получено: {}", resp.answer);
+        assert!(resp.answer.contains("24"), "получено: {}", resp.answer);
+        assert!(!resp.answer.starts_with("Отлично"));
         assert!(!resp.suggested_next.is_empty());
     }
 
@@ -656,12 +878,24 @@ mod tests {
         analysis.question_type = Some("analysis".into());
         assert!(requires_llm(&analysis));
 
-        // preset 0-2, 4, 5 — прямые ответы из контента, токенов не тратят.
-        for i in [0, 1, 2, 4, 5] {
-            assert!(!requires_llm(&preset_req(i)), "preset {i} не должен идти в LLM");
+        // Кнопки без ИИ не должны тратить токены, а кнопка анализа — должна.
+        for preset in PRESETS {
+            let req = ChatRequest {
+                message: preset.label.into(),
+                session_id: None,
+                question_type: Some(preset.kind.into()),
+                preset_index: Some(preset.index),
+                url: Some("example.com".into()),
+            };
+            let spends = matches!(preset.kind, "analysis");
+            assert_eq!(
+                requires_llm(&req),
+                spends,
+                "кнопка «{}» (kind={}) неверно классифицирована",
+                preset.label,
+                preset.kind
+            );
         }
-        // preset 3 — «Проанализируйте мой сайт» => analysis => LLM.
-        assert!(requires_llm(&preset_req(3)));
 
         // lead_request / availability — прямые.
         let mut lead = free_req();

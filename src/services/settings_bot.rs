@@ -26,7 +26,6 @@ use sqlx::sqlite::SqlitePool;
 use crate::config::SettingsBotConfig;
 use crate::error::{AppError, AppResult};
 use crate::memory::content::Availability;
-use crate::services::chat::label_for_status;
 use crate::settings::{self, SiteSettings};
 
 /// Максимальная длина свободного текста (`/slot`, `/when`).
@@ -479,7 +478,7 @@ pub fn render_state(settings: &SiteSettings) -> String {
          Ближайший слот: {slot}\n\
          Дата доступности: {date}\n\n\
          <i>Обновлено: {updated}</i>",
-        status = label_for_status(&a.status),
+        status = crate::services::status::status_line(&a.status),
         projects = a.current_projects,
         slot = escape_html(&a.next_free_slot),
         date = escape_html(&a.availability_date),
@@ -492,9 +491,9 @@ pub fn render_help() -> String {
     "<b>Бот настроек inteli-dev.ru</b>\n\n\
      Меняет состояние сайта. Кнопки ниже — быстрый способ, команды — точный.\n\n\
      /status — показать текущее состояние\n\
-     /available — свободен для новых проектов\n\
-     /busy — ограниченная доступность\n\
-     /full — полная загрузка\n\
+     /available — приём заявок открыт\n\
+     /busy — приём заявок ограничен\n\
+     /full — приём заявок закрыт\n\
      /projects 2 — сколько проектов в работе\n\
      /slot с 1 октября — ближайший свободный слот\n\
      /when 1 октября — дата доступности\n\n\
@@ -508,9 +507,9 @@ pub fn status_keyboard() -> Value {
     json!({
         "inline_keyboard": [
             [
-                { "text": "Свободен", "callback_data": "set:available" },
-                { "text": "Ограниченно", "callback_data": "set:busy" },
-                { "text": "Загружен", "callback_data": "set:full" }
+                { "text": "Открыт", "callback_data": "set:available" },
+                { "text": "Ограничен", "callback_data": "set:busy" },
+                { "text": "Закрыт", "callback_data": "set:full" }
             ],
             [
                 { "text": "Обновить", "callback_data": "state:refresh" }
@@ -798,11 +797,41 @@ mod tests {
         };
         let text = render_state(&settings);
 
-        assert!(text.contains("ограниченная доступность"));
+        assert!(text.contains("Приём заявок: ограничен"));
         assert!(text.contains("<b>3</b>"));
         assert!(text.contains("с 1 октября"));
         assert!(text.contains("2026-10-01"));
         assert!(text.contains("24.09.2026 07:12 UTC"));
+    }
+
+    /// Бот настроек — четвёртая поверхность того же статуса. Он обязан говорить
+    /// словами общего словаря, иначе владелец в Telegram и посетитель на сайте
+    /// увидят разные формулировки.
+    #[test]
+    fn bot_vocabulary_matches_the_status_dictionary() {
+        use crate::services::status::{presentation, SUBJECT};
+
+        // Подлежащее в справке идёт со строчной буквы («приём заявок открыт»),
+        // в словаре — с заглавной: сравниваем без регистра.
+        let help = render_help().to_lowercase();
+        assert!(
+            help.contains(&SUBJECT.to_lowercase()),
+            "справка потеряла подлежащее: {help}"
+        );
+
+        // Кнопки Telegram пишут состояние с заглавной, словарь — со строчной.
+        let keyboard = status_keyboard().to_string().to_lowercase();
+        for status in ["available", "busy", "full"] {
+            let state = presentation(status).state;
+            assert!(
+                help.contains(state),
+                "справка не знает состояния «{state}»: {help}"
+            );
+            assert!(
+                keyboard.contains(state),
+                "клавиатура не знает состояния «{state}»: {keyboard}"
+            );
+        }
     }
 
     #[test]

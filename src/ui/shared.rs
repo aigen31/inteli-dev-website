@@ -3,7 +3,7 @@
 use leptos::prelude::*;
 
 use crate::memory::content::{Project, Service};
-use crate::services::chat::label_for_status;
+use crate::services::status;
 use crate::settings::SiteSettings;
 use crate::ui::icon::LucideIcon;
 
@@ -11,16 +11,43 @@ use crate::ui::icon::LucideIcon;
 ///
 /// Читает [`SiteSettings`], а не контент: статус правится из Telegram-бота, и
 /// бейдж в шапке должен меняться без перезапуска.
+///
+/// Форма: постоянное подлежащее + короткое состояние («Приём заявок: открыт»).
+/// Подлежащее не меняется от состояния к состоянию — иначе бейдж читается как
+/// три разных текста, а «ограниченная доступность» без подлежащего непонятна
+/// посетителю, который только зашёл. Цвет точки — дублирующий сигнал, не
+/// единственный: словесное состояние видно и без наведения, и на телефоне, и
+/// скринридеру (через `aria-label`).
+///
+/// Подсказка с подробностями — **дополнение**: раскрывается наведением (CSS),
+/// фокусом с клавиатуры (CSS) и тапом (`initStatusBadge` в `assets/main.js`).
 #[component]
 pub fn StatusBadge() -> impl IntoView {
-    let status = SiteSettings::availability().status;
-    let label = label_for_status(&status).to_string();
+    let availability = SiteSettings::availability();
+    let p = status::presentation(&availability.status);
+    let lines = status::facts(&availability);
+    let aria = status::aria_label(&availability);
 
     view! {
-        <span class=format!("status-badge status-{}", status)>
+        <button
+            type="button"
+            class=format!("status-badge status-{}", availability.status)
+            aria-expanded="false"
+            aria-label=aria
+        >
             <span class="status-dot" aria-hidden="true"></span>
-            <span>{label}</span>
-        </span>
+            <span class="status-subject">{format!("{}:", p.subject)}</span>
+            <span class="status-state">{p.state}</span>
+            // `aria-hidden`: тот же текст уже в `aria-label`, дублировать его
+            // для скринридера не нужно.
+            <span class="status-popover" aria-hidden="true">
+                <span class="status-popover-summary">{p.summary}</span>
+                {lines
+                    .into_iter()
+                    .map(|line| view! { <span class="status-popover-line">{line}</span> })
+                    .collect::<Vec<_>>()}
+            </span>
+        </button>
     }
 }
 

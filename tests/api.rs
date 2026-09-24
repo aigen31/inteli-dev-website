@@ -19,7 +19,7 @@ use inteli_dev::llm::{ChatProvider, Message};
 use inteli_dev::memory::content::{fallback_content, SiteContent};
 use inteli_dev::memory::OpenVikingClient;
 use inteli_dev::notification::NotificationService;
-use inteli_dev::services::{ChatService, LeadService, SettingsBot};
+use inteli_dev::services::{ArticleService, ChatService, LeadService, SettingsBot};
 use inteli_dev::state::AppState;
 
 const ADMIN_TOKEN: &str = "test-admin-token";
@@ -97,6 +97,10 @@ level = "info"
 
 [security]
 ip_hash_algorithm = "sha256"
+
+[integrations]
+n8n_api_key = "test-n8n-key"
+outbox_batch_limit = 20
 "#,
     )
     .expect("valid test config")
@@ -141,6 +145,7 @@ async fn test_state_with(bot_config: SettingsBotConfig, llm_requests_per_hour: u
     let chat = Arc::new(ChatService::new(llm, memory, cache.clone(), db.clone()));
     let leads = Arc::new(LeadService::new(db.clone(), notifications.clone()));
     let settings_bot = Arc::new(SettingsBot::new(&bot_config));
+    let articles = Arc::new(ArticleService::new(db.clone(), test_public_url()));
     let leptos_options = leptos::prelude::get_configuration(None)
         .map(|c| c.leptos_options)
         .expect("leptos options");
@@ -150,6 +155,7 @@ async fn test_state_with(bot_config: SettingsBotConfig, llm_requests_per_hour: u
         db,
         chat,
         leads,
+        articles,
         notifications,
         cache,
         rate_limiter,
@@ -158,6 +164,11 @@ async fn test_state_with(bot_config: SettingsBotConfig, llm_requests_per_hour: u
         leptos_options,
         started_at: Instant::now(),
     }
+}
+
+/// Публичный адрес сайта в тестах — из него собираются ссылки в RSS и событиях.
+fn test_public_url() -> &'static str {
+    "https://test.inteli-dev.ru"
 }
 
 /// Конфигурация бота настроек для тестов: владелец — id 330711327.
@@ -251,6 +262,49 @@ async fn lead_creates_and_returns_id() {
     assert_eq!(status, StatusCode::OK);
     assert_eq!(resp["success"], true);
     assert!(resp["lead_id"].as_i64().unwrap() > 0);
+}
+
+#[tokio::test]
+async fn admin_can_update_lead_status() {
+    let state = test_state().await;
+
+    let (_, lead) = request(
+        &state,
+        "POST",
+        "/api/lead",
+        Some(serde_json::json!({
+            "name": "Иван",
+            "email": "i@example.com",
+            "message": "нужен проект",
+            "source": "form"
+        })),
+        None,
+    )
+    .await;
+    let id = lead["lead_id"].as_i64().expect("id заявки");
+
+    // Регрессия: маршрут был объявлен как `/api/admin/leads/{id}`, а axum 0.7
+    // понимает только `:id`. `{id}` матчился как литеральный сегмент, поэтому
+    // PATCH отвечал 404 и статус заявки нельзя было сменить из админки.
+    let (status, _) = request(
+        &state,
+        "PATCH",
+        &format!("/api/admin/leads/{id}"),
+        Some(serde_json::json!({ "status": "contacted" })),
+        Some(ADMIN_TOKEN),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+
+    let (_, leads) = request(
+        &state,
+        "GET",
+        "/api/admin/leads?limit=10",
+        None,
+        Some(ADMIN_TOKEN),
+    )
+    .await;
+    assert_eq!(leads[0]["status"], "contacted");
 }
 
 #[tokio::test]
@@ -363,16 +417,31 @@ async fn presets_do_not_consume_ai_quota() {
     let (status, _) = request(&state, "POST", "/api/chat", Some(body), None).await;
     assert_eq!(status, StatusCode::OK);
 
-    // Квота исчерпана, но preset/availability/lead_request идут из контента.
-    for (kind, index) in [("preset", 0), ("preset", 1), ("availability", 4), ("lead_request", 5)] {
+    // Квота исчерпана, но все кнопки без ИИ идут из контента. Берём список из
+    // общего источника правды: добавили кнопку — она сразу проверяется здесь.
+    for preset in inteli_dev::services::chat::PRESETS
+        .iter()
+        .filter(|p| p.kind != "analysis")
+    {
         let body = serde_json::json!({
-            "message": "preset",
-            "question_type": kind,
-            "preset_index": index
+            "message": preset.label,
+            "question_type": preset.kind,
+            "preset_index": preset.index
         });
         let (status, resp) = request(&state, "POST", "/api/chat", Some(body), None).await;
-        assert_eq!(status, StatusCode::OK, "{kind}/{index} не должен упираться в квоту LLM");
-        assert_eq!(resp["source"], "openviking_direct");
+        assert_eq!(
+            status,
+            StatusCode::OK,
+            "«{}» ({}/{}) упёрлась в квоту LLM",
+            preset.label,
+            preset.kind,
+            preset.index
+        );
+        assert_eq!(
+            resp["source"], "openviking_direct",
+            "«{}» должна отвечать из контента, а не через модель",
+            preset.label
+        );
     }
 }
 
@@ -503,7 +572,7 @@ async fn settings_bot_changes_status_end_to_end() {
     // 1. Изменился публичный API статуса.
     let (_, body) = request(&state, "GET", "/api/status", None, None).await;
     assert_eq!(body["status"], "busy");
-    assert_eq!(body["label"], "ограниченная доступность");
+    assert_eq!(body["label"], "Приём заявок: ограничен");
     assert_eq!(body["icon_name"], "settings");
 
     // 2. Значение ушло в БД — переживёт перезапуск.
@@ -582,9 +651,12 @@ async fn settings_bot_state_is_visible_to_the_chatbot() {
     let body = serde_json::json!({ "message": "Когда вы свободны?", "question_type": "availability" });
     let (status, resp) = request(&state, "POST", "/api/chat", Some(body), None).await;
     assert_eq!(status, StatusCode::OK);
+    // Ожидание берём из словаря статуса, а не литералом: иначе тест закрепит
+    // формулировку, которую бейдж, бот и API могут сменить согласованно.
+    let expected = inteli_dev::services::status::status_line("full");
     assert!(
-        resp["answer"].as_str().unwrap_or("").contains("полная загрузка"),
-        "чат должен отдавать живой статус, получено: {resp}"
+        resp["answer"].as_str().unwrap_or("").contains(&expected),
+        "чат должен отдавать живой статус «{expected}», получено: {resp}"
     );
 }
 
@@ -602,4 +674,627 @@ async fn availability_question_is_persisted_to_history() {
     let rows = chats.as_array().expect("список чатов");
     assert_eq!(rows.len(), 1, "вопрос о занятости должен сохраняться");
     assert_eq!(rows[0]["question_type"], "availability");
+}
+
+// ---------------------------------------------------------------------------
+// Статьи блога и кросспостинг
+// ---------------------------------------------------------------------------
+
+/// Ключ фида событий в тестах (см. `[integrations]` в `test_config`).
+const N8N_KEY: &str = "test-n8n-key";
+
+/// Замок для тестов статей.
+///
+/// [`PublishedArticles`] — глобальный снимок в памяти процесса. Тесты одного
+/// бинарника идут параллельно, поэтому без общего замка статья, опубликованная
+/// одним тестом, попадала бы в RSS и sitemap другого.
+fn articles_lock() -> std::sync::MutexGuard<'static, ()> {
+    static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    let guard = LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    inteli_dev::services::PublishedArticles::reset_global();
+    guard
+}
+
+/// Запрос с произвольными заголовками (нужен `X-Api-Key` для фида n8n).
+async fn request_with_headers(
+    state: &AppState,
+    method: &str,
+    uri: &str,
+    body: Option<serde_json::Value>,
+    headers: &[(&str, &str)],
+) -> (StatusCode, serde_json::Value) {
+    let app = api::routes().with_state(state.clone());
+
+    let mut builder = Request::builder().method(method).uri(uri);
+    for (name, value) in headers {
+        builder = builder.header(*name, HeaderValue::from_str(value).unwrap());
+    }
+
+    let req = match body {
+        Some(b) => builder
+            .header(header::CONTENT_TYPE, "application/json")
+            .body(Body::from(b.to_string()))
+            .unwrap(),
+        None => builder.body(Body::empty()).unwrap(),
+    };
+
+    let resp = app.oneshot(req).await.unwrap();
+    let status = resp.status();
+    let bytes = resp.into_body().collect().await.unwrap().to_bytes();
+    let json = serde_json::from_slice(&bytes).unwrap_or(serde_json::Value::Null);
+    (status, json)
+}
+
+/// Запрос, ответ которого — не JSON (RSS/sitemap отдают XML).
+async fn request_text(state: &AppState, uri: &str) -> (StatusCode, String) {
+    let app = api::routes().with_state(state.clone());
+    let req = Request::builder()
+        .method("GET")
+        .uri(uri)
+        .body(Body::empty())
+        .unwrap();
+
+    let resp = app.oneshot(req).await.unwrap();
+    let status = resp.status();
+    let bytes = resp.into_body().collect().await.unwrap().to_bytes();
+    (status, String::from_utf8_lossy(&bytes).into_owned())
+}
+
+/// Создаёт статью через админку и возвращает её JSON.
+async fn create_article(
+    state: &AppState,
+    title: &str,
+    status: &str,
+) -> serde_json::Value {
+    let body = serde_json::json!({
+        "title": title,
+        "summary": "Краткое описание",
+        "body_markdown": "# Заголовок\n\nТекст **статьи**.",
+        "tags": ["rust", "ai"],
+        "status": status,
+    });
+
+    let (code, article) = request(
+        state,
+        "POST",
+        "/api/admin/articles",
+        Some(body),
+        Some(ADMIN_TOKEN),
+    )
+    .await;
+    assert_eq!(code, StatusCode::OK, "создание статьи: {article}");
+    article
+}
+
+#[tokio::test]
+async fn admin_articles_require_token() {
+    let _guard = articles_lock();
+    let state = test_state().await;
+
+    let (status, _) = request(&state, "GET", "/api/admin/articles", None, None).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+
+    let (status, body) = request(
+        &state,
+        "GET",
+        "/api/admin/articles",
+        None,
+        Some(ADMIN_TOKEN),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["total"], 0);
+}
+
+#[tokio::test]
+async fn article_crud_flow_end_to_end() {
+    let _guard = articles_lock();
+    let state = test_state().await;
+
+    // 1. Создание черновика: slug выводится из заголовка транслитом.
+    let created = create_article(&state, "Как я собирал AI-сервер", "draft").await;
+    let id = created["id"].as_i64().expect("id статьи");
+    assert_eq!(created["slug"], "kak-ya-sobiral-ai-server");
+    assert_eq!(created["status"], "draft");
+    assert!(created["published_at"].is_null());
+
+    // 2. Чтение одной статьи.
+    let (status, one) = request(
+        &state,
+        "GET",
+        &format!("/api/admin/articles/{id}"),
+        None,
+        Some(ADMIN_TOKEN),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(one["title"], "Как я собирал AI-сервер");
+
+    // 3. Обновление.
+    let body = serde_json::json!({
+        "title": "Как я собирал AI-сервер (обновлено)",
+        "summary": "Новое описание",
+        "body_markdown": "Текст v2",
+        "tags": ["gpu"],
+        "status": "draft",
+    });
+    let (status, updated) = request(
+        &state,
+        "PUT",
+        &format!("/api/admin/articles/{id}"),
+        Some(body),
+        Some(ADMIN_TOKEN),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(updated["title"], "Как я собирал AI-сервер (обновлено)");
+    assert_eq!(updated["tags"][0], "gpu");
+
+    // 4. Публикация через PATCH: дата появляется.
+    let (status, published) = request(
+        &state,
+        "PATCH",
+        &format!("/api/admin/articles/{id}"),
+        Some(serde_json::json!({ "status": "published" })),
+        Some(ADMIN_TOKEN),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(published["status"], "published");
+    assert!(!published["published_at"].is_null());
+
+    // 5. Снятие с публикации возвращает в черновики и обнуляет дату.
+    let (_, drafted) = request(
+        &state,
+        "PATCH",
+        &format!("/api/admin/articles/{id}"),
+        Some(serde_json::json!({ "status": "draft" })),
+        Some(ADMIN_TOKEN),
+    )
+    .await;
+    assert_eq!(drafted["status"], "draft");
+    assert!(drafted["published_at"].is_null());
+
+    // 6. Удаление.
+    let (status, _) = request(
+        &state,
+        "DELETE",
+        &format!("/api/admin/articles/{id}"),
+        None,
+        Some(ADMIN_TOKEN),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+
+    let (status, _) = request(
+        &state,
+        "GET",
+        &format!("/api/admin/articles/{id}"),
+        None,
+        Some(ADMIN_TOKEN),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn article_validation_rejects_bad_input() {
+    let _guard = articles_lock();
+    let state = test_state().await;
+
+    // Пустой заголовок.
+    let (status, body) = request(
+        &state,
+        "POST",
+        "/api/admin/articles",
+        Some(serde_json::json!({ "title": "  ", "body_markdown": "текст" })),
+        Some(ADMIN_TOKEN),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(body["error"].as_str().unwrap_or("").contains("заголовок"));
+
+    // Пустое тело.
+    let (status, _) = request(
+        &state,
+        "POST",
+        "/api/admin/articles",
+        Some(serde_json::json!({ "title": "Заголовок", "body_markdown": "" })),
+        Some(ADMIN_TOKEN),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+
+    // Опасная схема в обложке.
+    let (status, _) = request(
+        &state,
+        "POST",
+        "/api/admin/articles",
+        Some(serde_json::json!({
+            "title": "Заголовок",
+            "body_markdown": "текст",
+            "cover_image_url": "javascript:alert(1)"
+        })),
+        Some(ADMIN_TOKEN),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+
+    // Неизвестный статус в PATCH.
+    let created = create_article(&state, "Черновик", "draft").await;
+    let id = created["id"].as_i64().unwrap();
+    let (status, _) = request(
+        &state,
+        "PATCH",
+        &format!("/api/admin/articles/{id}"),
+        Some(serde_json::json!({ "status": "bogus" })),
+        Some(ADMIN_TOKEN),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn duplicate_slug_gets_a_free_suffix() {
+    let _guard = articles_lock();
+    let state = test_state().await;
+
+    let first = create_article(&state, "Одна статья", "draft").await;
+    let second = create_article(&state, "Одна статья", "draft").await;
+
+    assert_eq!(first["slug"], "odna-statya");
+    assert_eq!(second["slug"], "odna-statya-2");
+}
+
+#[tokio::test]
+async fn publishing_creates_an_outbox_event_and_draft_does_not() {
+    let _guard = articles_lock();
+    let state = test_state().await;
+
+    let draft = create_article(&state, "Черновик без события", "draft").await;
+    let draft_id = draft["id"].as_i64().unwrap();
+
+    let (_, outbox) = request(
+        &state,
+        "GET",
+        "/api/admin/outbox?status=pending",
+        None,
+        Some(ADMIN_TOKEN),
+    )
+    .await;
+    assert_eq!(
+        outbox["pending"], 0,
+        "черновик не должен порождать события кросспостинга"
+    );
+
+    let (_, _) = request(
+        &state,
+        "PATCH",
+        &format!("/api/admin/articles/{draft_id}"),
+        Some(serde_json::json!({ "status": "published" })),
+        Some(ADMIN_TOKEN),
+    )
+    .await;
+
+    let (_, outbox) = request(
+        &state,
+        "GET",
+        "/api/admin/outbox?status=pending",
+        None,
+        Some(ADMIN_TOKEN),
+    )
+    .await;
+    assert_eq!(outbox["pending"], 1);
+
+    let item = &outbox["items"][0];
+    assert_eq!(item["event_type"], "article.published");
+    assert_eq!(item["payload"]["article"]["slug"], "chernovik-bez-sobytiya");
+    assert_eq!(
+        item["payload"]["article"]["url"],
+        "https://test.inteli-dev.ru/blog/chernovik-bez-sobytiya"
+    );
+    // Снимок статьи: n8n получает текст, не делая второй запрос.
+    assert!(item["payload"]["article"]["body_markdown"]
+        .as_str()
+        .unwrap_or("")
+        .contains("Текст"));
+}
+
+#[tokio::test]
+async fn n8n_feed_is_disabled_without_a_configured_key() {
+    let _guard = articles_lock();
+    let state = test_state().await;
+
+    // Конфигурация без ключа: фид выключен целиком (404), а не «пускает всех».
+    let mut config = (*state.config).clone();
+    config.integrations.n8n_api_key = String::new();
+    let mut bare = state.clone();
+    bare.config = Arc::new(config);
+
+    let (status, _) = request_with_headers(
+        &bare,
+        "GET",
+        "/api/integrations/outbox",
+        None,
+        &[("x-api-key", N8N_KEY)],
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn n8n_feed_rejects_a_wrong_key() {
+    let _guard = articles_lock();
+    let state = test_state().await;
+
+    let (status, _) = request_with_headers(&state, "GET", "/api/integrations/outbox", None, &[]).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+
+    let (status, _) = request_with_headers(
+        &state,
+        "GET",
+        "/api/integrations/outbox",
+        None,
+        &[("x-api-key", "wrong-key")],
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn n8n_feed_delivers_events_and_ack_is_idempotent() {
+    let _guard = articles_lock();
+    let state = test_state().await;
+
+    let article = create_article(&state, "Для кросспостинга", "published").await;
+    assert_eq!(article["status"], "published");
+
+    // 1. Фид отдаёт событие с ключом из конфига.
+    let (status, feed) = request_with_headers(
+        &state,
+        "GET",
+        "/api/integrations/outbox",
+        None,
+        &[("x-api-key", N8N_KEY)],
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+
+    let events = feed["events"].as_array().expect("список событий");
+    assert_eq!(events.len(), 1);
+    let event_id = events[0]["id"].as_i64().unwrap();
+    assert_eq!(events[0]["event_type"], "article.published");
+    assert_eq!(feed["base_url"], "https://test.inteli-dev.ru");
+
+    // 2. Подтверждение доставки.
+    let (status, acked) = request_with_headers(
+        &state,
+        "POST",
+        "/api/integrations/outbox/ack",
+        Some(serde_json::json!({ "ids": [event_id] })),
+        &[("x-api-key", N8N_KEY)],
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(acked["acked"], 1);
+
+    // 3. Повторный ack идемпотентен: n8n может переподтвердить батч.
+    let (_, again) = request_with_headers(
+        &state,
+        "POST",
+        "/api/integrations/outbox/ack",
+        Some(serde_json::json!({ "ids": [event_id] })),
+        &[("x-api-key", N8N_KEY)],
+    )
+    .await;
+    assert_eq!(again["acked"], 0);
+
+    // 4. Очередь пуста.
+    let (_, feed) = request_with_headers(
+        &state,
+        "GET",
+        "/api/integrations/outbox",
+        None,
+        &[("x-api-key", N8N_KEY)],
+    )
+    .await;
+    assert_eq!(feed["count"], 0);
+}
+
+#[tokio::test]
+async fn n8n_feed_fail_counts_attempts_and_gives_up() {
+    let _guard = articles_lock();
+    let state = test_state().await;
+
+    create_article(&state, "Падающая доставка", "published").await;
+
+    let (_, feed) = request_with_headers(
+        &state,
+        "GET",
+        "/api/integrations/outbox",
+        None,
+        &[("x-api-key", N8N_KEY)],
+    )
+    .await;
+    let event_id = feed["events"][0]["id"].as_i64().unwrap();
+
+    // Падаем больше, чем допускает лимит попыток: событие уходит в failed и
+    // перестаёт выдаваться, чтобы один сбой не блокировал пайплайн навсегда.
+    for _ in 0..6 {
+        let (status, _) = request_with_headers(
+            &state,
+            "POST",
+            "/api/integrations/outbox/fail",
+            Some(serde_json::json!({ "id": event_id, "error": "502 от n8n" })),
+            &[("x-api-key", N8N_KEY)],
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+    }
+
+    let (_, feed) = request_with_headers(
+        &state,
+        "GET",
+        "/api/integrations/outbox",
+        None,
+        &[("x-api-key", N8N_KEY)],
+    )
+    .await;
+    assert_eq!(feed["count"], 0, "исчерпавшее попытки событие не отдаётся");
+
+    let (_, failed) = request_with_headers(
+        &state,
+        "GET",
+        "/api/integrations/outbox?status=failed",
+        None,
+        &[("x-api-key", N8N_KEY)],
+    )
+    .await;
+    assert_eq!(failed["count"], 1);
+    assert_eq!(failed["events"][0]["last_error"], "502 от n8n");
+}
+
+#[tokio::test]
+async fn only_published_articles_reach_rss_and_sitemap() {
+    let _guard = articles_lock();
+    let state = test_state().await;
+
+    create_article(&state, "Черновик", "draft").await;
+    create_article(&state, "Публичная статья", "published").await;
+
+    let (status, rss) = request_text(&state, "/rss.xml").await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(rss.contains("<rss version=\"2.0\""));
+    assert!(rss.contains("Публичная статья"));
+    assert!(
+        !rss.contains("Черновик"),
+        "черновик не должен попадать в ленту: {rss}"
+    );
+    // Полный текст отдаётся, чтобы n8n собрал пост одним запросом.
+    assert!(rss.contains("<content:encoded><![CDATA["));
+
+    let (status, sitemap) = request_text(&state, "/sitemap.xml").await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(sitemap.contains("<loc>https://test.inteli-dev.ru/</loc>"));
+    assert!(sitemap.contains("<loc>https://test.inteli-dev.ru/blog/publichnaya-statya</loc>"));
+    assert!(!sitemap.contains("chernovik"));
+}
+
+#[tokio::test]
+async fn deleting_a_published_article_reports_deletion_to_n8n() {
+    let _guard = articles_lock();
+    let state = test_state().await;
+
+    let article = create_article(&state, "Удаляемая", "published").await;
+    let id = article["id"].as_i64().unwrap();
+
+    let (status, _) = request(
+        &state,
+        "DELETE",
+        &format!("/api/admin/articles/{id}"),
+        None,
+        Some(ADMIN_TOKEN),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+
+    // Событие об удалении должно пережить саму статью: иначе n8n не узнает,
+    // что материал снят с сайта.
+    let (_, feed) = request_with_headers(
+        &state,
+        "GET",
+        "/api/integrations/outbox",
+        None,
+        &[("x-api-key", N8N_KEY)],
+    )
+    .await;
+    let events = feed["events"].as_array().unwrap();
+    let types: Vec<&str> = events
+        .iter()
+        .map(|e| e["event_type"].as_str().unwrap_or(""))
+        .collect();
+    assert!(types.contains(&"article.deleted"), "получили {types:?}");
+    assert!(events
+        .iter()
+        .any(|e| e["payload"]["article"]["slug"] == "udalyaemaya"));
+}
+
+#[tokio::test]
+async fn markdown_preview_renders_and_neutralises_scripts() {
+    let _guard = articles_lock();
+    let state = test_state().await;
+
+    let (status, body) = request(
+        &state,
+        "POST",
+        "/api/admin/article-preview",
+        Some(serde_json::json!({
+            "body_markdown": "# Заголовок\n\n**жирный** <script>alert(1)</script>"
+        })),
+        Some(ADMIN_TOKEN),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+
+    let html = body["html"].as_str().unwrap_or("");
+    assert!(html.contains("<h1>Заголовок</h1>"));
+    assert!(html.contains("<strong>жирный</strong>"));
+    assert!(!html.contains("<script>"), "скрипт просочился в предпросмотр: {html}");
+    assert_eq!(body["reading_time_minutes"], 1);
+
+    // Предпросмотр закрыт админским токеном, как и остальные админ-ручки.
+    let (status, _) = request(
+        &state,
+        "POST",
+        "/api/admin/article-preview",
+        Some(serde_json::json!({ "body_markdown": "текст" })),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn unpublishing_removes_the_article_from_the_feed() {
+    let _guard = articles_lock();
+    let state = test_state().await;
+
+    let article = create_article(&state, "Снимем с публикации", "published").await;
+    let id = article["id"].as_i64().unwrap();
+
+    let (_, rss) = request_text(&state, "/rss.xml").await;
+    assert!(rss.contains("Снимем с публикации"));
+
+    let (status, _) = request(
+        &state,
+        "PATCH",
+        &format!("/api/admin/articles/{id}"),
+        Some(serde_json::json!({ "status": "archived" })),
+        Some(ADMIN_TOKEN),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+
+    let (_, rss) = request_text(&state, "/rss.xml").await;
+    assert!(
+        !rss.contains("Снимем с публикации"),
+        "снятая с публикации статья осталась в ленте: {rss}"
+    );
+
+    // И n8n получает событие о снятии.
+    let (_, feed) = request_with_headers(
+        &state,
+        "GET",
+        "/api/integrations/outbox",
+        None,
+        &[("x-api-key", N8N_KEY)],
+    )
+    .await;
+    let types: Vec<&str> = feed["events"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|e| e["event_type"].as_str().unwrap_or(""))
+        .collect();
+    assert!(types.contains(&"article.unpublished"), "получили {types:?}");
 }

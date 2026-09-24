@@ -251,6 +251,31 @@ ul { margin: 0; padding: 0; list-style: none; }
 }
 .navbar-links a:hover { color: #fff; text-decoration: none; }
 
+/* Ссылка на профиль GitHub в шапке. Круглая «кнопка» того же веса, что и
+   бургер: иконка-логотип без рамки в строке навигации теряется. */
+.navbar-social-link {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 999px;
+  border: 1px solid var(--color-border);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--color-text-secondary);
+  font-size: 1.05rem;
+  transition: color var(--transition-fast), border-color var(--transition-fast),
+    background var(--transition-fast);
+}
+.navbar-social-link:hover {
+  color: #fff;
+  border-color: var(--color-border-strong);
+  background: rgba(255, 255, 255, 0.1);
+  text-decoration: none;
+}
+.navbar-social-link svg { display: block; }
+
 /* Бургер — скрыт на десктопе, показывается только на мобильном. */
 .navbar-toggle {
   display: none;
@@ -297,28 +322,89 @@ ul { margin: 0; padding: 0; list-style: none; }
 .navbar.is-menu-open .navbar-toggle-bar:nth-child(3) { transform: translateY(-5px) rotate(-45deg); }
 
 /* ---------- 6. Status badge ---------- */
+/* Бейдж — кнопка: на тач-устройстве hover недоступен, поэтому подробности
+   раскрываются тапом (initStatusBadge), а не только наведением. */
 .status-badge {
+  position: relative;
   display: inline-flex;
   align-items: center;
-  gap: var(--space-sm);
+  gap: var(--space-xs);
   padding: var(--space-xs) var(--space-md);
   border-radius: var(--radius-full);
+  font-family: inherit;
   font-size: var(--text-small);
   font-weight: 600;
+  line-height: 1.4;
+  text-align: left;
   color: var(--color-text);
   background: rgba(255, 255, 255, 0.07);
   border: 1px solid var(--color-border);
   white-space: nowrap;
+  cursor: help;
 }
 .status-dot {
   width: 8px;
   height: 8px;
+  flex: none;
+  margin-right: var(--space-xs);
   border-radius: 50%;
   background: var(--color-status-available);
   animation: pulse 2s infinite;
 }
+.status-subject { color: var(--color-text-secondary); font-weight: 500; }
+.status-state { color: var(--color-text); }
 .status-busy .status-dot { background: var(--color-status-busy); }
 .status-full .status-dot { background: var(--color-status-full); animation: none; }
+
+/* Подсказка: расшифровка состояния + факты. Абсолютное позиционирование —
+   прижата к самому бейджу, поэтому не зависит от backdrop-filter шапки. */
+.status-popover {
+  position: absolute;
+  top: calc(100% + var(--space-sm));
+  left: 0;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+  min-width: 210px;
+  max-width: min(320px, calc(100vw - var(--space-xl)));
+  padding: var(--space-md);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: rgba(24, 21, 58, 0.98);
+  box-shadow: var(--shadow-lg);
+  font-size: var(--text-caption);
+  font-weight: 500;
+  white-space: normal;
+  text-align: left;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-4px);
+  transition: opacity 150ms ease, transform 150ms ease, visibility 150ms;
+  pointer-events: none;
+}
+/* Подсказка у правого края шапки раскрывается влево: иначе 320-пиксельная
+   карточка вылезает за viewport и её срезает `overflow-x: clip` на body. */
+@media (min-width: 768px) {
+  .navbar .status-popover { left: auto; right: 0; }
+}
+/* `:hover` включаем только там, где он есть: на тач-устройстве браузер
+   «залипает» на последнем hover после тапа, и подсказка мигала бы. */
+@media (hover: hover) {
+  .status-badge:hover .status-popover {
+    opacity: 1;
+    visibility: visible;
+    transform: none;
+  }
+}
+.status-badge:focus-visible .status-popover,
+.status-badge.is-open .status-popover {
+  opacity: 1;
+  visibility: visible;
+  transform: none;
+}
+.status-popover-summary { color: var(--color-text); font-weight: 600; }
+.status-popover-line { color: var(--color-text-secondary); }
 @keyframes pulse {
   0%, 100% { box-shadow: 0 0 0 0 rgba(76, 217, 100, 0.5); }
   50% { box-shadow: 0 0 0 6px rgba(76, 217, 100, 0); }
@@ -1331,6 +1417,225 @@ ul { margin: 0; padding: 0; list-style: none; }
   background: rgba(255, 255, 255, 0.05);
 }
 
+/* ---------- 13.1 Блог ---------- */
+.blog-header { margin-bottom: var(--space-xl); }
+.blog-header h1 { margin-bottom: var(--space-xs); }
+
+.post-list { display: grid; gap: var(--space-lg); }
+
+.post-card {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  gap: var(--space-lg);
+  padding: var(--space-lg);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  transition: border-color 200ms ease, transform 200ms ease;
+}
+.post-card:hover { border-color: var(--color-border-strong); transform: translateY(-2px); }
+.post-card-cover { display: block; border-radius: var(--radius-md); overflow: hidden; }
+.post-card-cover img { width: 100%; height: 100%; object-fit: cover; aspect-ratio: 16 / 10; }
+.post-card-title { font-size: var(--text-h3); margin-bottom: var(--space-xs); }
+.post-card-title a { color: #fff; }
+.post-card-title a:hover { color: var(--color-primary); }
+.post-card-summary { color: var(--color-text-secondary); margin-bottom: var(--space-sm); }
+
+.post-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-sm);
+  font-size: var(--text-small);
+  color: var(--color-text-tertiary);
+  margin-bottom: var(--space-sm);
+}
+
+.tag-list { display: flex; flex-wrap: wrap; gap: var(--space-xs); list-style: none; padding: 0; margin: 0; }
+.tag {
+  font-size: var(--text-caption);
+  padding: 2px var(--space-sm);
+  border-radius: 999px;
+  border: 1px solid var(--color-border);
+  background: var(--color-primary-soft);
+  color: var(--color-text-secondary);
+}
+
+.empty-state { color: var(--color-text-tertiary); padding: var(--space-xl) 0; }
+
+.section-more { font-size: var(--text-small); font-weight: 600; color: var(--color-text-secondary); }
+.section-more:hover { color: #fff; }
+.blog-teaser .section-head { margin-bottom: var(--space-lg); }
+
+/* Страница статьи */
+.post-section { max-width: 780px; }
+.breadcrumbs {
+  display: flex;
+  gap: var(--space-sm);
+  align-items: center;
+  font-size: var(--text-small);
+  color: var(--color-text-tertiary);
+  margin-bottom: var(--space-lg);
+}
+.breadcrumbs a { color: var(--color-text-secondary); }
+.post-header { margin-bottom: var(--space-lg); }
+.post-cover { width: 100%; border-radius: var(--radius-lg); margin-bottom: var(--space-lg); }
+.post-footer {
+  margin-top: var(--space-2xl);
+  padding-top: var(--space-lg);
+  border-top: 1px solid var(--color-border);
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-md);
+  align-items: center;
+  justify-content: space-between;
+}
+
+/* Текст статьи: типографика для HTML, собранного из markdown.
+   Рендерер отдаёт «голые» теги без классов, поэтому стилизуем по элементу. */
+.prose { color: var(--color-text-secondary); line-height: 1.75; }
+.prose > * + * { margin-top: var(--space-md); }
+.prose h1, .prose h2, .prose h3, .prose h4 { color: #fff; line-height: 1.25; margin-top: var(--space-xl); }
+.prose h1 { font-size: var(--text-h2); }
+.prose h2 { font-size: var(--text-h3); }
+.prose h3 { font-size: 1.25rem; }
+.prose a { color: var(--color-primary); text-decoration: underline; text-underline-offset: 3px; }
+.prose a:hover { color: var(--color-primary-hover); }
+.prose strong { color: #fff; }
+.prose ul, .prose ol { padding-left: 1.4em; }
+.prose li + li { margin-top: var(--space-xs); }
+.prose code {
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+  background: var(--color-code-bg);
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border);
+}
+.prose pre {
+  background: var(--color-code-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-md);
+  overflow-x: auto;
+}
+.prose pre code { background: none; border: none; padding: 0; }
+.prose blockquote {
+  border-left: 3px solid var(--color-primary);
+  padding-left: var(--space-md);
+  color: var(--color-text-tertiary);
+  font-style: italic;
+}
+.prose img { max-width: 100%; border-radius: var(--radius-md); }
+.prose table { width: 100%; border-collapse: collapse; font-size: var(--text-small); }
+.prose th, .prose td { border: 1px solid var(--color-border); padding: var(--space-sm) var(--space-md); text-align: left; }
+.prose th { background: rgba(255, 255, 255, 0.04); }
+.prose hr { border: none; border-top: 1px solid var(--color-border); }
+
+/* ---------- 13.2 Админка: статьи и кросспостинг ---------- */
+.admin-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-md);
+  margin-bottom: var(--space-md);
+}
+.admin-filters { display: flex; flex-wrap: wrap; gap: var(--space-xs); }
+.filter-btn {
+  font-family: inherit;
+  font-size: var(--text-small);
+  padding: 4px var(--space-md);
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+}
+.filter-btn:hover { color: #fff; border-color: var(--color-border-strong); }
+.filter-btn.is-active { background: var(--color-primary-soft); border-color: var(--color-primary); color: #fff; }
+
+.admin-hint { font-size: var(--text-small); color: var(--color-text-tertiary); margin-bottom: var(--space-sm); }
+.admin-actions { white-space: nowrap; }
+
+.mini-btn {
+  font-family: inherit;
+  font-size: var(--text-caption);
+  padding: 3px var(--space-sm);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  text-decoration: none;
+  display: inline-block;
+  line-height: 1.5;
+}
+.mini-btn:hover { color: #fff; border-color: var(--color-border-strong); background: rgba(255, 255, 255, 0.1); }
+.mini-btn-danger:hover { color: var(--color-error); border-color: var(--color-error); }
+
+.status-chip {
+  font-size: var(--text-caption);
+  padding: 2px var(--space-sm);
+  border-radius: 999px;
+  border: 1px solid var(--color-border);
+  white-space: nowrap;
+}
+.status-published, .status-delivered { border-color: var(--color-success); color: var(--color-success); }
+.status-draft { color: var(--color-text-secondary); }
+.status-archived, .status-failed { border-color: var(--color-error); color: var(--color-error); }
+.status-pending { border-color: var(--color-status-busy); color: var(--color-status-busy); }
+
+.admin-editor {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-lg);
+  margin-bottom: var(--space-xl);
+  background: var(--color-surface);
+}
+.admin-editor h3 { margin-bottom: var(--space-md); }
+.admin-editor-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--space-lg);
+}
+.admin-editor-form label {
+  display: block;
+  font-size: var(--text-small);
+  font-weight: 600;
+  margin: var(--space-md) 0 var(--space-xs);
+}
+.admin-editor-form input,
+.admin-editor-form textarea,
+.admin-editor-form select {
+  width: 100%;
+  font-family: inherit;
+  font-size: var(--text-small);
+  color: var(--color-text);
+  background: var(--color-code-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-sm) var(--space-md);
+}
+.admin-editor-form textarea { resize: vertical; }
+.admin-editor-body { font-family: var(--font-mono); line-height: 1.6; }
+.admin-editor-actions { display: flex; flex-wrap: wrap; gap: var(--space-sm); margin-top: var(--space-md); }
+.admin-editor-preview { display: flex; flex-direction: column; min-width: 0; }
+.admin-editor-preview-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-md);
+  padding-bottom: var(--space-sm);
+  border-bottom: 1px solid var(--color-border);
+}
+.admin-preview-body {
+  max-height: 70vh;
+  overflow-y: auto;
+  padding-top: var(--space-md);
+  font-size: var(--text-small);
+}
+
 /* ---------- 14. Reveal animation (progressive enhancement) ---------- */
 .section, .hero { opacity: 0; transform: translateY(8px); transition: opacity 400ms ease, transform 400ms ease; }
 .section.is-visible, .hero.is-visible { opacity: 1; transform: none; }
@@ -1377,6 +1682,8 @@ ul { margin: 0; padding: 0; list-style: none; }
   }
   .navbar-links a:hover { background: rgba(255, 255, 255, 0.06); }
   .navbar-menu .status-badge { align-self: flex-start; }
+  /* Иконка GitHub в выпадающей панели — по левому краю, как и бейдж. */
+  .navbar-menu .navbar-social-link { align-self: flex-start; }
 
   /* Отступ от липкой шапки до контента: --nav-offset — это её низ. */
   .hero { padding: calc(var(--nav-offset) + var(--space-lg)) var(--space-md) var(--space-2xl); }
@@ -1415,6 +1722,18 @@ ul { margin: 0; padding: 0; list-style: none; }
   /* Световые пятна на мобильном — тише, чтобы не спорить с текстом. */
   .section-glow::before,
   .section-glow::after { opacity: 0.32; }
+
+  /* Блог: карточка становится одноколоночной, обложка — сверху. */
+  .post-card { grid-template-columns: 1fr; }
+  .post-card-cover { display: none; }
+  .post-card-title { font-size: 1.25rem; }
+  .post-footer { flex-direction: column; align-items: flex-start; }
+
+  /* Админка: редактор статьи — форма над предпросмотром. */
+  .admin-editor { padding: var(--space-md); }
+  .admin-editor-grid { grid-template-columns: 1fr; }
+  .admin-toolbar { flex-direction: column; align-items: stretch; }
+  .admin-preview-body { max-height: 50vh; }
 }
 
 /* === Планшет (768–1023px) ===

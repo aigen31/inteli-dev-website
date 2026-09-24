@@ -31,8 +31,8 @@
 | Тип | Правило | Примеры |
 |-----|---------|---------|
 | **Primary** (CTA) | Максимум 2 на экране. Всегда ведут к цели: заявка или чат | «Задать вопрос», «Оставить заявку» |
-| **Secondary** (навигация) | Топ 4 пункта меню, без выделения цветом | Услуги, Проекты, Статус, Контакты |
-| **Tertiary** (информация) | Текст, иконки, бейджи — не кликабельные или слабо интерактивные | Бейдж статуса, метрики, соцсети |
+| **Secondary** (навигация) | Топ 4 пункта меню, без выделения цветом | Услуги, Проекты, Блог, Контакты |
+| **Tertiary** (информация) | Текст, иконки, бейджи — не ведут на страницу | Бейдж статуса (кнопка-раскрытие подсказки), метрики, соцсети |
 
 ### Запрещённые паттерны для этого проекта
 - ❌ Поп-апы при входе/выходе с сайта
@@ -174,50 +174,35 @@
 | Input border | `--color-border` | `--color-border-focus` | — | `--color-surface` |
 
 ### Статусы занятости (для /status)
-```css
-.status-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.375rem 1rem;
-  border-radius: var(--radius-full);
-  font-size: 0.875rem;
-  font-weight: 600;
-}
 
-.status-badge.available {
-  background: color-mix(in srgb, var(--status-available) 12%, transparent);
-  color: var(--status-available);
-  border: 1px solid color-mix(in srgb, var(--status-available) 30%, transparent);
-}
+Состояние описывается **парой**: постоянное подлежащее + короткое состояние.
+Подлежащее не меняется от состояния к состоянию — иначе бейдж читается как три
+разных текста, а «ограниченная доступность» без подлежащего непонятна
+посетителю, который только зашёл.
 
-.status-badge.busy {
-  background: color-mix(in srgb, var(--status-busy) 12%, transparent);
-  color: var(--status-busy);
-  border: 1px solid color-mix(in srgb, var(--status-busy) 30%, transparent);
-}
+| Статус | Бейдж | Цвет точки |
+|---|---|---|
+| `available` | Приём заявок: открыт | `--color-status-available`, пульсирует |
+| `busy` | Приём заявок: ограничен | `--color-status-busy` |
+| `full` | Приём заявок: закрыт | `--color-status-full`, без пульсации |
 
-.status-badge.full {
-  background: color-mix(in srgb, var(--status-full) 12%, transparent);
-  color: var(--status-full);
-  border: 1px solid color-mix(in srgb, var(--status-full) 30%, transparent);
-}
+Правила:
 
-/* Пульсирующая точка для "available" */
-.status-badge.available::before {
-  content: '';
-  width: 8px;
-  height: 8px;
-  background: var(--status-available);
-  border-radius: 50%;
-  animation: pulse-2s infinite;
-}
-
-@keyframes pulse {
-  0%, 100% { opacity: 1; transform: scale(1); }
-  50%      { opacity: 0.5; transform: scale(1.3); }
-}
-```
+- **Цвет — дублирующий сигнал, не единственный.** Слово состояния обязано
+  читаться без наведения: на телефоне hover недоступен, скринридер цвет не
+  видит. Поэтому в разметке есть `.status-state`, а полный текст дублируется в
+  `aria-label`.
+- Подсказка с подробностями — **дополнение** к надписи, а не её замена.
+  Раскрывается наведением (CSS `@media (hover: hover)`), фокусом с клавиатуры
+  (`:focus-visible`) и тапом (`initStatusBadge` в `assets/main.js`).
+  Внутри: расшифровка одной фразой, «В работе N проектов», «Ближайший слот».
+- Подлежащее и формулировки берутся из `services/status.rs::presentation` —
+  единственного словаря для бейджа, чата, `/api/status` и Telegram-бота.
+- Классы: `.status-badge.status-{status}`, внутри `.status-dot`,
+  `.status-subject`, `.status-state`, `.status-popover`.
+- Разметка и стили — `src/ui/shared.rs::StatusBadge` и `assets/style.css`.
+  В правилах они не дублируются: копия CSS здесь уже один раз разошлась с
+  кодом (были `.status-badge.available`, в коде — `.status-available`).
 
 ### Доступность — проверка контраста
 | Комбинация | Контраст | Проходит WCAG AA? |
@@ -438,6 +423,33 @@ $breakpoints: (
   color: var(--color-text-primary);
   border-bottom-color: var(--color-primary);
 }
+```
+
+#### Состав шапки (слева направо)
+
+| Элемент | Класс | Условие показа |
+|---|---|---|
+| Имя владельца | `.navbar-brand` | всегда |
+| Ссылки разделов | `.navbar-links` | Главная, Услуги, Проекты, Блог, Чат, Контакты |
+| Иконка GitHub | `.navbar-social-link` | логин в `[github] username` непустой |
+| Статус занятости | `.status-badge` | всегда |
+
+Правила для иконки GitHub:
+- **Брендовый знак, а не интерфейсная иконка.** Рисуется силуэтом
+  (`BrandIcon`, заливка `currentColor`), в отличие от интерфейсных Lucide
+  (`LucideIcon`, обводка 1px). Наборы не смешиваются.
+- **Источник — официальные Octicons**, регенерируются `scripts/update-icons.sh`.
+  Руками путь не правится: в Lucide брендовые иконки удалили.
+- Стоит **между ссылками и статусом**: статус — главный сигнал шапки, он должен
+  оставаться крайним справа.
+- Ссылка внешняя: `target="_blank"` + `rel="me noopener noreferrer"`.
+  `rel="me"` подтверждает, что профиль принадлежит владельцу сайта.
+- На мобильном уезжает в выпадающую панель и выравнивается по левому краю —
+  как и бейдж статуса.
+- **Не зависит от снимка статистики GitHub.** Адрес публикуется при старте из
+  конфига (`services/github.rs::set_profile`), поэтому иконка не исчезает, когда
+  GitHub API недоступен, лимит исчерпан или блок «Открытый код» выключен через
+  `enabled`. Прячется только пустым `username`.
 
 /* Mobile hamburger (только на мобильных) */
 .navbar__toggle {
@@ -517,52 +529,10 @@ $breakpoints: (
 ```
 
 ### 4. Статус-бейдж (Availability Badge)
-```css
-.status-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.375rem 1rem;
-  border-radius: var(--radius-full);
-  font-size: 0.8125rem;
-  font-weight: 600;
-  letter-spacing: 0.01em;
-}
 
-.status-badge.available {
-  background: rgba(34, 197, 94, 0.1);
-  color: var(--status-available);
-}
-
-.status-badge.busy {
-  background: rgba(245, 158, 11, 0.1);
-  color: var(--status-busy);
-}
-
-.status-badge.full {
-  background: rgba(239, 68, 68, 0.1);
-  color: var(--status-full);
-}
-
-/* Точка-индикатор */
-.status-badge::before {
-  content: '';
-  display: block;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: currentColor;
-}
-
-.status-badge.available::before {
-  animation: pulse-status 2s ease-in-out infinite;
-}
-
-@keyframes pulse-status {
-  0%, 100% { opacity: 1; transform: scale(1); }
-  50%      { opacity: 0.4; transform: scale(0.85); }
-}
-```
+Полная спецификация — в разделе «Статусы занятости (для /status)» выше.
+Кратко: постоянное подлежащее + короткое состояние, цветная точка как
+дублирующий сигнал, подсказка с фактами по наведению, фокусу и тапу.
 
 ### 5. Формы (Forms)
 ```css

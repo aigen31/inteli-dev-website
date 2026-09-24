@@ -135,6 +135,20 @@ pub async fn update_availability(
     Ok(settings)
 }
 
+/// Общий замок для тестов, работающих с глобальным [`SiteSettings`].
+///
+/// Тесты одного бинарника идут параллельно и делят процесс. Сценарий
+/// «выставить статус → прочитать» без общего замка — гонка: соседний тест
+/// успевает сбросить настройки между двумя вызовами, и проверка падает
+/// случайным образом (а не по делу).
+#[cfg(test)]
+pub fn test_lock() -> std::sync::MutexGuard<'static, ()> {
+    static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    // Отравление возможно только при панике внутри самих тестов — не повод
+    // ронять остальные.
+    LOCK.lock().unwrap_or_else(|e| e.into_inner())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -149,6 +163,7 @@ mod tests {
     #[test]
     fn falls_back_to_content_when_not_published() {
         ensure_content();
+        let _guard = test_lock();
         SiteSettings::reset_for_tests();
 
         let a = SiteSettings::availability();
@@ -159,6 +174,7 @@ mod tests {
     #[test]
     fn published_settings_win_over_content() {
         ensure_content();
+        let _guard = test_lock();
         let mut availability = fallback_content().availability;
         availability.status = "full".into();
         availability.current_projects = 4;
@@ -176,6 +192,7 @@ mod tests {
     #[test]
     fn defaults_from_content_mirror_the_content() {
         ensure_content();
+        let _guard = test_lock();
         let defaults = defaults_from_content();
         assert_eq!(defaults.availability, fallback_content().availability);
     }

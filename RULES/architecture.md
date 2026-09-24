@@ -198,21 +198,36 @@ src/
 | `/chat` | GET | Страница AI-чата | HTML |
 | `/services` | GET | Список услуг с ценами (ориентировочными) | HTML |
 | `/projects` | GET | Портфолио с кейсами "До/После" | HTML |
+| `/blog` | GET | Список опубликованных статей | HTML |
+| `/blog/:slug` | GET | Статья блога. Черновик/архив отдают 404 (не «мягкую» 200) | HTML |
 | `/status.json` | GET | JSON endpoint статуса занятости | `application/json` |
 | `/contact` | GET | Контактная форма + ссылки на мессенджеры | HTML |
+| `/rss.xml`, `/feed.xml` | GET | RSS-лента блога с полным текстом в `content:encoded` | `application/rss+xml` |
+| `/sitemap.xml` | GET | Карта сайта: статические страницы + опубликованные статьи | `application/xml` |
 | `/api/chat` | POST | API для AI-чата (JSON request/response) | `application/json` |
 | `/api/lead` | POST | Создание заявки/лида | `application/json` |
+| `/api/articles` | — | Публичного JSON-API статей нет: машинный доступ — RSS и outbox | — |
 | `/api/settings-bot/webhook` | POST | Апдейты Telegram для бота настроек (смена статуса занятости). Нужен заголовок `X-Telegram-Bot-Api-Secret-Token`; иначе 404. См. `docs/settings-bot.md` | `200` |
+| `/api/integrations/outbox` | GET | Фид событий кросспостинга для n8n. Заголовок `X-Api-Key`; без ключа в конфиге — 404. См. `docs/articles.md` | `application/json` |
+| `/api/integrations/outbox/ack` | POST | Подтверждение доставки событий (идемпотентно) | `application/json` |
+| `/api/integrations/outbox/fail` | POST | Сообщить о сбое доставки: инкремент попыток, `failed` после 5 | `application/json` |
 
-### Админ маршруты (требуют авторизации)
+### Админ маршруты (требуют `Authorization: Bearer <ADMIN_TOKEN>`)
 | Route | Метод | Описание |
 |-------|-------|----------|
-| `/admin` | GET | Логин страница |
-| `/admin/dashboard` | GET | Аналитика и метрики |
-| `/admin/chats` | GET/POST | История чатов, фильтры |
-| `/admin/chats/:id` | GET | Детали конкретного чата |
-| `/admin/leads` | GET | Список всех лидов |
-| `/admin/settings` | POST | Обновление профиля через OpenViking |
+| `/admin` | GET | Вход по токену + дашборд (заявки, чаты, статьи, outbox) |
+| `/api/admin/stats` | GET | Сводка: заявки/чаты за сегодня, время ответа, источники |
+| `/api/admin/leads` | GET | Список заявок |
+| `/api/admin/leads/:id` | PATCH | Смена статуса заявки |
+| `/api/admin/chats` | GET | История чатов |
+| `/api/admin/articles` | GET / POST | Список статей (счётчики по статусам) и создание |
+| `/api/admin/articles/:id` | GET / PUT / PATCH / DELETE | Чтение, полное обновление, смена статуса, удаление |
+| `/api/admin/article-preview` | POST | Рендер markdown в HTML тем же кодом, что и страница статьи |
+| `/api/admin/outbox` | GET | Журнал событий кросспостинга (видно, что заберёт n8n) |
+
+> ⚠️ **Синтаксис параметров пути:** axum 0.7 понимает только `:id`. Запись
+> `{id}` появилась в axum 0.8 и здесь матчится как литеральный сегмент — такой
+> маршрут молча отвечает 404. Именно так был сломан `PATCH /api/admin/leads/:id`.
 
 ### Middleware цепочка
 ```
@@ -639,12 +654,18 @@ fn SecondaryButton(text: String, href: String) -> impl IntoView {
 ```json
 {
     "status": "available",  // "available" | "busy" | "full"
+    "label": "Приём заявок: открыт",  // подлежащее + состояние
+    "icon_name": "circle-check",
     "availability_date": "2026-10-15",
     "current_projects": 3,
     "next_free_slot": "начало ноября 2026",
     "updated_at": "2026-09-07T10:00:00Z"
 }
 ```
+
+`label` собирается из словаря `services/status.rs::presentation` — того же, что
+кормит бейдж в шапке, ответ чата «Когда свободны?» и Telegram-бота. Неизвестный
+`status` трактуется как «закрыт», чтобы опечатка в БД не обещала свободные слоты.
 
 ### GET /api/status/embed.js — Embed widget для внешних сайтов
 ```javascript

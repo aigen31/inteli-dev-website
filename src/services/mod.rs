@@ -1,15 +1,18 @@
 //! Services Layer — бизнес-логика (orchestration).
 //!
 //! Слои ниже (memory/storage/llm) не знают про HTTP и друг про друга; этот слой
-//! связывает их: чатбот, статус занятости, приём заявок.
+//! связывает их: чатбот, статус занятости, приём заявок, статьи блога.
 
+pub mod article;
 pub mod chat;
+pub mod feed;
 pub mod github;
 pub mod lead;
 pub mod settings_bot;
 pub mod status;
 
+pub use article::{Article, ArticleHead, ArticleService, ArticleStatus, PublishedArticles};
 pub use chat::ChatService;
-pub use github::{GitHubService, GitHubStats};
+pub use github::{GitHubProfile, GitHubService, GitHubStats};
 pub use lead::LeadService;
 pub use settings_bot::SettingsBot;

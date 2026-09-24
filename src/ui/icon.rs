@@ -1,17 +1,24 @@
-//! Векторные SVG-иконки Lucide (outline, тонкие линии).
+//! Векторные SVG-иконки: Lucide (outline) и Octicons (бренд GitHub).
 //!
-//! Файл сгенерирован `scripts/update-icons.sh` из официального пакета
-//! `lucide-static@1.44.0` (https://lucide.dev) — пути вручную не правятся.
-//! Лицензия Lucide — ISC: https://lucide.dev/license
+//! Файл сгенерирован `scripts/update-icons.sh` — пути вручную не правятся.
 //!
-//! Каждое значение ниже — точное содержимое `icons/<name>.svg`
-//! (дочерние элементы корневого `<svg>`, без обёртки), поэтому фигуры
-//! совпадают с эталоном с lucide.dev.
+//! * `ICON_PATHS` — Lucide `1.44.0` (https://lucide.dev),
+//!   лицензия ISC. Обводка `currentColor`, штрих 1px.
+//! * `BRAND_ICON_PATHS` — Octicons `19.11.0`
+//!   (https://github.com/primer/octicons), лицензия MIT. Заливка
+//!   `currentColor`: брендовые логотипы рисуются силуэтом, а не контуром.
+//!
+//! Наборы разделены, потому что Lucide удалил брендовые иконки (в
+//! `1.44.0` иконки `github` уже нет), а рисовать чужой логотип
+//! руками нельзя — он должен совпадать с официальным.
+//!
+//! Каждое значение ниже — точное содержимое соответствующего SVG
+//! (дочерние элементы корневого `<svg>`, без обёртки).
 
 use leptos::prelude::*;
 use leptos::svg;
 
-/// Содержимое SVG-тегов для каждой иконки (без обёртки `<svg>…</svg>`).
+/// Содержимое SVG-тегов Lucide (outline, тонкие линии).
 pub const ICON_PATHS: &[(&str, &str)] = &[
     ("brain-circuit", r#"<path d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z" /><path d="M9 13a4.5 4.5 0 0 0 3-4" /><path d="M6.003 5.125A3 3 0 0 0 6.401 6.5" /><path d="M3.477 10.896a4 4 0 0 1 .585-.396" /><path d="M6 18a4 4 0 0 1-1.967-.516" /><path d="M12 13h4" /><path d="M12 18h6a2 2 0 0 1 2 2v1" /><path d="M12 8h8" /><path d="M16 8V5a2 2 0 0 1 2-2" /><circle cx="16" cy="13" r=".5" /><circle cx="18" cy="3" r=".5" /><circle cx="20" cy="21" r=".5" /><circle cx="20" cy="8" r=".5" />"#),
     ("plug-zap", r#"<path d="M6.3 20.3a2.4 2.4 0 0 0 3.4 0L12 18l-6-6-2.3 2.3a2.4 2.4 0 0 0 0 3.4Z" /><path d="m2 22 3-3" /><path d="M7.5 13.5 10 11" /><path d="M10.5 16.5 13 14" /><path d="m18 3-4 4h6l-4 4" />"#),
@@ -24,19 +31,18 @@ pub const ICON_PATHS: &[(&str, &str)] = &[
     ("check-circle", r#"<path d="M21.801 10A10 10 0 1 1 17 3.335" /><path d="m9 11 3 3L22 4" />"#),
 ];
 
+/// Содержимое SVG-тегов брендовых иконок (Octicons, заливка).
+pub const BRAND_ICON_PATHS: &[(&str, &str)] = &[
+    ("mark-github", r#"<path d="M12.5.75C6.146.75 1 5.896 1 12.25c0 5.089 3.292 9.387 7.863 10.91.575.101.79-.244.79-.546 0-.273-.014-1.178-.014-2.142-2.889.532-3.636-.704-3.866-1.35-.13-.331-.69-1.352-1.18-1.625-.402-.216-.977-.748-.014-.762.906-.014 1.553.834 1.769 1.179 1.035 1.74 2.688 1.25 3.349.948.1-.747.402-1.25.733-1.538-2.559-.287-5.232-1.279-5.232-5.678 0-1.25.445-2.285 1.178-3.09-.115-.288-.517-1.467.115-3.048 0 0 .963-.302 3.163 1.179.92-.259 1.897-.388 2.875-.388.977 0 1.955.13 2.875.388 2.2-1.495 3.162-1.179 3.162-1.179.633 1.581.23 2.76.115 3.048.733.805 1.179 1.825 1.179 3.09 0 4.413-2.688 5.39-5.247 5.678.417.36.776 1.05.776 2.128 0 1.538-.014 2.774-.014 3.162 0 .302.216.662.79.547C20.709 21.637 24 17.324 24 12.25 24 5.896 18.854.75 12.5.75Z"/>"#),
+];
+
 /// SVG-иконка Lucide (outline, тонкие линии).
 ///
 /// Атрибуты корневого `<svg>` соответствуют официальной разметке Lucide,
 /// кроме `stroke-width`: он задан в `1` (тонкие линии в 1px), а не в `2`,
-/// как в эталоне. Размер по-прежнему задаётся в CSS (`.card-icon svg`).
+/// как в эталоне. Размер по-прежнему задаётся в CSS.
 #[component]
 pub fn LucideIcon(#[prop(into)] name: String) -> impl IntoView {
-    let content = ICON_PATHS
-        .iter()
-        .find(|(k, _)| *k == name.as_str())
-        .map(|(_, s)| *s)
-        .unwrap_or("");
-
     svg::svg()
         .attr("xmlns", "http://www.w3.org/2000/svg")
         .attr("viewBox", "0 0 24 24")
@@ -48,5 +54,31 @@ pub fn LucideIcon(#[prop(into)] name: String) -> impl IntoView {
         .attr("width", "1em")
         .attr("height", "1em")
         .attr("aria-hidden", "true")
-        .inner_html(content)
+        .inner_html(lookup(ICON_PATHS, &name))
+}
+
+/// SVG-иконка бренда (Octicons): силуэт заливкой, без обводки.
+///
+/// Отдельный компонент, а не флаг у [`LucideIcon`]: у наборов разные модели
+/// отрисовки, и выбирать её по имени иконки значило бы угадывать.
+#[component]
+pub fn BrandIcon(#[prop(into)] name: String) -> impl IntoView {
+    svg::svg()
+        .attr("xmlns", "http://www.w3.org/2000/svg")
+        .attr("viewBox", "0 0 24 24")
+        .attr("fill", "currentColor")
+        .attr("stroke", "none")
+        .attr("width", "1em")
+        .attr("height", "1em")
+        .attr("aria-hidden", "true")
+        .inner_html(lookup(BRAND_ICON_PATHS, &name))
+}
+
+/// Ищет разметку иконки по имени; неизвестное имя даёт пустой `<svg>`.
+fn lookup(table: &'static [(&'static str, &'static str)], name: &str) -> &'static str {
+    table
+        .iter()
+        .find(|(key, _)| *key == name)
+        .map(|(_, body)| *body)
+        .unwrap_or("")
 }

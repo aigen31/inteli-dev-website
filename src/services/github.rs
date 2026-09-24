@@ -90,6 +90,55 @@ impl GitHubStats {
     }
 }
 
+/// Профиль GitHub для ссылки в шапке сайта.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct GitHubProfile {
+    /// Логин без ведущего `@`.
+    pub login: String,
+    /// Абсолютный адрес профиля.
+    pub url: String,
+}
+
+/// Ссылка на профиль для шапки.
+///
+/// Публикуется при старте **из конфига** и не зависит от [`GitHubStats`]:
+/// иконка в шапке должна вести на профиль всегда — в том числе когда GitHub
+/// недоступен, лимит API исчерпан или блок «Открытый код» выключен. Привязка
+/// к снимку статистики сделала бы ссылку пропадающей ровно тогда, когда она
+/// нужнее всего.
+static PROFILE: RwLock<Option<GitHubProfile>> = RwLock::new(None);
+
+/// Публикует профиль GitHub (вызывается при старте приложения).
+pub fn set_profile(profile: GitHubProfile) {
+    let mut guard = PROFILE.write().unwrap_or_else(|e| e.into_inner());
+    *guard = Some(profile);
+}
+
+/// Профиль GitHub. `None` — логин не задан, ссылку в шапке не рисуем.
+pub fn profile() -> Option<GitHubProfile> {
+    let guard = PROFILE.read().unwrap_or_else(|e| e.into_inner());
+    guard.clone()
+}
+
+/// Строит профиль по логину из конфига. Пустой логин → `None`.
+pub fn profile_from_username(username: &str) -> Option<GitHubProfile> {
+    let login = username.trim().trim_start_matches('@').trim();
+    if login.is_empty() {
+        return None;
+    }
+    Some(GitHubProfile {
+        login: login.to_string(),
+        url: format!("https://github.com/{login}"),
+    })
+}
+
+/// Сбрасывает профиль. Только для тестов: они делят процесс.
+#[doc(hidden)]
+pub fn reset_profile_global() {
+    let mut guard = PROFILE.write().unwrap_or_else(|e| e.into_inner());
+    *guard = None;
+}
+
 /// Клиент GitHub с кэшем снимка.
 #[derive(Debug, Clone)]
 pub struct GitHubService {
@@ -551,5 +600,44 @@ mod tests {
     fn language_color_is_stable_for_unknown() {
         assert_eq!(language_color("Brainfuck"), "#8b8b9e");
         assert_ne!(language_color("Rust"), language_color("PHP"));
+    }
+}
+
+#[cfg(test)]
+mod profile_tests {
+    use super::*;
+
+    #[test]
+    fn profile_url_is_built_from_username() {
+        let p = profile_from_username("aigen31").expect("профиль");
+        assert_eq!(p.login, "aigen31");
+        assert_eq!(p.url, "https://github.com/aigen31");
+    }
+
+    #[test]
+    fn profile_url_tolerates_at_sign_and_spaces() {
+        assert_eq!(
+            profile_from_username("  @aigen31  ").map(|p| p.url),
+            Some("https://github.com/aigen31".to_string())
+        );
+    }
+
+    #[test]
+    fn empty_username_means_no_link() {
+        assert!(profile_from_username("").is_none());
+        assert!(profile_from_username("   ").is_none());
+        assert!(profile_from_username("@").is_none());
+    }
+
+    #[test]
+    fn global_profile_round_trips() {
+        reset_profile_global();
+        assert!(profile().is_none());
+
+        set_profile(profile_from_username("aigen31").unwrap());
+        assert_eq!(profile().map(|p| p.login), Some("aigen31".to_string()));
+
+        reset_profile_global();
+        assert!(profile().is_none());
     }
 }

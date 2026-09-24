@@ -31,16 +31,44 @@ pub fn routes() -> Router<AppState> {
             post(handlers::settings_bot_webhook),
         )
         // Admin (token auth)
+        // ВАЖНО: axum 0.7 (matchit 0.7) использует синтаксис `:id`. Запись
+        // `{id}` появилась только в axum 0.8 и здесь матчится как литеральный
+        // сегмент — маршрут молча превращается в 404.
         .route("/api/admin/stats", get(handlers::admin_stats))
         .route("/api/admin/leads", get(handlers::admin_leads))
         .route("/api/admin/chats", get(handlers::admin_chats))
-        .route("/api/admin/leads/{id}", patch(handlers::admin_update_lead))
+        .route("/api/admin/leads/:id", patch(handlers::admin_update_lead))
+        // Статьи блога (админка).
+        .route(
+            "/api/admin/articles",
+            get(handlers::admin_articles).post(handlers::admin_create_article),
+        )
+        // Предпросмотр markdown лежит ВНЕ `/articles/…`, чтобы статический
+        // сегмент не спорил с параметрическим маршрутом статьи.
+        .route(
+            "/api/admin/article-preview",
+            post(handlers::admin_preview_markdown),
+        )
+        .route(
+            "/api/admin/articles/:id",
+            get(handlers::admin_article)
+                .put(handlers::admin_update_article)
+                .patch(handlers::admin_update_article_status)
+                .delete(handlers::admin_delete_article),
+        )
+        .route("/api/admin/outbox", get(handlers::admin_outbox))
+        // Кросспостинг: фид событий для n8n (ключ в заголовке `X-Api-Key`).
+        .route("/api/integrations/outbox", get(handlers::outbox_feed))
+        .route("/api/integrations/outbox/ack", post(handlers::outbox_ack))
+        .route("/api/integrations/outbox/fail", post(handlers::outbox_fail))
         // Static assets (embedded)
         .route("/assets/style.css", get(handlers::style_css))
         .route("/assets/main.js", get(handlers::main_js))
         .route("/robots.txt", get(handlers::robots))
         .route("/manifest.json", get(handlers::manifest))
         .route("/sitemap.xml", get(handlers::sitemap))
+        .route("/rss.xml", get(handlers::rss))
+        .route("/feed.xml", get(handlers::rss))
         .route("/favicon.svg", get(handlers::favicon))
 }
 

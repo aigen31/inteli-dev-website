@@ -208,6 +208,54 @@ PRAGMA synchronous=NORMAL;
 PRAGMA cache_size=-64000;  -- 64MB cache
 ```
 
+**Ещё две таблицы (статьи блога и кросспостинг):**
+
+```sql
+-- Контент, который пишет владелец из админки.
+CREATE TABLE IF NOT EXISTS articles (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    slug TEXT NOT NULL UNIQUE,
+    title TEXT NOT NULL,
+    summary TEXT NOT NULL DEFAULT '',
+    body_markdown TEXT NOT NULL,
+    cover_image_url TEXT,
+    tags TEXT NOT NULL DEFAULT '[]',   -- JSON-массив строк
+    status TEXT NOT NULL DEFAULT 'draft' CHECK(status IN ('draft', 'published', 'archived')),
+    published_at TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    source TEXT NOT NULL DEFAULT 'admin' CHECK(source IN ('admin', 'n8n', 'import')),
+    external_id TEXT,                  -- ключ идемпотентности внешнего импорта
+    canonical_url TEXT
+);
+
+-- Transactional outbox: события для кросспостинга через n8n.
+-- Пишется В ОДНОЙ ТРАНЗАКЦИИ со статьёй, поэтому «опубликовано, но событие
+-- потерялось» невозможно. article_id намеренно без FOREIGN KEY: лог доставки
+-- обязан переживать удаление статьи.
+CREATE TABLE IF NOT EXISTS article_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    article_id INTEGER NOT NULL,
+    article_slug TEXT NOT NULL,
+    event_type TEXT NOT NULL CHECK(event_type IN
+        ('article.published', 'article.updated', 'article.unpublished', 'article.deleted')),
+    payload TEXT NOT NULL,             -- JSON-снимок статьи
+    status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'delivered', 'failed')),
+    attempts INTEGER NOT NULL DEFAULT 0,
+    next_attempt_at TEXT,              -- задел под push с backoff
+    created_at TEXT NOT NULL,
+    delivered_at TEXT,
+    last_error TEXT
+);
+```
+
+Подробности: `docs/articles.md`. Слой доступа — `src/storage/article.rs`.
+
+> **Статус занятости живёт в SQLite, а не в OpenViking** (`site_settings`,
+> ключ → JSON). Это состояние сервиса, которое меняется несколько раз в день и
+> должно переживать рестарт, а не семантическое знание об авторе. См.
+> `src/settings.rs` и `docs/settings-bot.md`.
+
 ### 2. Redis — для кеширования
 
 **Когда использовать:** Кэш ответов LLM, rate limiting, сессии админа.

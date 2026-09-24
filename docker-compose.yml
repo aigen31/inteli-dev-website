@@ -41,6 +41,10 @@ services:
       - VK_ADMIN_USER_ID=${VK_ADMIN_USER_ID:-0}
       # Admin
       - ADMIN_TOKEN=${ADMIN_TOKEN:-}
+      # Публичный адрес сайта: абсолютные ссылки в RSS, sitemap, событиях n8n.
+      - PUBLIC_URL=${PUBLIC_URL:-https://inteli-dev.ru}
+      # Кросспостинг: ключ фида событий для n8n. Пустой — фид выключен (404).
+      - N8N_API_KEY=${N8N_API_KEY:-}
       # GitHub (опционально): блок «Открытый код» работает и без токена,
       # токен поднимает лимит API 60 → 5000 запросов/час на IP.
       - GITHUB_TOKEN=${GITHUB_TOKEN:-}
