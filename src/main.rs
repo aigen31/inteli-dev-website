@@ -272,6 +272,11 @@ fn shell(_options: LeptosOptions) -> impl IntoView {
                 <link rel="manifest" href="/manifest.json"/>
                 <link rel="icon" href="/favicon.svg" type="image/svg+xml"/>
                 <script src="/assets/main.js" defer></script>
+                // Секции прячет CSS, показывает JS. Без скриптов показывать
+                // некому — снимаем скрытие, иначе страница остаётся пустой.
+                <noscript>
+                    <style>".section, .hero { opacity: 1; transform: none; }"</style>
+                </noscript>
             </head>
             <body>
                 <App/>

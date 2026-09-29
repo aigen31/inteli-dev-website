@@ -5,21 +5,43 @@
   'use strict';
 
   // ---------- Fade-in секций при скролле (IntersectionObserver) ----------
+  // Секции скрыты в CSS (`.section, .hero { opacity: 0 }`), поэтому ошибка
+  // здесь стоит не «нет анимации», а «нет контента». Порог по доле пересечения
+  // для этого не годится: у секции выше десяти экранов максимальная доля равна
+  // высоте экрана, делённой на высоту секции (≈7% для статьи на 10 000 px), —
+  // заданные 10% недостижимы, `is-visible` не появляется никогда, и статья
+  // целиком остаётся прозрачной. Поэтому ждём первый же пиксель в вьюпорте:
+  // так порог достижим при любой высоте блока. Если наблюдатель недоступен или
+  // упал, показываем всё сразу — контент важнее анимации.
   function initReveal() {
     var targets = document.querySelectorAll('.section, .hero');
+    function showAll() {
+      targets.forEach(function (t) {
+        t.classList.add('is-visible');
+        t.style.animation = 'none';
+      });
+    }
     if (!('IntersectionObserver' in window)) {
-      targets.forEach(function (t) { t.classList.add('is-visible'); });
+      showAll();
       return;
     }
-    var io = new IntersectionObserver(function (entries) {
-      entries.forEach(function (entry) {
-        if (entry.isIntersecting) {
-          entry.target.classList.add('is-visible');
-          io.unobserve(entry.target);
-        }
-      });
-    }, { threshold: 0.1 });
-    targets.forEach(function (t) { io.observe(t); });
+    try {
+      var io = new IntersectionObserver(function (entries) {
+        entries.forEach(function (entry) {
+          if (entry.isIntersecting) {
+            entry.target.classList.add('is-visible');
+            io.unobserve(entry.target);
+          }
+        });
+      }, { threshold: 0 });
+      // Снимаем страховочную анимацию из CSS: она показывает секции через 5
+      // секунд, если этот код почему-то не выполнился. Дальше видимостью
+      // управляет наблюдатель.
+      targets.forEach(function (t) { t.style.animation = 'none'; });
+      targets.forEach(function (t) { io.observe(t); });
+    } catch (e) {
+      showAll();
+    }
   }
 
   // ---------- Мобильная навигация (бургер) ----------

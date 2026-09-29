@@ -1679,7 +1679,23 @@ ul { margin: 0; padding: 0; list-style: none; }
 .btn:disabled { opacity: 0.55; cursor: progress; }
 
 /* ---------- 14. Reveal animation (progressive enhancement) ---------- */
-.section, .hero { opacity: 0; transform: translateY(8px); transition: opacity 400ms ease, transform 400ms ease; }
+/* Скрытие здесь — это сокрытие контента: если класс `is-visible` не появится,
+   секция не видна вообще. Поэтому в initReveal() (assets/main.js) порог взят
+   по первому пикселю, а не по доле пересечения: доля недостижима для секции
+   выше десяти экранов, и длинная статья однажды уже пропала так целиком.
+   Страховка трёхуровневая: <noscript> в shell() для выключенного JS, эта
+   анимация-подстраховка на случай, когда main.js не выполнился вообще, и
+   try/catch внутри самого initReveal(). Живой JS снимает анимацию сам —
+   `animation` перебивает и transition, и класс `is-visible`. */
+@keyframes reveal-guard {
+  to { opacity: 1; transform: none; }
+}
+.section, .hero {
+  opacity: 0;
+  transform: translateY(8px);
+  transition: opacity 400ms ease, transform 400ms ease;
+  animation: reveal-guard 400ms ease 5s forwards;
+}
 .section.is-visible, .hero.is-visible { opacity: 1; transform: none; }
 
 /* ---------- 15. Responsive ---------- */
