@@ -640,7 +640,12 @@ fn event_payload(public_url: &str, row: &repo::ArticleRow) -> String {
             "title": row.title,
             "summary": row.summary,
             "body_markdown": row.body_markdown,
-            "cover_image_url": row.cover_image_url,
+            // Обложка может быть локальной (`/media/…`) — читателю события
+            // (n8n) нужен абсолютный адрес, относительный он никуда не приложит.
+            "cover_image_url": row
+                .cover_image_url
+                .as_deref()
+                .map(|url| absolute_url(public_url, url)),
             "tags": tags,
             "status": row.status,
             "published_at": row.published_at,
@@ -651,6 +656,15 @@ fn event_payload(public_url: &str, row: &repo::ArticleRow) -> String {
     });
     // Сериализация `serde_json::Value` в строку не может упасть.
     payload.to_string()
+}
+
+/// Абсолютный адрес для локального пути. Внешние адреса не трогаем.
+fn absolute_url(public_url: &str, url: &str) -> String {
+    if url.starts_with('/') && !url.starts_with("//") {
+        format!("{public_url}{url}")
+    } else {
+        url.to_string()
+    }
 }
 
 /// Приводит строку из БД к доменной модели.
@@ -942,6 +956,23 @@ mod tests {
         assert_eq!(clamp_limit(Some(0)), 1);
         assert_eq!(clamp_limit(Some(10_000)), LIST_MAX_LIMIT);
         assert_eq!(clamp_limit(Some(10)), 10);
+    }
+
+    #[test]
+    fn local_urls_become_absolute_for_event_readers() {
+        assert_eq!(
+            absolute_url("https://inteli-dev.ru", "/media/abc.png"),
+            "https://inteli-dev.ru/media/abc.png"
+        );
+        // Внешний адрес и protocol-relative ссылка остаются как есть.
+        assert_eq!(
+            absolute_url("https://inteli-dev.ru", "https://cdn.example/a.png"),
+            "https://cdn.example/a.png"
+        );
+        assert_eq!(
+            absolute_url("https://inteli-dev.ru", "//evil.com/a.png"),
+            "//evil.com/a.png"
+        );
     }
 
     #[tokio::test]

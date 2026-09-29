@@ -11,6 +11,7 @@
 //! попасть не могут по построению.
 
 use crate::services::article::{Article, ArticleHead, PublishedArticles};
+use crate::utils::markdown;
 
 /// Статические страницы сайта, которые всегда должны быть в карте сайта.
 const STATIC_PAGES: &[&str] = &["/", "/services", "/projects", "/blog", "/chat", "/contact"];
@@ -63,10 +64,12 @@ pub fn rss_xml(articles: &[Article], public_url: &str) -> String {
         for tag in &article.tags {
             out.push_str(&format!("      <category>{}</category>\n", escape_xml(tag)));
         }
-        // Полный HTML: n8n забирает готовый пост одним запросом.
+        // Полный HTML: n8n забирает готовый пост одним запросом. Картинки и
+        // внутренние ссылки разворачиваем в абсолютные: в ленте относительный
+        // `/media/…` указывает в никуда — ни у читателя, ни в n8n.
         out.push_str(&format!(
             "      <content:encoded><![CDATA[{}]]></content:encoded>\n",
-            cdata(&article.html())
+            cdata(&markdown::render_absolute(&article.body_markdown, base))
         ));
         out.push_str("    </item>\n");
     }

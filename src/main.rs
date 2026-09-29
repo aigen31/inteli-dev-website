@@ -19,7 +19,8 @@ use inteli_dev::memory::content::SiteContent;
 use inteli_dev::memory::OpenVikingClient;
 use inteli_dev::notification::NotificationService;
 use inteli_dev::services::{
-    ArticleService, ChatService, GitHubService, LeadService, SettingsBot, PublishedArticles,
+    ArticleService, ChatService, GitHubService, LeadService, MediaService, SettingsBot,
+    PublishedArticles,
 };
 use inteli_dev::settings::SiteSettings;
 use inteli_dev::state::AppState;
@@ -178,6 +179,17 @@ async fn run(config: AppConfig) -> AppResult<()> {
         Err(e) => tracing::warn!("не удалось загрузить статьи блога: {e}"),
     }
 
+    // 5.0.1. Изображения статей: загрузка из админки и отдача с `/media/…`.
+    //        Лежат в той же БД, что и текст, — отдельного volume не нужно.
+    let media = Arc::new(MediaService::new(db.clone()));
+    match media.stats().await {
+        Ok((count, bytes)) => tracing::info!(
+            "медиатека: {count} файлов, {:.1} МБ",
+            bytes as f64 / 1024.0 / 1024.0
+        ),
+        Err(e) => tracing::warn!("не удалось посчитать медиатеку: {e}"),
+    }
+
     if config.integrations.is_active() {
         tracing::info!("фид кросспостинга для n8n включён: /api/integrations/outbox");
     } else {
@@ -205,6 +217,7 @@ async fn run(config: AppConfig) -> AppResult<()> {
         chat,
         leads,
         articles,
+        media,
         notifications,
         cache,
         rate_limiter,

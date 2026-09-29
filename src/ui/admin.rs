@@ -83,7 +83,17 @@ pub fn Admin() -> impl IntoView {
                                 <p class="field-hint">"Через запятую, не больше 10."</p>
 
                                 <label for="article-cover">"Обложка"</label>
-                                <input id="article-cover" type="text" placeholder="https://… или /img/…"/>
+                                <div id="article-cover-dropzone" class="dropzone dropzone-slim">
+                                    <input id="article-cover" type="text" placeholder="https://… или /media/…"/>
+                                    <div class="dropzone-overlay" aria-hidden="true">
+                                        <span>"Отпустите, чтобы сделать обложкой"</span>
+                                    </div>
+                                </div>
+                                <p class="field-hint">"Перетащите изображение сюда или вставьте из буфера — оно загрузится, а адрес подставится сам."</p>
+                                <div id="article-cover-preview" class="cover-preview" hidden>
+                                    <img id="article-cover-preview-img" alt="" loading="lazy"/>
+                                    <button type="button" id="article-cover-clear" class="mini-btn">"Убрать"</button>
+                                </div>
 
                                 <label for="article-canonical">"Канонический адрес"</label>
                                 <input id="article-canonical" type="text" placeholder="если статья уже опубликована в другом месте"/>
@@ -96,13 +106,25 @@ pub fn Admin() -> impl IntoView {
                                 </select>
 
                                 <label for="article-body">"Текст (Markdown)"</label>
-                                <textarea id="article-body" class="admin-editor-body" rows="18"
-                                    placeholder="# Заголовок&#10;&#10;Текст статьи…"></textarea>
+                                <div id="article-body-dropzone" class="dropzone">
+                                    <textarea id="article-body" class="admin-editor-body" rows="18"
+                                        placeholder="# Заголовок&#10;&#10;Текст статьи…"></textarea>
+                                    <div class="dropzone-overlay" aria-hidden="true">
+                                        <span>"Отпустите, чтобы вставить изображение в текст"</span>
+                                    </div>
+                                </div>
+                                <p class="field-hint">
+                                    "Перетащите картинку в поле или вставьте из буфера (Ctrl+V) — она загрузится и встанет в текст на месте курсора."
+                                </p>
+                                <p id="article-media-status" class="form-status" role="status" aria-live="polite"></p>
 
                                 <div class="admin-editor-actions">
                                     <button type="button" id="article-save-btn" class="btn btn-primary">"Сохранить"</button>
                                     <button type="button" id="article-preview-btn" class="btn btn-secondary">"Предпросмотр"</button>
+                                    <button type="button" id="article-image-btn" class="btn btn-secondary">"Вставить изображение"</button>
                                     <button type="button" id="article-cancel-btn" class="btn btn-secondary">"Закрыть"</button>
+                                    <input id="article-image-input" type="file" hidden
+                                        accept="image/png,image/jpeg,image/webp,image/gif,image/avif" multiple/>
                                 </div>
                                 <p id="article-editor-status" class="form-status" role="status" aria-live="polite"></p>
                             </div>

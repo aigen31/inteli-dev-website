@@ -3,7 +3,7 @@
 use axum::extract::{Path, Query, State};
 use axum::http::header::{self, HeaderMap};
 use axum::http::StatusCode;
-use axum::response::IntoResponse;
+use axum::response::{IntoResponse, Response};
 use axum::Json;
 use serde::Deserialize;
 
@@ -12,6 +12,7 @@ use crate::error::AppError;
 use crate::services::article::{ArticleInput, ArticleStatus, BODY_MAX_CHARS};
 use crate::services::chat::{requires_llm, ChatRequest, ChatResponse};
 use crate::services::lead::LeadSubmission;
+use crate::services::media::MEDIA_MAX_BYTES;
 use crate::services::status::{status_payload, StatusPayload};
 use crate::state::AppState;
 use crate::storage::lead::Lead;
@@ -505,6 +506,100 @@ pub async fn outbox_fail(
     let error: String = body.error.chars().take(500).collect();
     crate::storage::article::fail_event(&state.db, body.id, &error).await?;
     Ok(Json(serde_json::json!({ "success": true })))
+}
+
+// ---------------------------------------------------------------------------
+// Изображения статей
+// ---------------------------------------------------------------------------
+
+/// Изображения статьи не меняются, поэтому кэш можно держать год и не
+/// перепроверять: адрес меняется вместе с содержимым.
+const MEDIA_CACHE_CONTROL: &str = "public, max-age=31536000, immutable";
+
+/// `POST /api/admin/media` — загрузка изображения из редактора статьи.
+///
+/// Тело запроса — сам файл, без multipart: загружается ровно одна картинка и
+/// никаких метаданных к ней не прилагается. `Content-Type` из запроса не
+/// используется: тип определяется по содержимому (см. `services::media`), иначе
+/// файл с расширением `.png` и содержимым HTML отдавался бы с нашего домена.
+///
+/// Ответ — адрес, который можно вставлять в markdown. Повторная загрузка того
+/// же файла вернёт тот же адрес (`deduplicated: true`).
+pub async fn admin_upload_media(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    body: axum::body::Body,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    check_admin(&headers, &state.config.admin.token)?;
+
+    // Читаем тело с потолком на байт больше лимита: так «файл слишком большой»
+    // становится понятным сообщением, а не ошибкой экстрактора.
+    let bytes = axum::body::to_bytes(body, MEDIA_MAX_BYTES + 1)
+        .await
+        .map_err(|_| {
+            ApiError(AppError::Validation(format!(
+                "изображение больше {} МБ — сожмите его перед загрузкой",
+                MEDIA_MAX_BYTES / 1024 / 1024
+            )))
+        })?;
+
+    let stored = state.media.store(&bytes).await?;
+
+    tracing::info!(
+        "медиа: загружено {} ({}, {} КБ{})",
+        stored.name,
+        stored.content_type,
+        stored.size_bytes / 1024,
+        if stored.deduplicated { ", дубль" } else { "" }
+    );
+
+    Ok(Json(serde_json::json!({
+        "name": stored.name,
+        "url": stored.url_path,
+        "content_type": stored.content_type,
+        "size_bytes": stored.size_bytes,
+        "deduplicated": stored.deduplicated,
+    })))
+}
+
+/// `GET /media/:name` — отдача изображения.
+///
+/// Файл неизменяем: имя — это хеш содержимого. Поэтому ответ кэшируется
+/// навсегда, а `ETag` (он же хеш) позволяет браузеру не качать картинку
+/// повторно. `nosniff` обязателен: мы отдаём то, что загрузил пользователь, и
+/// браузер не должен угадывать тип по содержимому.
+pub async fn media_file(
+    State(state): State<AppState>,
+    Path(name): Path<String>,
+    headers: HeaderMap,
+) -> Result<Response, ApiError> {
+    let Some(file) = state.media.load(&name).await? else {
+        return Err(AppError::NotFound(format!("media `{name}`")).into());
+    };
+
+    let etag = format!("\"{}\"", file.sha256);
+    // 304 Not Modified: содержимое неизменяемо, сравнивать больше нечего.
+    if headers
+        .get(header::IF_NONE_MATCH)
+        .and_then(|v| v.to_str().ok())
+        .is_some_and(|value| value.split(',').any(|tag| tag.trim() == etag))
+    {
+        return Response::builder()
+            .status(StatusCode::NOT_MODIFIED)
+            .header(header::ETAG, etag)
+            .header(header::CACHE_CONTROL, MEDIA_CACHE_CONTROL)
+            .body(axum::body::Body::empty())
+            .map_err(|e| ApiError(AppError::Internal(e.to_string())));
+    }
+
+    Response::builder()
+        .status(StatusCode::OK)
+        .header(header::CONTENT_TYPE, file.content_type)
+        .header(header::CACHE_CONTROL, MEDIA_CACHE_CONTROL)
+        .header("x-content-type-options", "nosniff")
+        .header(header::ETAG, etag)
+        .body(axum::body::Body::from(file.bytes))
+        .map_err(|e| ApiError(AppError::Internal(e.to_string())))
 }
 
 /// Представление события для API: payload разворачивается в JSON, а не

@@ -146,6 +146,7 @@ async fn test_state_with(bot_config: SettingsBotConfig, llm_requests_per_hour: u
     let leads = Arc::new(LeadService::new(db.clone(), notifications.clone()));
     let settings_bot = Arc::new(SettingsBot::new(&bot_config));
     let articles = Arc::new(ArticleService::new(db.clone(), test_public_url()));
+    let media = Arc::new(inteli_dev::services::MediaService::new(db.clone()));
     let leptos_options = leptos::prelude::get_configuration(None)
         .map(|c| c.leptos_options)
         .expect("leptos options");
@@ -156,6 +157,7 @@ async fn test_state_with(bot_config: SettingsBotConfig, llm_requests_per_hour: u
         chat,
         leads,
         articles,
+        media,
         notifications,
         cache,
         rate_limiter,
@@ -1386,3 +1388,207 @@ async fn unpublishing_removes_the_article_from_the_feed() {
         .collect();
     assert!(types.contains(&"article.unpublished"), "получили {types:?}");
 }
+
+// ---------------------------------------------------------------------------
+// Изображения статей
+// ---------------------------------------------------------------------------
+
+/// Начало настоящего PNG-файла: сигнатуры достаточно, чтобы сервис принял файл.
+const PNG_BYTES: &[u8] = &[
+    0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D, b'I', b'H', b'D', b'R',
+];
+/// Второй PNG — другое содержимое, значит и другой адрес.
+const PNG_BYTES_2: &[u8] = &[
+    0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D, b'I', b'H', b'D', b'S',
+];
+
+/// Отправляет изображение на загрузку и возвращает ответ как есть.
+async fn upload_media_raw(
+    state: &AppState,
+    bytes: &[u8],
+    token: Option<&str>,
+) -> (StatusCode, serde_json::Value) {
+    let app = test_router(state);
+
+    let mut builder = Request::builder()
+        .method("POST")
+        .uri("/api/admin/media")
+        // Заголовок намеренно «неправильный»: сервер обязан смотреть на
+        // содержимое, а не на то, что заявил клиент.
+        .header(header::CONTENT_TYPE, "application/octet-stream");
+    if let Some(t) = token {
+        builder = builder.header(
+            header::AUTHORIZATION,
+            HeaderValue::from_str(&format!("Bearer {t}")).unwrap(),
+        );
+    }
+
+    let resp = app
+        .oneshot(builder.body(Body::from(bytes.to_vec())).unwrap())
+        .await
+        .unwrap();
+    let status = resp.status();
+    let bytes = resp.into_body().collect().await.unwrap().to_bytes();
+    let json = serde_json::from_slice(&bytes).unwrap_or(serde_json::Value::Null);
+    (status, json)
+}
+
+#[tokio::test]
+async fn media_upload_requires_the_admin_token() {
+    let state = test_state().await;
+    let (status, _) = upload_media_raw(&state, PNG_BYTES, None).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    // Без авторизации файл не должен оказаться доступен по адресу.
+    let (status, _) = request_text(&state, "/media/whatever.png").await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn media_upload_stores_and_serves_the_image() {
+    let state = test_state().await;
+
+    let (status, body) = upload_media_raw(&state, PNG_BYTES, Some(ADMIN_TOKEN)).await;
+    assert_eq!(status, StatusCode::OK, "загрузка: {body}");
+    let url = body["url"].as_str().expect("url в ответе");
+    assert!(url.starts_with("/media/"), "адрес картинки: {url}");
+    assert!(url.ends_with(".png"));
+    assert_eq!(body["content_type"], "image/png");
+    assert_eq!(body["size_bytes"], PNG_BYTES.len() as i64);
+    assert_eq!(body["deduplicated"], false);
+
+    // Отдача: тип из содержимого, годовой immutable-кэш, nosniff и ETag.
+    let app = test_router(&state);
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(url)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    assert_eq!(resp.headers()[header::CONTENT_TYPE], "image/png");
+    assert_eq!(resp.headers()["x-content-type-options"], "nosniff");
+    assert!(resp.headers()[header::CACHE_CONTROL]
+        .to_str()
+        .unwrap()
+        .contains("immutable"));
+    let etag = resp.headers()[header::ETAG].to_str().unwrap().to_string();
+    let bytes = resp.into_body().collect().await.unwrap().to_bytes();
+    assert_eq!(bytes.as_ref(), PNG_BYTES);
+
+    // Условный запрос: содержимое неизменяемо, браузер получает 304.
+    let app = test_router(&state);
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(url)
+                .header(header::IF_NONE_MATCH, etag)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::NOT_MODIFIED);
+}
+
+#[tokio::test]
+async fn media_upload_deduplicates_and_rejects_non_images() {
+    let state = test_state().await;
+
+    let (_, first) = upload_media_raw(&state, PNG_BYTES, Some(ADMIN_TOKEN)).await;
+    let (_, again) = upload_media_raw(&state, PNG_BYTES, Some(ADMIN_TOKEN)).await;
+    // Повторная загрузка не создаёт копию: адрес в статье остаётся тем же.
+    assert_eq!(again["url"], first["url"]);
+    assert_eq!(again["deduplicated"], true);
+
+    let (_, other) = upload_media_raw(&state, PNG_BYTES_2, Some(ADMIN_TOKEN)).await;
+    assert_ne!(other["url"], first["url"]);
+
+    // Не изображение — понятная ошибка, а не 500.
+    let (status, body) = upload_media_raw(
+        &state,
+        b"<svg xmlns=\"http://www.w3.org/2000/svg\"></svg>",
+        Some(ADMIN_TOKEN),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(
+        body["error"].as_str().unwrap_or("").contains("SVG"),
+        "сообщение об ошибке: {body}"
+    );
+
+    // Файл слишком большой отбивается до записи в базу.
+    let huge = vec![0u8; inteli_dev::services::media::MEDIA_MAX_BYTES + 1];
+    let (status, body) = upload_media_raw(&state, &huge, Some(ADMIN_TOKEN)).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(
+        body["error"].as_str().unwrap_or("").contains("МБ"),
+        "сообщение об ошибке: {body}"
+    );
+
+    // Неизвестное имя — 404, а не 500 и не «отдадим что-нибудь».
+    let (status, _) = request_text(&state, "/media/../../etc/passwd").await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn article_images_are_absolute_in_rss() {
+    let _guard = articles_lock();
+    let state = test_state().await;
+
+    let (_, uploaded) = upload_media_raw(&state, PNG_BYTES, Some(ADMIN_TOKEN)).await;
+    let url = uploaded["url"].as_str().unwrap();
+
+    let body = serde_json::json!({
+        "title": "Статья с картинкой",
+        "summary": "",
+        "body_markdown": format!("![схема]({url})"),
+        "cover_image_url": url,
+        "tags": [],
+        "status": "published",
+    });
+    let (code, article) = request(
+        &state,
+        "POST",
+        "/api/admin/articles",
+        Some(body),
+        Some(ADMIN_TOKEN),
+    )
+    .await;
+    assert_eq!(code, StatusCode::OK, "создание статьи: {article}");
+
+    // В RSS адрес обязан быть абсолютным: ленту читают из другого контекста, и
+    // относительная ссылка в ней ломается у читателя (и у n8n, который собирает
+    // из ленты пост для Telegram). Относительность того же адреса на странице
+    // статьи проверяют юнит-тесты `utils::markdown`.
+    let (status, rss) = request_text(&state, "/rss.xml").await;
+    assert_eq!(status, StatusCode::OK);
+    let absolute = format!("src=\"https://test.inteli-dev.ru{url}\"");
+    assert!(rss.contains(&absolute), "в RSS нет абсолютного адреса: {rss}");
+
+    // Обложка в событии для n8n — тоже абсолютная.
+    let (_, feed) = request_with_headers(
+        &state,
+        "GET",
+        "/api/integrations/outbox",
+        None,
+        &[("x-api-key", N8N_KEY)],
+    )
+    .await;
+    let published = feed["events"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|e| e["event_type"] == "article.published")
+        .expect("событие публикации");
+    assert_eq!(
+        published["payload"]["article"]["cover_image_url"],
+        format!("https://test.inteli-dev.ru{url}")
+    );
+}
+
+

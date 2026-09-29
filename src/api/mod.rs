@@ -7,6 +7,7 @@
 pub mod assets;
 pub mod handlers;
 
+use axum::extract::DefaultBodyLimit;
 use axum::http::header::HeaderMap;
 use axum::http::header::CONTENT_TYPE;
 use axum::response::{IntoResponse, Response};
@@ -15,6 +16,7 @@ use axum::{Json, Router};
 
 use crate::config::SeoConfig;
 use crate::error::AppError;
+use crate::services::media::MEDIA_MAX_BYTES;
 use crate::state::AppState;
 
 /// Файлы в корне сайта, которые отдаёт само приложение.
@@ -77,6 +79,15 @@ pub fn routes(seo: &SeoConfig) -> Router<AppState> {
                 .delete(handlers::admin_delete_article),
         )
         .route("/api/admin/outbox", get(handlers::admin_outbox))
+        // Изображения статей. Лимит тела поднимаем только на этот маршрут:
+        // остальные принимают JSON на килобайты, и разрешать им 8 МБ незачем.
+        // Запас над `MEDIA_MAX_BYTES` нужен, чтобы файл чуть больше лимита
+        // получил понятный отказ, а не голый 413 от экстрактора.
+        .route(
+            "/api/admin/media",
+            post(handlers::admin_upload_media)
+                .layer(DefaultBodyLimit::max(MEDIA_MAX_BYTES + 64 * 1024)),
+        )
         // Кросспостинг: фид событий для n8n (ключ в заголовке `X-Api-Key`).
         .route("/api/integrations/outbox", get(handlers::outbox_feed))
         .route("/api/integrations/outbox/ack", post(handlers::outbox_ack))
@@ -84,6 +95,7 @@ pub fn routes(seo: &SeoConfig) -> Router<AppState> {
         // Static assets (embedded)
         .route("/assets/style.css", get(handlers::style_css))
         .route("/assets/main.js", get(handlers::main_js))
+        .route("/media/:name", get(handlers::media_file))
         .route("/robots.txt", get(handlers::robots))
         .route("/manifest.json", get(handlers::manifest))
         .route("/sitemap.xml", get(handlers::sitemap))

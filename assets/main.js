@@ -566,6 +566,7 @@
       editingId = null;
       field('article-editor').hidden = true;
       setEditorStatus('');
+      setMediaStatus('');
       resetPreview();
     }
 
@@ -574,6 +575,7 @@
       if (!editor) return;
 
       setEditorStatus('');
+      setMediaStatus('');
       resetPreview();
 
       if (id == null) {
@@ -587,6 +589,7 @@
         field('article-canonical').value = '';
         field('article-body').value = '';
         field('article-status').value = 'draft';
+        renderCoverPreview();
         editor.hidden = false;
         field('article-title').focus();
         return;
@@ -609,6 +612,7 @@
       field('article-canonical').value = a.canonical_url || '';
       field('article-body').value = a.body_markdown || '';
       field('article-status').value = a.status || 'draft';
+      renderCoverPreview();
       editor.hidden = false;
       editor.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
@@ -666,6 +670,280 @@
       if (meta) meta.textContent = (res.body.reading_time_minutes || 1) + ' мин чтения';
     }
 
+    // ---------- Изображения статьи: drag&drop, вставка из буфера ----------
+    //
+    // Картинка сначала уезжает на сервер (/api/admin/media), и только потом в
+    // текст попадает её адрес. Порядок именно такой: markdown со ссылкой на
+    // несуществующий файл выглядит как готовый текст, но ломается на сайте.
+    //
+    // Отправляем через XMLHttpRequest, а не fetch: только он умеет сообщать
+    // прогресс отправки, а фото с телефона — это несколько мегабайт, и
+    // молчащий интерфейс выглядит зависшим.
+
+    // Больше этого размера сервер не примет — не гоняем байты зря.
+    var MAX_UPLOAD_BYTES = 8 * 1024 * 1024;
+
+    function setMediaStatus(message, kind) {
+      var el = field('article-media-status');
+      if (!el) return;
+      el.textContent = message || '';
+      el.className = 'form-status' + (kind ? ' ' + kind : '');
+    }
+
+    // Файл похож на изображение? Тип у перетаскиваемого файла бывает пустым,
+    // поэтому смотрим ещё и на расширение; окончательное слово всё равно за
+    // сервером — он определяет формат по содержимому.
+    function looksLikeImage(file) {
+      if (!file) return false;
+      if (file.type) return file.type.indexOf('image/') === 0;
+      return /\.(png|jpe?g|webp|gif|avif)$/i.test(file.name || '');
+    }
+
+    // В drag&drop участвует файл, а не выделенный текст.
+    function carriesFiles(event) {
+      var types = (event.dataTransfer && event.dataTransfer.types) || [];
+      return Array.prototype.indexOf.call(types, 'Files') !== -1;
+    }
+
+    function mediaError(message) {
+      var err = new Error(message);
+      return err;
+    }
+
+    async function uploadImage(file, onProgress) {
+      if (file.size > MAX_UPLOAD_BYTES) {
+        throw mediaError('«' + file.name + '» больше 8 МБ — сожмите его перед загрузкой.');
+      }
+
+      return new Promise(function (resolve, reject) {
+        var xhr = new XMLHttpRequest();
+        xhr.open('POST', '/api/admin/media');
+        // Content-Type не ставим: это не JSON, а сам файл. Тип сервер
+        // определяет по содержимому, а не по заголовку.
+        xhr.setRequestHeader('Authorization', 'Bearer ' + token());
+
+        xhr.upload.addEventListener('progress', function (e) {
+          if (onProgress && e.lengthComputable) onProgress(e.loaded / e.total);
+        });
+
+        xhr.addEventListener('load', function () {
+          var body = {};
+          try { body = JSON.parse(xhr.responseText); } catch (err) { /* не JSON */ }
+          if (xhr.status >= 200 && xhr.status < 300 && body.url) {
+            resolve(body);
+          } else {
+            reject(mediaError(body.error || ('Не удалось загрузить: ' + xhr.status)));
+          }
+        });
+        xhr.addEventListener('error', function () {
+          reject(mediaError('Сеть недоступна — изображение не загружено.'));
+        });
+        xhr.addEventListener('abort', function () {
+          reject(mediaError('Загрузка отменена.'));
+        });
+
+        xhr.send(file);
+      });
+    }
+
+    // Alt-текст по умолчанию — из имени файла. Кривой alt лучше пустого:
+    // его видно в предпросмотре, и автор поправит.
+    function altFromFile(file) {
+      var name = String(file.name || '').replace(/\.[^.]+$/, '');
+      name = name.replace(/[-_]+/g, ' ').replace(/[[\]]/g, '').trim();
+      return name || 'изображение';
+    }
+
+    function markdownFor(file, url) {
+      return '![' + altFromFile(file) + '](' + url + ')';
+    }
+
+    // Вставляет текст в позицию курсора, отделяя его пустой строкой.
+    //
+    // Без этого картинка приклеивается к абзацу («текст![схема](…)»), а
+    // markdown считает её частью строки — на сайте она встаёт не туда.
+    function insertIntoBody(text) {
+      var area = field('article-body');
+      if (!area) return;
+
+      var start = area.selectionStart == null ? area.value.length : area.selectionStart;
+      var end = area.selectionEnd == null ? start : area.selectionEnd;
+      var before = area.value.slice(0, start);
+      var after = area.value.slice(end);
+
+      var prefix = '';
+      if (before && !/\n\n$/.test(before)) prefix = /\n$/.test(before) ? '\n' : '\n\n';
+      var suffix = '';
+      if (after && !/^\n\n/.test(after)) suffix = /^\n/.test(after) ? '\n' : '\n\n';
+
+      var insertion = prefix + text + suffix;
+      area.value = before + insertion + after;
+
+      var caret = start + insertion.length;
+      area.setSelectionRange(caret, caret);
+      area.focus();
+    }
+
+    // Загружает файлы и раскладывает результат: в текст или в обложку.
+    async function uploadFiles(files, mode) {
+      var all = Array.prototype.slice.call(files || []);
+      var images = all.filter(looksLikeImage);
+
+      if (!images.length) {
+        if (all.length) setMediaStatus('Это не изображение: нужен PNG, JPEG, WebP, GIF или AVIF.', 'error');
+        return;
+      }
+
+      // Про пропущенные файлы говорим в каждом статусе: при перетаскивании
+      // нескольких файлов автор иначе не заметит, что часть не уехала.
+      var skipped = all.length - images.length;
+      var note = skipped
+        ? ' Пропущено файлов: ' + skipped + ' — нужен PNG, JPEG, WebP, GIF или AVIF.'
+        : '';
+
+      var button = field('article-image-btn');
+      if (button) button.disabled = true;
+
+      try {
+        for (var i = 0; i < images.length; i++) {
+          var file = images[i];
+          var caption = 'Загрузка «' + (file.name || 'изображение') + '»' +
+            (images.length > 1 ? ' (' + (i + 1) + ' из ' + images.length + ')' : '');
+
+          setMediaStatus(caption + '…' + note);
+          var stored = await uploadImage(file, function (progress) {
+            setMediaStatus(caption + ' — ' + Math.round(progress * 100) + '%' + note);
+          });
+
+          if (mode === 'cover') {
+            setCover(stored.url);
+            setMediaStatus((stored.deduplicated
+              ? 'Это изображение уже загружено — подставил прежний адрес.'
+              : 'Обложка загружена.') + note, skipped ? '' : 'success');
+          } else {
+            insertIntoBody(markdownFor(file, stored.url));
+            setMediaStatus((stored.deduplicated
+              ? 'Изображение уже было в медиатеке — вставил прежний адрес.'
+              : 'Изображение вставлено в текст.') + note, skipped ? '' : 'success');
+          }
+        }
+      } catch (err) {
+        setMediaStatus(err.message || 'Не удалось загрузить изображение.', 'error');
+      } finally {
+        if (button) button.disabled = false;
+      }
+    }
+
+    // Зона, принимающая перетаскиваемый файл.
+    //
+    // `dragenter`/`dragleave` приходят и на дочерние элементы, поэтому
+    // подсветка считается счётчиком, а не флагом: иначе она мигает, когда
+    // курсор проходит над текстарией внутри зоны.
+    function bindDropzone(element, mode) {
+      if (!element) return;
+      var depth = 0;
+
+      element.addEventListener('dragenter', function (e) {
+        if (!carriesFiles(e)) return;
+        e.preventDefault();
+        depth++;
+        element.classList.add('is-dragover');
+      });
+      element.addEventListener('dragover', function (e) {
+        if (!carriesFiles(e)) return;
+        e.preventDefault();
+        if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+      });
+      element.addEventListener('dragleave', function () {
+        depth = Math.max(0, depth - 1);
+        if (!depth) element.classList.remove('is-dragover');
+      });
+      element.addEventListener('drop', function (e) {
+        if (!carriesFiles(e)) return;
+        e.preventDefault();
+        e.stopPropagation();
+        depth = 0;
+        element.classList.remove('is-dragover');
+        uploadFiles(e.dataTransfer && e.dataTransfer.files, mode);
+      });
+    }
+
+    function setCover(url) {
+      field('article-cover').value = url || '';
+      renderCoverPreview();
+    }
+
+    function renderCoverPreview() {
+      var wrap = field('article-cover-preview');
+      var img = field('article-cover-preview-img');
+      if (!wrap || !img) return;
+
+      var url = (field('article-cover').value || '').trim();
+      if (url) {
+        img.src = url;
+        wrap.hidden = false;
+      } else {
+        img.removeAttribute('src');
+        wrap.hidden = true;
+      }
+    }
+
+    function initMediaUpload() {
+      var body = field('article-body');
+      var cover = field('article-cover');
+      var editor = field('article-editor');
+      if (!body || !editor) return;
+
+      bindDropzone(field('article-body-dropzone'), 'body');
+      bindDropzone(field('article-cover-dropzone'), 'cover');
+
+      // Страховка: файл, брошенный мимо зоны (на заголовок, на таблицу), не
+      // должен открываться вместо страницы — вместе с ним потеряется
+      // несохранённый текст. Такие файлы считаем вложением в текст статьи.
+      editor.addEventListener('dragover', function (e) {
+        if (carriesFiles(e)) e.preventDefault();
+      });
+      editor.addEventListener('drop', function (e) {
+        if (!carriesFiles(e)) return;
+        e.preventDefault();
+        uploadFiles(e.dataTransfer && e.dataTransfer.files, 'body');
+      });
+
+      // Скриншот из буфера — самый частый способ вставить картинку в статью.
+      body.addEventListener('paste', function (e) {
+        var files = (e.clipboardData && e.clipboardData.files) || [];
+        var images = Array.prototype.filter.call(files, looksLikeImage);
+        if (!images.length) return; // обычный текст: не мешаем вставке
+        e.preventDefault();
+        uploadFiles(images, 'body');
+      });
+
+      var input = field('article-image-input');
+      var button = field('article-image-btn');
+      if (button && input) {
+        button.addEventListener('click', function () { input.click(); });
+        input.addEventListener('change', function () {
+          uploadFiles(input.files, 'body');
+          // Сбрасываем: иначе повторный выбор того же файла не вызовет change.
+          input.value = '';
+        });
+      }
+
+      if (cover) cover.addEventListener('input', renderCoverPreview);
+      var clear = field('article-cover-clear');
+      if (clear) clear.addEventListener('click', function () { setCover(''); });
+
+      // Файл, брошенный вообще мимо редактора, браузер открывает вместо
+      // страницы — вместе с ним теряется несохранённый текст. Пока редактор
+      // открыт, гасим это поведение на всей странице.
+      document.addEventListener('dragover', function (e) {
+        if (!editor.hidden && carriesFiles(e)) e.preventDefault();
+      });
+      document.addEventListener('drop', function (e) {
+        if (!editor.hidden && carriesFiles(e)) e.preventDefault();
+      });
+    }
+
     // ---------- События кросспостинга ----------
 
     async function loadOutbox() {
@@ -714,6 +992,8 @@
     }
 
     // ---------- Обработчики интерфейса статей ----------
+
+    initMediaUpload();
 
     if (field('article-new-btn')) {
       field('article-new-btn').addEventListener('click', function () { openEditor(null); });

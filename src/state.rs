@@ -14,7 +14,7 @@ use sqlx::sqlite::SqlitePool;
 use crate::cache::{InMemoryCache, RateLimiter, SlidingWindowLimiter};
 use crate::config::AppConfig;
 use crate::notification::NotificationService;
-use crate::services::{ArticleService, ChatService, LeadService, SettingsBot};
+use crate::services::{ArticleService, ChatService, LeadService, MediaService, SettingsBot};
 
 /// Состояние приложения (клонируется дешёво — все поля `Arc`/`Clone`).
 #[derive(Clone)]
@@ -25,6 +25,8 @@ pub struct AppState {
     pub leads: Arc<LeadService>,
     /// Статьи блога: CRUD, публикация и outbox событий для кросспостинга.
     pub articles: Arc<ArticleService>,
+    /// Изображения статей: приём загрузок из админки и отдача с `/media/…`.
+    pub media: Arc<MediaService>,
     pub notifications: Arc<NotificationService>,
     pub cache: Arc<InMemoryCache>,
     /// Технический антифлуд: запросов в минуту на IP.

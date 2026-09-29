@@ -29,7 +29,23 @@ fn options() -> Options {
 
 /// Рендерит markdown в готовый HTML.
 pub fn render(markdown: &str) -> String {
-    let parser = Parser::new_ext(markdown, options()).map(sanitize_event);
+    render_with_base(markdown, None)
+}
+
+/// Рендерит markdown, разворачивая локальные ссылки в абсолютные.
+///
+/// Нужно для RSS: лента уезжает из контекста сайта, и относительный
+/// `/media/abc.png` в ней ломается — и у читателя, и в n8n, который собирает из
+/// ленты пост для Telegram. Сама страница статьи рендерится через [`render`]:
+/// там адрес должен остаться относительным, иначе опубликованный сайт будет
+/// зависеть от значения `PUBLIC_URL`.
+pub fn render_absolute(markdown: &str, base_url: &str) -> String {
+    render_with_base(markdown, Some(base_url.trim_end_matches('/')))
+}
+
+fn render_with_base(markdown: &str, base_url: Option<&str>) -> String {
+    let parser =
+        Parser::new_ext(markdown, options()).map(move |event| sanitize_event(event, base_url));
     // Небольшой запас: HTML обычно чуть длиннее исходного markdown.
     let mut out = String::with_capacity(markdown.len() + markdown.len() / 4);
     html::push_html(&mut out, parser);
@@ -106,7 +122,7 @@ fn collapse_whitespace(s: &str) -> String {
 }
 
 /// Убирает из потока событий всё, что может выполниться в браузере.
-fn sanitize_event(event: Event<'_>) -> Event<'_> {
+fn sanitize_event<'a>(event: Event<'a>, base_url: Option<&str>) -> Event<'a> {
     match event {
         // Сырой HTML становится текстом: markdown-возможностей автору хватает,
         // а <script> из внешнего источника — нет.
@@ -118,7 +134,7 @@ fn sanitize_event(event: Event<'_>) -> Event<'_> {
             id,
         }) => Event::Start(Tag::Link {
             link_type,
-            dest_url: sanitize_url(dest_url),
+            dest_url: resolve_url(sanitize_url(dest_url), base_url),
             title,
             id,
         }),
@@ -129,12 +145,27 @@ fn sanitize_event(event: Event<'_>) -> Event<'_> {
             id,
         }) => Event::Start(Tag::Image {
             link_type,
-            dest_url: sanitize_url(dest_url),
+            dest_url: resolve_url(sanitize_url(dest_url), base_url),
             title,
             id,
         }),
         other => other,
     }
+}
+
+/// Дописывает базовый адрес к локальным ссылкам (`/media/…`, `/blog/…`).
+///
+/// Абсолютные адреса и `//host/path` не трогаем: первые уже корректны, вторые
+/// ведут на чужой домен по тому же протоколу.
+fn resolve_url<'a>(url: CowStr<'a>, base_url: Option<&str>) -> CowStr<'a> {
+    let Some(base) = base_url else {
+        return url;
+    };
+
+    if url.starts_with('/') && !url.starts_with("//") {
+        return CowStr::from(format!("{base}{url}"));
+    }
+    url
 }
 
 /// Заменяет опасные схемы ссылок на безобидный `#`.
@@ -195,6 +226,29 @@ mod tests {
         let html = render("[сайт](https://example.com) ![alt](/img/a.png)");
         assert!(html.contains(r#"href="https://example.com""#));
         assert!(html.contains(r#"src="/img/a.png""#));
+    }
+
+    #[test]
+    fn absolute_rendering_resolves_only_local_paths() {
+        let html = render_absolute(
+            "![схема](/media/abc.png) [в блог](/blog) [наружу](https://x.ru/a) \
+             [чужой домен](//evil.com/a) [якорь](#top)",
+            "https://inteli-dev.ru/",
+        );
+        // Завершающий слэш базы не удваивается.
+        assert!(html.contains(r#"src="https://inteli-dev.ru/media/abc.png""#));
+        assert!(html.contains(r#"href="https://inteli-dev.ru/blog""#));
+        assert!(html.contains(r#"href="https://x.ru/a""#));
+        assert!(html.contains(r#"href="//evil.com/a""#));
+        assert!(html.contains(r##"href="#top""##));
+    }
+
+    #[test]
+    fn absolute_rendering_keeps_the_safety_rules() {
+        // Разворачивание ссылок не должно отменять санитизацию.
+        let html = render_absolute("[x](/media/a.png) ![y](javascript:alert(1))", "https://x.ru");
+        assert!(!html.contains("javascript:"));
+        assert!(html.contains("https://x.ru/media/a.png"));
     }
 
     #[test]

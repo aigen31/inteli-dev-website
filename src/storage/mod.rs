@@ -1,11 +1,13 @@
 //! Storage Layer — SQLite (WAL mode) для структурированных данных.
 //!
-//! Хранит историю чатов и заявки/лиды. Семантические знания об авторе живут в
-//! OpenViking (`memory`), а не здесь — см. `memory-storage.md`.
+//! Хранит историю чатов, заявки/лиды, статьи блога и изображения к ним.
+//! Семантические знания об авторе живут в OpenViking (`memory`), а не здесь —
+//! см. `memory-storage.md`.
 
 pub mod article;
 pub mod chat;
 pub mod lead;
+pub mod media;
 pub mod settings;
 
 use sqlx::sqlite::{SqlitePool, SqlitePoolOptions};
@@ -108,6 +110,21 @@ CREATE TABLE IF NOT EXISTS article_events (
     last_error TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_article_events_status ON article_events(status, id);
+
+-- Изображения статей. Лежат в той же БД, что и текст: образ остаётся
+-- самодостаточным (один volume), а картинка не может «отстать» от статьи.
+-- name — это имя в URL (`/media/{name}`), оно неизменяемо, поэтому файл
+-- кэшируется навсегда; sha256 уникален и обеспечивает дедупликацию.
+CREATE TABLE IF NOT EXISTS media (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL UNIQUE,
+    content_type TEXT NOT NULL,
+    bytes BLOB NOT NULL,
+    size_bytes INTEGER NOT NULL,
+    sha256 TEXT NOT NULL UNIQUE,
+    created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_media_created ON media(created_at);
 
 CREATE INDEX IF NOT EXISTS idx_chats_created ON chats(created_at);
 CREATE INDEX IF NOT EXISTS idx_chats_question_type ON chats(question_type);

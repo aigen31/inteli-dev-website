@@ -1636,6 +1636,48 @@ ul { margin: 0; padding: 0; list-style: none; }
   font-size: var(--text-small);
 }
 
+/* ---------- 13.1. Загрузка изображений в статью ---------- */
+/* Зона приёма файла: обёртка вокруг поля, поэтому рамка подсветки не съедает
+   место у самого поля. Оверлей — только подсказка, события мыши он пропускает
+   сквозь себя, иначе drop достался бы ему, а не текстарии. */
+.dropzone { position: relative; border-radius: var(--radius-sm); transition: box-shadow 120ms ease; }
+.dropzone-overlay {
+  position: absolute;
+  inset: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-md);
+  text-align: center;
+  font-size: var(--text-small);
+  font-weight: 600;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.72);
+  border: 2px dashed var(--color-primary);
+  border-radius: var(--radius-sm);
+  pointer-events: none;
+}
+.dropzone.is-dragover .dropzone-overlay { display: flex; }
+.dropzone.is-dragover { box-shadow: 0 0 0 3px var(--color-primary-soft); }
+.dropzone-slim .dropzone-overlay { font-size: var(--text-caption); padding: var(--space-sm); }
+
+.cover-preview {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  margin-top: var(--space-sm);
+}
+/* `display: flex` перебивает служебный `[hidden] { display: none }`, поэтому
+   скрытое превью без этой строки остаётся на экране пустой рамкой с кнопкой. */
+.cover-preview[hidden] { display: none; }
+.cover-preview img {
+  max-width: 180px;
+  max-height: 110px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border);
+}
+.btn:disabled { opacity: 0.55; cursor: progress; }
+
 /* ---------- 14. Reveal animation (progressive enhancement) ---------- */
 .section, .hero { opacity: 0; transform: translateY(8px); transition: opacity 400ms ease, transform 400ms ease; }
 .section.is-visible, .hero.is-visible { opacity: 1; transform: none; }
