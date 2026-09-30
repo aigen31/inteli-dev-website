@@ -116,15 +116,21 @@ async fn run(config: AppConfig) -> AppResult<()> {
         None => tracing::info!("github: логин не задан, ссылка в шапке не показывается"),
     }
 
-    // 3.4. Счётчик Яндекс.Метрики: вставляется в <head> каждой страницы.
-    //      Публикуется здесь, потому что `shell()` — обёртка всего документа, а
-    //      в неё конфиг не прокидывается (Leptos вызывает её без пропсов).
-    //      Пустой номер выключает счётчик: в разработке он не нужен, иначе
-    //      визиты разработчика уходят в живую статистику сайта.
-    inteli_dev::services::seo::set_metrika(config.seo.metrika_id());
-    match inteli_dev::services::seo::metrika() {
+    // 3.4. Счётчики аналитики (Яндекс.Метрика и Google tag): вставляются в
+    //      <head> каждой страницы. Публикуются здесь, потому что `shell()` —
+    //      обёртка всего документа, а в неё конфиг не прокидывается (Leptos
+    //      вызывает её без пропсов). Пустые идентификаторы выключают счётчики:
+    //      в разработке они не нужны, иначе визиты разработчика уходят в живую
+    //      статистику сайта.
+    inteli_dev::services::seo::set_counters(config.seo.metrika_id(), config.seo.google_tag_id());
+    let counters = inteli_dev::services::seo::counters();
+    match counters.metrika() {
         Some(metrika) => tracing::info!("Яндекс.Метрика включена: счётчик {}", metrika.id()),
         None => tracing::info!("Яндекс.Метрика выключена (номер счётчика не задан)"),
+    }
+    match counters.google_tag() {
+        Some(tag) => tracing::info!("Google tag включён: {}", tag.id()),
+        None => tracing::info!("Google tag выключен (идентификатор не задан)"),
     }
 
     // 4. Cache + rate limiting.
@@ -278,7 +284,7 @@ fn build_leptos_options(addr: std::net::SocketAddr) -> LeptosOptions {
 /// кроме номера счётчика, который проверен на «только цифры»
 /// (`services::seo::is_valid_metrika_id`).
 fn metrika_view() -> Option<impl IntoView> {
-    let metrika = inteli_dev::services::seo::metrika()?;
+    let metrika = inteli_dev::services::seo::counters().metrika().cloned()?;
     let script = metrika.script();
     let watch = metrika.watch_url();
 
@@ -292,19 +298,37 @@ fn metrika_view() -> Option<impl IntoView> {
     })
 }
 
+/// `<head>`-часть Google-тега: `gtag.js` и инлайновая настройка `dataLayer`.
+///
+/// `async` обязателен: без него внешний скрипт блокирует разбор страницы.
+/// Возвращает `None`, когда тег выключен.
+fn google_tag_view() -> Option<impl IntoView> {
+    let tag = inteli_dev::services::seo::counters().google_tag().cloned()?;
+    let src = tag.script_src();
+    let inline = tag.inline_script();
+
+    Some(view! {
+        <script async src=src></script>
+        <script inner_html=inline></script>
+    })
+}
+
 /// HTML-обёртка всех страниц (SSR).
 fn shell(_options: LeptosOptions) -> impl IntoView {
-    // Счётчик Яндекс.Метрики. Приходит из конфига: при пустом номере в
-    // разметке не остаётся ни строчки от Метрики (см. `services::seo::Metrika`).
-    // Стоит сразу после charset — рекомендация Метрики ставить счётчик как
-    // можно выше, чтобы запрос tag.js начался раньше и визит не потерялся.
+    // Счётчики аналитики (Метрика и Google tag). Приходят из конфига: при
+    // пустых идентификаторах в разметке не остаётся ни строчки от них (см.
+    // `services::seo::Counters`). Стоят сразу после charset — и Метрика, и
+    // Google рекомендуют ставить счётчики как можно выше, чтобы запрос тега
+    // начался раньше и визит не потерялся.
     let metrika = metrika_view();
+    let google_tag = google_tag_view();
     view! {
         <!DOCTYPE html>
         <html lang="ru">
             <head>
                 <meta charset="utf-8"/>
                 {metrika}
+                {google_tag}
                 <meta name="viewport" content="width=device-width, initial-scale=1"/>
                 <meta name="description" content="Fullstack-разработчик и архитектор приватных AI-систем: локальный инференс, MCP-серверы, голосовые ассистенты, PHP + JS."/>
                 <title>{"inteli.dev — Fullstack & приватные AI-системы"}</title>

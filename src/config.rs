@@ -113,6 +113,13 @@ pub struct SeoConfig {
     /// остаётся пустым — иначе визиты разработчика попадают в живую статистику.
     #[serde(default)]
     pub yandex_metrika_id: String,
+    /// Идентификатор Google-тега (`G-…`, `GT-…`, `AW-…`). Пусто — тега нет.
+    ///
+    /// Задаётся из env `GOOGLE_TAG_ID` — по тем же причинам, что и счётчик
+    /// Метрики: включение без пересборки образа и выключение в разработке,
+    /// чтобы тестовые визиты не попадали в живую статистику.
+    #[serde(default)]
+    pub google_tag_id: String,
     /// Дополнительные файлы в корне сайта: имя → содержимое.
     ///
     /// Нужны для подтверждения прав на сайт (Яндекс и Google отдают файл вида
@@ -155,6 +162,12 @@ impl SeoConfig {
         (!id.is_empty()).then_some(id)
     }
 
+    /// Идентификатор Google-тега, если он задан. Пустая строка — тега нет.
+    pub fn google_tag_id(&self) -> Option<&str> {
+        let id = self.google_tag_id.trim();
+        (!id.is_empty()).then_some(id)
+    }
+
     /// Проверяет секцию до старта сервера.
     ///
     /// Ошибка здесь лучше паники: имя файла из конфига становится маршрутом, и
@@ -177,6 +190,18 @@ impl SeoConfig {
                 return Err(AppError::Config(format!(
                     "[seo].yandex_metrika_id: номер счётчика состоит только из \
                      цифр (получено `{id}`). Пустое значение выключает счётчик"
+                )));
+            }
+        }
+
+        // Идентификатор Google-тега стоит строковой константой в инлайновом
+        // скрипте: кавычка в нём — выход из строки.
+        if let Some(id) = self.google_tag_id() {
+            if !crate::services::seo::is_valid_google_tag_id(id) {
+                return Err(AppError::Config(format!(
+                    "[seo].google_tag_id: идентификатор состоит из заглавных \
+                     латинских букв, цифр и дефиса и содержит дефис \
+                     (получено `{id}`). Пустое значение выключает тег"
                 )));
             }
         }
@@ -575,6 +600,13 @@ impl AppConfig {
                 self.seo.yandex_metrika_id = v.trim().to_string();
             }
         }
+        // Идентификатор Google-тега. Пустое значение тоже игнорируем, чтобы
+        // `${GOOGLE_TAG_ID:-}` из docker-compose не гасил значение из конфига.
+        if let Ok(v) = std::env::var("GOOGLE_TAG_ID") {
+            if !v.trim().is_empty() {
+                self.seo.google_tag_id = v.trim().to_string();
+            }
+        }
         if let Ok(v) = std::env::var("GITHUB_USERNAME") {
             // Пустое значение игнорируем: docker-compose передаёт переменную
             // всегда (${GITHUB_USERNAME:-}), и пустая строка иначе выключила бы
@@ -821,6 +853,36 @@ yandex_metrika_id = "113215363');alert(1);//"
 "#,
         );
         assert!(injection.seo.validate().is_err());
+    }
+
+    #[test]
+    fn seo_section_carries_the_google_tag() {
+        let cfg = config_with_seo(
+            r#"
+[seo]
+google_tag_id = "G-YNP4E8TF80"
+"#,
+        );
+
+        assert_eq!(cfg.seo.google_tag_id(), Some("G-YNP4E8TF80"));
+        cfg.seo.validate().expect("валидная секция");
+
+        let off = config_with_seo("[seo]\ngoogle_tag_id = \"\"\n");
+        assert_eq!(off.seo.google_tag_id(), None);
+        off.seo.validate().expect("пустой идентификатор валиден");
+
+        // Идентификатор стоит строковой константой в инлайновом скрипте.
+        let injection = config_with_seo(
+            r#"
+[seo]
+google_tag_id = "G-YNP4E8TF80');alert(1);//"
+"#,
+        );
+        assert!(injection.seo.validate().is_err());
+
+        // Строчные буквы — опечатка при копировании, а не другой формат.
+        let lowercase = config_with_seo("[seo]\ngoogle_tag_id = \"g-ynp4e8tf80\"\n");
+        assert!(lowercase.seo.validate().is_err());
     }
 
     #[test]

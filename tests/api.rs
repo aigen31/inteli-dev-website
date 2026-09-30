@@ -1210,13 +1210,14 @@ async fn get_text(app: axum::Router, uri: &str) -> (StatusCode, String) {
 
 /// SEO-секция с ключом IndexNow и файлом подтверждения прав.
 ///
-/// Счётчика Метрики здесь нет намеренно: он живёт в `shell()` (обёртка всего
-/// документа), а тестовый роутер монтирует только API-маршруты. Счётчик
-/// проверяется юнит-тестами `services::seo`.
+/// Счётчиков аналитики здесь нет намеренно: они живут в `shell()` (обёртка
+/// всего документа), а тестовый роутер монтирует только API-маршруты.
+/// Счётчики проверяются юнит-тестами `services::seo` и `config`.
 fn test_seo_config() -> inteli_dev::config::SeoConfig {
     inteli_dev::config::SeoConfig {
         indexnow_key: "0123456789abcdef".into(),
         yandex_metrika_id: String::new(),
+        google_tag_id: String::new(),
         root_files: [(
             "google1234abcd.html".to_string(),
             "google-site-verification: google1234abcd.html".to_string(),

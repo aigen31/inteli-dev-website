@@ -16,8 +16,10 @@
 //! * [`IndexNow`] — уведомление поисковиков о новых, изменённых и удалённых
 //!   страницах. Свежесть прямо влияет на попадание в генеративные ответы
 //!   (см. `docs/seo-toolkit.md`).
-//! * [`Metrika`] — счётчик Яндекс.Метрики для `<head>`. Выключен, пока номер
-//!   не задан в конфиге.
+//! * [`Metrika`] и [`GoogleTag`] — счётчики аналитики для `<head>`: Яндекс и
+//!   Google. Это «измерительная» половина того же SEO-набора
+//!   (`docs/seo-toolkit.md`, шаг 3), поэтому они здесь, а не в отдельном
+//!   модуле. Выключены, пока их идентификаторы не заданы в конфиге.
 //!
 //! Политика по ИИ-краулерам (кого пускать, кого нет) сознательно **не** задана:
 //! это отдельное решение владельца, а не побочный эффект правки robots.txt.
@@ -192,23 +194,123 @@ ym({id}, 'init', {{ssr:true, webvisor:true, clickmap:true, ecommerce:"dataLayer"
     }
 }
 
-/// Счётчик из конфига. Ячейка глобальная, потому что счётчик вставляется в
+/// Счётчик из конфига. Ячейка глобальная, потому что счётчики вставляются в
 /// `shell()` — обёртку всего документа: конфиг в неё не прокидывается, Leptos
 /// вызывает её на каждый запрос без пропсов.
-static METRIKA: RwLock<Option<Metrika>> = RwLock::new(None);
+static COUNTERS: RwLock<Counters> = RwLock::new(Counters {
+    metrika: None,
+    google_tag: None,
+});
 
-/// Публикует счётчик из конфига. Вызывается один раз при старте.
+/// Публикует счётчики из конфига. Вызывается один раз при старте.
 ///
-/// Номер, не прошедший [`is_valid_metrika_id`], молча выключает счётчик:
-/// старт из-за опечатки в необязательном счётчике — плохой размен. Ошибку
+/// Идентификатор, не прошедший проверку, молча выключает свой счётчик: старт
+/// из-за опечатки в необязательном счётчике — плохой размен. Ошибку
 /// конфигурации ловит [`crate::config::SeoConfig::validate`] до старта.
-pub fn set_metrika(id: Option<&str>) {
-    *METRIKA.write().unwrap_or_else(|e| e.into_inner()) = id.and_then(Metrika::new);
+pub fn set_counters(metrika_id: Option<&str>, google_tag_id: Option<&str>) {
+    *COUNTERS.write().unwrap_or_else(|e| e.into_inner()) =
+        Counters::new(metrika_id, google_tag_id);
 }
 
-/// Счётчик Метрики для `<head>`. `None` — счётчик выключен.
-pub fn metrika() -> Option<Metrika> {
-    METRIKA.read().unwrap_or_else(|e| e.into_inner()).clone()
+/// Счётчики аналитики для `<head>`.
+pub fn counters() -> Counters {
+    COUNTERS.read().unwrap_or_else(|e| e.into_inner()).clone()
+}
+
+/// Счётчики аналитики, которые вставляются в `<head>` каждой страницы.
+///
+/// Живут вместе, потому что вставляются в одном месте (`shell()` в
+/// `src/main.rs`) и настраиваются одной секцией конфига: разъехавшись, они
+/// легко дадут «Метрика считается, Google нет» — а заметить это можно только
+/// по расхождению цифр в двух панелях.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Counters {
+    metrika: Option<Metrika>,
+    google_tag: Option<GoogleTag>,
+}
+
+impl Counters {
+    /// Собирает счётчики из конфига: невалидный идентификатор выключает
+    /// только свой счётчик, а не оба.
+    pub fn new(metrika_id: Option<&str>, google_tag_id: Option<&str>) -> Self {
+        Self {
+            metrika: metrika_id.and_then(Metrika::new),
+            google_tag: google_tag_id.and_then(GoogleTag::new),
+        }
+    }
+
+    /// Счётчик Яндекс.Метрики.
+    pub fn metrika(&self) -> Option<&Metrika> {
+        self.metrika.as_ref()
+    }
+
+    /// Google tag (`gtag.js`).
+    pub fn google_tag(&self) -> Option<&GoogleTag> {
+        self.google_tag.as_ref()
+    }
+
+    /// Ни одного счётчика — в разметке не должно быть ни одной лишней строки.
+    pub fn is_empty(&self) -> bool {
+        self.metrika.is_none() && self.google_tag.is_none()
+    }
+}
+
+/// Google tag (`gtag.js`): разметка для Google Analytics 4 и рекламных тегов.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GoogleTag {
+    id: String,
+}
+
+impl GoogleTag {
+    /// Создаёт тег, если идентификатор задан и похож на идентификатор.
+    pub fn new(id: &str) -> Option<Self> {
+        let id = id.trim();
+        is_valid_google_tag_id(id).then(|| Self { id: id.to_string() })
+    }
+
+    /// Идентификатор тега (для логов).
+    pub fn id(&self) -> &str {
+        &self.id
+    }
+
+    /// Адрес `gtag.js` с идентификатором.
+    pub fn script_src(&self) -> String {
+        format!("https://www.googletagmanager.com/gtag/js?id={}", self.id)
+    }
+
+    /// Тело второго `<script>`: очередь `dataLayer` и `gtag('config', …)`.
+    pub fn inline_script(&self) -> String {
+        let id = &self.id;
+        format!(
+            r#"window.dataLayer = window.dataLayer || [];
+function gtag(){{dataLayer.push(arguments);}}
+gtag('js', new Date());
+
+gtag('config', '{id}');"#
+        )
+    }
+}
+
+/// Длина идентификатора Google-тега. Реальные — 12 символов (`G-YNP4E8TF80`).
+const GOOGLE_TAG_ID_MAX: usize = 32;
+
+/// Проверяет идентификатор Google-тега: `G-…`, `GT-…`, `AW-…`, `DC-…`.
+///
+/// Идентификатор уходит в адрес скрипта и строковой константой в
+/// `gtag('config', '…')`. Кавычка в нём — это выход из строкового литерала,
+/// то есть чужая команда на странице, поэтому алфавит узкий: заглавная
+/// латиница, цифры и дефис. Google выдаёт идентификаторы именно так;
+/// строчные буквы — это опечатка при копировании, а не другой формат.
+pub fn is_valid_google_tag_id(id: &str) -> bool {
+    let id = id.trim();
+    !id.is_empty()
+        && id.len() <= GOOGLE_TAG_ID_MAX
+        && id.starts_with(|c: char| c.is_ascii_uppercase())
+        && id.ends_with(|c: char| c.is_ascii_alphanumeric())
+        && id.contains('-')
+        && id
+            .bytes()
+            .all(|b| b.is_ascii_uppercase() || b.is_ascii_digit() || b == b'-')
 }
 
 /// Уведомление поисковиков об изменениях по протоколу IndexNow.
@@ -446,18 +548,78 @@ mod tests {
     /// Глобальная ячейка проверяется одним тестом: тесты идут параллельно, и
     /// два теста, дёргающих один `RwLock`, зависели бы от порядка запуска.
     #[test]
-    fn metrika_global_follows_the_configuration() {
-        set_metrika(None);
-        assert!(metrika().is_none(), "без конфига счётчика быть не должно");
+    fn counters_global_follows_the_configuration() {
+        set_counters(None, None);
+        assert!(
+            counters().is_empty(),
+            "без конфига счётчиков быть не должно"
+        );
 
-        set_metrika(Some("113215363"));
-        assert_eq!(metrika().expect("счётчик включён").id(), "113215363");
+        set_counters(Some("113215363"), Some("G-YNP4E8TF80"));
+        let both = counters();
+        assert_eq!(both.metrika().expect("Метрика включена").id(), "113215363");
+        assert_eq!(
+            both.google_tag().expect("Google tag включён").id(),
+            "G-YNP4E8TF80"
+        );
 
-        // Мусор в конфиге выключает счётчик, а не попадает в разметку.
-        set_metrika(Some("113215363';alert(1);//"));
-        assert!(metrika().is_none());
+        // Мусор в конфиге выключает свой счётчик, а не попадает в разметку…
+        set_counters(Some("113215363';alert(1);//"), Some("G-YNP4E8TF80'"));
+        let dirty = counters();
+        assert!(dirty.metrika().is_none());
+        assert!(dirty.google_tag().is_none());
+        assert!(dirty.is_empty());
 
-        set_metrika(None);
+        // …и не тянет за собой соседний: одна опечатка не должна гасить оба.
+        set_counters(Some("113215363"), Some("G-YNP4E8TF80'"));
+        let mixed = counters();
+        assert!(mixed.metrika().is_some());
+        assert!(mixed.google_tag().is_none());
+
+        set_counters(None, None);
+    }
+
+    #[test]
+    fn google_tag_scripts_carry_the_identifier() {
+        let tag = GoogleTag::new("G-YNP4E8TF80").expect("идентификатор тега");
+
+        assert_eq!(
+            tag.script_src(),
+            "https://www.googletagmanager.com/gtag/js?id=G-YNP4E8TF80"
+        );
+
+        let inline = tag.inline_script();
+        assert!(inline.contains("window.dataLayer = window.dataLayer || [];"));
+        assert!(inline.contains("function gtag(){dataLayer.push(arguments);}"));
+        assert!(inline.contains("gtag('js', new Date());"));
+        assert!(inline.contains("gtag('config', 'G-YNP4E8TF80');"));
+    }
+
+    #[test]
+    fn google_tag_rejects_anything_off_alphabet() {
+        // Идентификатор стоит строковой константой в инлайновом скрипте:
+        // кавычка в нём — это выход из строки, то есть чужая команда.
+        assert!(!is_valid_google_tag_id(""));
+        assert!(!is_valid_google_tag_id("   "));
+        assert!(!is_valid_google_tag_id("G-YNP4E8TF80'"));
+        assert!(!is_valid_google_tag_id("');alert(1);//"));
+        assert!(!is_valid_google_tag_id("G-YNP4E8TF80\";alert(1);//"));
+        assert!(!is_valid_google_tag_id("G-YNP4E8TF80<script>"));
+        assert!(!is_valid_google_tag_id(
+            &("G-".to_string() + &"A".repeat(GOOGLE_TAG_ID_MAX))
+        ));
+
+        // Форма идентификатора: префикс, дефис, хвост. Google выдаёт заглавные.
+        assert!(!is_valid_google_tag_id("YNP4E8TF80"), "нет префикса");
+        assert!(!is_valid_google_tag_id("g-ynp4e8tf80"), "строчные — опечатка");
+        assert!(!is_valid_google_tag_id("G-"), "пустой хвост");
+        assert!(!is_valid_google_tag_id("-YNP4E8TF80"), "пустой префикс");
+
+        assert!(is_valid_google_tag_id("G-YNP4E8TF80"));
+        assert!(is_valid_google_tag_id("GT-ABC123"));
+        assert!(is_valid_google_tag_id("AW-123456789"));
+        // Пробелы по краям — обычная правка конфига, не ошибка.
+        assert!(is_valid_google_tag_id(" G-YNP4E8TF80 "));
     }
 
     #[test]

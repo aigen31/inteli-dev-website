@@ -96,6 +96,11 @@ indexnow_key = ""             # или INDEXNOW_KEY env
 # визиты уходят в живую статистику сайта.
 yandex_metrika_id = ""        # или YANDEX_METRIKA_ID env
 
+# Идентификатор Google-тега (gtag.js): Google Analytics 4 и рекламные теги.
+# Выглядит как G-XXXXXXXXXX, GT-XXXX, AW-XXXXXXXXX. Пусто — тега нет.
+# В локальной разработке оставьте пустым по той же причине, что и Метрику.
+google_tag_id = ""            # или GOOGLE_TAG_ID env
+
 # Файлы в корне сайта: имя → содержимое. Нужны для подтверждения прав на сайт
 # (Яндекс и Google отдают файл вроде googleXXXX.html с проверочной строкой).
 # Подтверждение через DNS TXT дешевле — этот вариант на случай, когда DNS
