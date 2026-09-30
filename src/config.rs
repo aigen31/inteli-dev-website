@@ -106,6 +106,13 @@ pub struct SeoConfig {
     /// Пустое значение выключает протокол целиком.
     #[serde(default)]
     pub indexnow_key: String,
+    /// Номер счётчика Яндекс.Метрики. Пусто — счётчика на страницах нет.
+    ///
+    /// Не секрет, но задаётся из env `YANDEX_METRIKA_ID`: включить счётчик на
+    /// сервере можно без пересборки образа, а в локальной разработке он
+    /// остаётся пустым — иначе визиты разработчика попадают в живую статистику.
+    #[serde(default)]
+    pub yandex_metrika_id: String,
     /// Дополнительные файлы в корне сайта: имя → содержимое.
     ///
     /// Нужны для подтверждения прав на сайт (Яндекс и Google отдают файл вида
@@ -142,6 +149,12 @@ impl SeoConfig {
         crate::services::seo::is_valid_indexnow_key(self.indexnow_key.trim())
     }
 
+    /// Номер счётчика Метрики, если он задан. Пустая строка — счётчика нет.
+    pub fn metrika_id(&self) -> Option<&str> {
+        let id = self.yandex_metrika_id.trim();
+        (!id.is_empty()).then_some(id)
+    }
+
     /// Проверяет секцию до старта сервера.
     ///
     /// Ошибка здесь лучше паники: имя файла из конфига становится маршрутом, и
@@ -155,6 +168,17 @@ impl SeoConfig {
                  из латиницы, цифр и дефиса (получено {} символов)",
                 key.len()
             )));
+        }
+
+        // Номер счётчика уходит в инлайновый `<script>`, поэтому нецифровой
+        // номер — это не «кривой счётчик», а дыра в разметке.
+        if let Some(id) = self.metrika_id() {
+            if !crate::services::seo::is_valid_metrika_id(id) {
+                return Err(AppError::Config(format!(
+                    "[seo].yandex_metrika_id: номер счётчика состоит только из \
+                     цифр (получено `{id}`). Пустое значение выключает счётчик"
+                )));
+            }
         }
 
         for (name, content) in &self.root_files {
@@ -542,6 +566,15 @@ impl AppConfig {
                 self.seo.indexnow_key = v.trim().to_string();
             }
         }
+        // Номер счётчика Яндекс.Метрики. Пустое значение игнорируем, а не
+        // выключаем: docker-compose передаёт переменную всегда
+        // (`${YANDEX_METRIKA_ID:-}`), и пустая строка иначе выключала бы
+        // счётчик вопреки config.toml.
+        if let Ok(v) = std::env::var("YANDEX_METRIKA_ID") {
+            if !v.trim().is_empty() {
+                self.seo.yandex_metrika_id = v.trim().to_string();
+            }
+        }
         if let Ok(v) = std::env::var("GITHUB_USERNAME") {
             // Пустое значение игнорируем: docker-compose передаёт переменную
             // всегда (${GITHUB_USERNAME:-}), и пустая строка иначе выключила бы
@@ -760,6 +793,34 @@ indexnow_key = "0123456789abcdef"
             .iter()
             .any(|(name, body)| name == "0123456789abcdef.txt" && body == "0123456789abcdef"));
         assert!(files.iter().any(|(name, _)| name == "google1234abcd.html"));
+    }
+
+    #[test]
+    fn seo_section_carries_the_metrika_counter() {
+        let cfg = config_with_seo(
+            r#"
+[seo]
+yandex_metrika_id = "113215363"
+"#,
+        );
+
+        assert_eq!(cfg.seo.metrika_id(), Some("113215363"));
+        cfg.seo.validate().expect("валидная секция");
+
+        // Пустая строка и пробелы — это «счётчика нет», а не «номер из пробелов».
+        let off = config_with_seo("[seo]\nyandex_metrika_id = \"  \"\n");
+        assert_eq!(off.seo.metrika_id(), None);
+        off.seo.validate().expect("пустой номер валиден");
+
+        // Номер уходит в инлайновый <script>: нецифровой не должен доехать даже
+        // до рендера. Тихо выключить его в рантайме — мало, нужна ошибка старта.
+        let injection = config_with_seo(
+            r#"
+[seo]
+yandex_metrika_id = "113215363');alert(1);//"
+"#,
+        );
+        assert!(injection.seo.validate().is_err());
     }
 
     #[test]

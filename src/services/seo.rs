@@ -16,10 +16,13 @@
 //! * [`IndexNow`] — уведомление поисковиков о новых, изменённых и удалённых
 //!   страницах. Свежесть прямо влияет на попадание в генеративные ответы
 //!   (см. `docs/seo-toolkit.md`).
+//! * [`Metrika`] — счётчик Яндекс.Метрики для `<head>`. Выключен, пока номер
+//!   не задан в конфиге.
 //!
 //! Политика по ИИ-краулерам (кого пускать, кого нет) сознательно **не** задана:
 //! это отдельное решение владельца, а не побочный эффект правки robots.txt.
 
+use std::sync::RwLock;
 use std::time::Duration;
 
 /// Имена в корне сайта, которые уже заняты статикой.
@@ -121,6 +124,91 @@ pub fn is_valid_root_file_name(name: &str) -> bool {
         && name
             .chars()
             .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-'))
+}
+
+/// Номер счётчика Метрики — только цифры и не длиннее этого.
+///
+/// Реальные номера восьмизначные; ограничение нужно, чтобы отсечь мусор в
+/// конфиге, а не чтобы кого-то ограничить.
+const METRIKA_ID_MAX: usize = 20;
+
+/// Проверяет номер счётчика Яндекс.Метрики.
+///
+/// Номер попадает в инлайновый `<script>` и в адрес пикселя, то есть в
+/// разметку страницы. Поэтому проверка здесь не бюрократия: любой нецифровой
+/// символ из конфига — это возможность дописать в страницу чужой код.
+pub fn is_valid_metrika_id(id: &str) -> bool {
+    let id = id.trim();
+    !id.is_empty() && id.len() <= METRIKA_ID_MAX && id.bytes().all(|b| b.is_ascii_digit())
+}
+
+/// Счётчик Яндекс.Метрики: то, что вставляется в `<head>` каждой страницы.
+///
+/// # Почему это конфиг, а не константа
+///
+/// Номер счётчика — не секрет, но он задаётся конфигом (и env
+/// `YANDEX_METRIKA_ID`) по двум причинам. Первая: включить его на сервере
+/// можно без пересборки образа. Вторая, важнее: в локальной разработке
+/// счётчик нужно выключать, иначе визиты разработчика уходят в живую
+/// статистику сайта и портят её.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Metrika {
+    id: String,
+}
+
+impl Metrika {
+    /// Создаёт счётчик, если номер задан и похож на номер.
+    pub fn new(id: &str) -> Option<Self> {
+        let id = id.trim();
+        is_valid_metrika_id(id).then(|| Self { id: id.to_string() })
+    }
+
+    /// Номер счётчика (для логов).
+    pub fn id(&self) -> &str {
+        &self.id
+    }
+
+    /// Тело `<script>`: очередь вызовов и инициализация счётчика.
+    ///
+    /// `ssr: true` — страницы рендерятся на сервере; `webvisor` и `clickmap`
+    /// включены, как в исходном сниппете Метрики.
+    pub fn script(&self) -> String {
+        let id = &self.id;
+        format!(
+            r#"(function(m,e,t,r,i,k,a){{
+    m[i]=m[i]||function(){{(m[i].a=m[i].a||[]).push(arguments)}};
+    m[i].l=1*new Date();
+    for (var j = 0; j < document.scripts.length; j++) {{if (document.scripts[j].src === r) {{ return; }}}}
+    k=e.createElement(t),a=e.getElementsByTagName(t)[0],k.async=1,k.src=r,a.parentNode.insertBefore(k,a)
+}})(window, document, 'script', 'https://mc.yandex.ru/metrika/tag.js?id={id}', 'ym');
+
+ym({id}, 'init', {{ssr:true, webvisor:true, clickmap:true, ecommerce:"dataLayer", referrer: document.referrer, url: location.href, accurateTrackBounce:true, trackLinks:true}});"#
+        )
+    }
+
+    /// Адрес пикселя для `<noscript>`: считает визиты без JavaScript.
+    pub fn watch_url(&self) -> String {
+        format!("https://mc.yandex.ru/watch/{}", self.id)
+    }
+}
+
+/// Счётчик из конфига. Ячейка глобальная, потому что счётчик вставляется в
+/// `shell()` — обёртку всего документа: конфиг в неё не прокидывается, Leptos
+/// вызывает её на каждый запрос без пропсов.
+static METRIKA: RwLock<Option<Metrika>> = RwLock::new(None);
+
+/// Публикует счётчик из конфига. Вызывается один раз при старте.
+///
+/// Номер, не прошедший [`is_valid_metrika_id`], молча выключает счётчик:
+/// старт из-за опечатки в необязательном счётчике — плохой размен. Ошибку
+/// конфигурации ловит [`crate::config::SeoConfig::validate`] до старта.
+pub fn set_metrika(id: Option<&str>) {
+    *METRIKA.write().unwrap_or_else(|e| e.into_inner()) = id.and_then(Metrika::new);
+}
+
+/// Счётчик Метрики для `<head>`. `None` — счётчик выключен.
+pub fn metrika() -> Option<Metrika> {
+    METRIKA.read().unwrap_or_else(|e| e.into_inner()).clone()
 }
 
 /// Уведомление поисковиков об изменениях по протоколу IndexNow.
@@ -303,6 +391,73 @@ mod tests {
     fn payload_is_empty_without_urls() {
         let indexnow = IndexNow::new("0123456789abcdef", "https://inteli-dev.ru");
         assert!(indexnow.payload(&[]).is_none());
+    }
+
+    #[test]
+    fn metrika_script_carries_the_counter_number() {
+        let metrika = Metrika::new("113215363").expect("номер счётчика");
+
+        let script = metrika.script();
+        assert!(script.contains("metrika/tag.js?id=113215363"));
+        assert!(script.contains("ym(113215363, 'init'"));
+        assert_eq!(metrika.watch_url(), "https://mc.yandex.ru/watch/113215363");
+    }
+
+    #[test]
+    fn metrika_script_keeps_the_options_from_the_snippet() {
+        let script = Metrika::new("113215363").expect("номер счётчика").script();
+
+        // Опции из сниппета Метрики: без них счётчик собирает не то, что нужно.
+        for option in [
+            "ssr:true",
+            "webvisor:true",
+            "clickmap:true",
+            "ecommerce:\"dataLayer\"",
+            "accurateTrackBounce:true",
+            "trackLinks:true",
+        ] {
+            assert!(script.contains(option), "в скрипте нет опции {option}");
+        }
+    }
+
+    #[test]
+    fn metrika_rejects_anything_that_is_not_a_number() {
+        // Номер подставляется в разметку: всё, кроме цифр, — это инъекция в
+        // страницу, а не «неправильный счётчик».
+        assert!(!is_valid_metrika_id(""));
+        assert!(!is_valid_metrika_id("   "));
+        assert!(!is_valid_metrika_id("113215363'"));
+        assert!(!is_valid_metrika_id("113215363);alert(1);//"));
+        assert!(!is_valid_metrika_id("<script>"));
+        assert!(!is_valid_metrika_id(&"1".repeat(METRIKA_ID_MAX + 1)));
+
+        assert!(is_valid_metrika_id("113215363"));
+        // Пробелы по краям — обычная правка конфига, не ошибка.
+        assert!(is_valid_metrika_id(" 113215363 "));
+    }
+
+    #[test]
+    fn metrika_is_off_without_a_number() {
+        assert!(Metrika::new("").is_none());
+        assert!(Metrika::new("не число").is_none());
+        assert_eq!(Metrika::new(" 42 ").expect("номер").id(), "42");
+    }
+
+    /// Глобальная ячейка проверяется одним тестом: тесты идут параллельно, и
+    /// два теста, дёргающих один `RwLock`, зависели бы от порядка запуска.
+    #[test]
+    fn metrika_global_follows_the_configuration() {
+        set_metrika(None);
+        assert!(metrika().is_none(), "без конфига счётчика быть не должно");
+
+        set_metrika(Some("113215363"));
+        assert_eq!(metrika().expect("счётчик включён").id(), "113215363");
+
+        // Мусор в конфиге выключает счётчик, а не попадает в разметку.
+        set_metrika(Some("113215363';alert(1);//"));
+        assert!(metrika().is_none());
+
+        set_metrika(None);
     }
 
     #[test]

@@ -116,6 +116,17 @@ async fn run(config: AppConfig) -> AppResult<()> {
         None => tracing::info!("github: логин не задан, ссылка в шапке не показывается"),
     }
 
+    // 3.4. Счётчик Яндекс.Метрики: вставляется в <head> каждой страницы.
+    //      Публикуется здесь, потому что `shell()` — обёртка всего документа, а
+    //      в неё конфиг не прокидывается (Leptos вызывает её без пропсов).
+    //      Пустой номер выключает счётчик: в разработке он не нужен, иначе
+    //      визиты разработчика уходят в живую статистику сайта.
+    inteli_dev::services::seo::set_metrika(config.seo.metrika_id());
+    match inteli_dev::services::seo::metrika() {
+        Some(metrika) => tracing::info!("Яндекс.Метрика включена: счётчик {}", metrika.id()),
+        None => tracing::info!("Яндекс.Метрика выключена (номер счётчика не задан)"),
+    }
+
     // 4. Cache + rate limiting.
     let cache = Arc::new(InMemoryCache::new(Duration::from_secs(
         config.cache.ttl_seconds,
@@ -258,13 +269,42 @@ fn build_leptos_options(addr: std::net::SocketAddr) -> LeptosOptions {
     }
 }
 
+/// `<head>`-часть счётчика Яндекс.Метрики: `<script>` с инициализацией и
+/// пиксель в `<noscript>` для визитов без JavaScript.
+///
+/// Возвращает `None`, когда счётчик выключен, — тогда в разметке не остаётся
+/// ни одного упоминания Метрики. Тело `<script>` вставляется через
+/// `inner_html`: это уже готовый JavaScript, и экранировать в нём нечего,
+/// кроме номера счётчика, который проверен на «только цифры»
+/// (`services::seo::is_valid_metrika_id`).
+fn metrika_view() -> Option<impl IntoView> {
+    let metrika = inteli_dev::services::seo::metrika()?;
+    let script = metrika.script();
+    let watch = metrika.watch_url();
+
+    Some(view! {
+        <script type="text/javascript" inner_html=script></script>
+        <noscript>
+            <div>
+                <img src=watch style="position:absolute; left:-9999px" alt=""/>
+            </div>
+        </noscript>
+    })
+}
+
 /// HTML-обёртка всех страниц (SSR).
 fn shell(_options: LeptosOptions) -> impl IntoView {
+    // Счётчик Яндекс.Метрики. Приходит из конфига: при пустом номере в
+    // разметке не остаётся ни строчки от Метрики (см. `services::seo::Metrika`).
+    // Стоит сразу после charset — рекомендация Метрики ставить счётчик как
+    // можно выше, чтобы запрос tag.js начался раньше и визит не потерялся.
+    let metrika = metrika_view();
     view! {
         <!DOCTYPE html>
         <html lang="ru">
             <head>
                 <meta charset="utf-8"/>
+                {metrika}
                 <meta name="viewport" content="width=device-width, initial-scale=1"/>
                 <meta name="description" content="Fullstack-разработчик и архитектор приватных AI-систем: локальный инференс, MCP-серверы, голосовые ассистенты, PHP + JS."/>
                 <title>{"inteli.dev — Fullstack & приватные AI-системы"}</title>
