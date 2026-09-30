@@ -157,6 +157,28 @@ docker compose up --build
 docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --build
 ```
 
+### Кто за что отвечает на проде
+
+Трафик идёт `клиент → Traefik (TLS) → nginx → web`. Разделение обязанностей
+важно не забыть при правках:
+
+| Что | Где | Почему не в другом месте |
+|---|---|---|
+| TLS, редирект `www → apex`, сжатие (`compress`: brotli, zstd, gzip) | Traefik (labels в `docker-compose.prod.yml`) | Traefik терминирует TLS и умеет brotli; `gzip on` в nginx не дал бы brotli дойти до клиента — ответ с готовым `Content-Encoding` Traefik не пережимает |
+| `server_tokens off`, HSTS, `client_max_body_size` | nginx (`docker/nginx/default.conf`) | транспорт и лимиты запроса — рядом с проксированием |
+| CSP с nonce, `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy`, COOP, CORP | приложение (`src/security.rs`) | CSP обязан содержать nonce конкретного ответа, а его генерирует Leptos. В nginx их дублировать нельзя: `add_header` добавит второй заголовок (`nosniff, nosniff` — это замечание аудита) |
+| Кэш CSS/JS/favicon/manifest/og.png | приложение (`src/api/assets.rs`) | адрес несёт `?v=<хеш содержимого>`, и только приложение знает текущую версию |
+
+Проверка после деплоя:
+
+```bash
+curl -sI https://inteli-dev.ru/ | grep -iE "server|content-security|strict-transport"
+curl -s -H 'Accept-Encoding: br' -D- -o /dev/null https://inteli-dev.ru/ | grep -i content-encoding
+```
+
+В заголовке `Server` не должно быть версии, а при `Accept-Encoding: br` —
+`Content-Encoding: br`.
+
 ### Базовая конфигурация (все сервисы)
 ```yaml
 # docker-compose.yml

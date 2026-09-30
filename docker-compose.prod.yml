@@ -99,10 +99,15 @@ services:
       - traefik.http.middlewares.inteli-dev-redirect-https.redirectscheme.permanent=true
 
       # www → apex: канонический домен для SEO.
-      - traefik.http.routers.inteli-dev.middlewares=inteli-dev-www-to-apex
+      # Сжатие — здесь, а не в nginx: Traefik умеет brotli и zstd, а nginx в
+      # этом образе только gzip. Порядок `br,zstd,gzip` задаёт приоритет (по
+      # умолчанию первым идёт gzip, и brotli до клиента не дошёл бы).
+      - traefik.http.routers.inteli-dev.middlewares=inteli-dev-www-to-apex,inteli-dev-compress
       - traefik.http.middlewares.inteli-dev-www-to-apex.redirectregex.regex=^https?://www\.inteli-dev\.ru/(.*)
       - traefik.http.middlewares.inteli-dev-www-to-apex.redirectregex.replacement=https://inteli-dev.ru/$$1
       - traefik.http.middlewares.inteli-dev-www-to-apex.redirectregex.permanent=true
+      - traefik.http.middlewares.inteli-dev-compress.compress=true
+      - traefik.http.middlewares.inteli-dev-compress.compress.encodings=br,zstd,gzip
 
   # --- OpenViking: семантическая память (приложение деградирует на fallback). ---
   viking:

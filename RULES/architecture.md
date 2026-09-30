@@ -134,8 +134,10 @@ src/
 ├── router.rs               // Leptos-роутинг
 ├── config.rs               // Загрузка и валидация config.toml / env vars
 ├── error.rs                // Единая система ошибок (AppError)
+├── security.rs             // Заголовки безопасности ответов (CSP с nonce и др.)
 │
 ├── ui/                     // ЛеPTos UI компоненты (SSR)
+│   ├── shell.rs            // Обёртка документа: <head>, счётчики, мета-теги
 │   ├── layout.rs           // Layout: header, footer, nav, main wrapper
 │   ├── home.rs             // Hero-секция: имя, статус, 2 кнопки CTA
 │   ├── services.rs         // Карточки услуг с иконками
@@ -207,6 +209,8 @@ src/
 | `/robots.txt` | GET | Собирается на лету из `public_url`: адрес карты обязан совпадать с `/sitemap.xml`. См. `src/services/seo.rs` | `text/plain` |
 | `/{имя из [seo].root_files}` | GET | Подтверждение прав (Яндекс/Google) и ключ IndexNow `{ключ}.txt`. Имена проверяет `SeoConfig::validate` | `text/html` / `text/plain` |
 | `/media/:name` | GET | Изображения статей. `name` — `<24 hex от sha256>.<расширение>`; чужие имена отдают 404, ответ кэшируется на год и несёт `ETag` | `image/*` |
+| `/og.png` | GET | Обложка для соцсетей (`og:image`): растровый PNG из `assets/og-default.png`, год кэша по версии в адресе | `image/png` |
+| `/assets/style.css`, `/assets/main.js` | GET | Встроенные в бинарник CSS/JS. Адрес несёт `?v=<хеш содержимого>`; год кэша — только версионированному адресу | `text/css`, `application/javascript` |
 | `/api/chat` | POST | API для AI-чата (JSON request/response) | `application/json` |
 | `/api/lead` | POST | Создание заявки/лида | `application/json` |
 | `/api/articles` | — | Публичного JSON-API статей нет: машинный доступ — RSS и outbox | — |
@@ -224,8 +228,11 @@ src/
 | `/robots.txt` | `seo::robots_txt(public_url)` | Адрес карты сайта обязан совпадать с `PUBLIC_URL` и с тем, что отдаёт `/sitemap.xml`. Раньше это была константа в `assets/robots.txt`, и хост разошёлся (`inteli.dev.ru` вместо `inteli-dev.ru`) — ошибка тихая: поисковик просто не находит карту |
 | `/{имя}` | `[seo].root_files` + файл ключа IndexNow | Подтверждение прав Яндекса и Google — файл с проверочной строкой. DNS TXT дешевле (не нужен рестарт), файл нужен, когда DNS недоступен |
 | IndexNow | `[seo].indexnow_key` (env `INDEXNOW_KEY`) | Публикация, изменение и снятие статьи уведомляют Яндекс и Bing. Свежесть прямо влияет на попадание в генеративные ответы — см. `docs/seo-toolkit.md` |
-| Счётчик Яндекс.Метрики | `[seo].yandex_metrika_id` (env `YANDEX_METRIKA_ID`) | Вставляется в `<head>` в `shell()` (`src/main.rs`), поэтому номер публикуется в глобальную ячейку `seo::set_counters` при старте. Пусто — счётчика в разметке нет |
+| Счётчик Яндекс.Метрики | `[seo].yandex_metrika_id` (env `YANDEX_METRIKA_ID`) | Вставляется в `<head>` в `ui::shell::shell()`, поэтому номер публикуется в глобальную ячейку `seo::set_counters` при старте. Пусто — счётчика в разметке нет |
 | Google tag (gtag.js) | `[seo].google_tag_id` (env `GOOGLE_TAG_ID`) | То же место и та же ячейка (`seo::Counters`). Счётчики живут вместе, чтобы не разъехаться: «Метрика считает, Google нет» заметно только по расхождению цифр в двух панелях |
+| Заголовок, описание, canonical, OpenGraph | `seo::page_meta(путь, PUBLIC_URL, статья)` — вызывается из `ui::shell::shell()` | Раньше `title` и `description` были константами: краулер нашёл 100% дубликатов на семи страницах и ни одного `rel=canonical`/og-тега. Адрес берётся из пути запроса (`RequestUrl` в контексте Leptos), данные об авторе — из `SiteContent` (P3: факты о себе не хардкодятся), статья — из снимка `PublishedArticles` |
+| Обложка для соцсетей | `assets/og-default.png` (`/og.png`), исходник — `assets/og-default.svg` | `og:image` обязан быть растровым: SVG не понимают ни Telegram, ни VK. Пересборка — `scripts/make-og-image.sh`. У статьи вместо общей картинки — её обложка, приведённая к абсолютному адресу |
+| Заголовки безопасности | `src/security.rs` (CSP с nonce, X-Content-Type-Options, X-Frame-Options, Referrer-Policy, Permissions-Policy, COOP, CORP) | CSP обязан содержать nonce конкретного ответа, а nonce генерирует Leptos при рендеринге, — значит, ставить его может только приложение. HSTS остаётся в nginx: это про транспорт |
 
 Правила, которые нельзя нарушать:
 
@@ -242,6 +249,21 @@ src/
   идентификатор — это инъекция в страницу, поэтому `SeoConfig::validate` не даёт
   приложению стартовать с ним, а `Metrika::new`/`GoogleTag::new` в рантайме
   молча выключают свой счётчик, не трогая соседний;
+- `<head>` собирается **только** в `ui::shell::shell()`. Leptos рендерит обёртку
+  документа до страницы, поэтому страница не может дописать туда заголовок или
+  canonical: всё, что зависит от адреса, вычисляется в обёртке из `RequestUrl`;
+- заголовок и описание обязаны отличаться от страницы к странице (тест
+  `static_pages_have_unique_titles_and_descriptions`). Одинаковый `title` — это
+  не только замечание краулера, но и потерянные запросы;
+- каждый инлайновый `<script>` несёт `nonce` из CSP того же ответа. Скрипт без
+  nonce браузер не выполнит, а заметно это только по пустым графикам счётчиков;
+- один заголовок — одно место. `X-Content-Type-Options`, CSP и остальные
+  заголовки безопасности ставит приложение; в nginx их дублировать нельзя
+  (`add_header` добавляет второй заголовок, и краулер видел `nosniff, nosniff`).
+  Наоборот, HSTS ставит только nginx;
+- кэш встроенного ресурса и версия в его адресе — одно решение
+  (`api::assets::versioned`): год кэша разрешён только адресу с текущим `?v=`,
+  иначе правка CSS не доедет до браузера;
 - политика по ИИ-краулерам (кого пускать, кого нет) — отдельное решение
   владельца, а не побочный эффект правки robots.txt.
 

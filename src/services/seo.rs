@@ -27,6 +27,9 @@
 use std::sync::RwLock;
 use std::time::Duration;
 
+use crate::memory::content::SiteContent;
+use crate::services::article::Article;
+
 /// Имена в корне сайта, которые уже заняты статикой.
 ///
 /// `[seo].root_files` с таким именем не пройдёт валидацию: маршрут столкнулся бы
@@ -41,6 +44,7 @@ pub const RESERVED_ROOT_NAMES: &[&str] = &[
     "rss.xml",
     "feed.xml",
     "favicon.svg",
+    "og.png",
 ];
 
 /// Длина ключа IndexNow по спецификации: от 8 до 128 символов.
@@ -414,9 +418,555 @@ impl IndexNow {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Мета-данные страницы (`<head>`)
+// ---------------------------------------------------------------------------
+
+/// Предел длины `meta description` (и `og:description`): дальше поисковики её
+/// всё равно обрезают, а сниппет собирают сами.
+pub const DESCRIPTION_MAX: usize = 160;
+
+/// Публичный адрес сайта — из него собираются абсолютные ссылки в `<head>`:
+/// `canonical`, `og:url`, `og:image`.
+///
+/// Ячейка глобальная по той же причине, что и у счётчиков аналитики:
+/// `shell()` — обёртка всего документа, а конфиг в неё не прокидывается
+/// (Leptos вызывает её на каждый запрос без пропсов). Публикуется один раз
+/// при старте.
+static SITE_URL: RwLock<String> = RwLock::new(String::new());
+
+/// Публикует публичный адрес сайта (`PUBLIC_URL`). Вызывается при старте.
+pub fn set_site_url(url: &str) {
+    *SITE_URL.write().unwrap_or_else(|e| e.into_inner()) =
+        url.trim().trim_end_matches('/').to_string();
+}
+
+/// Публичный адрес сайта без завершающего слэша. Пусто, если не публиковался.
+pub fn site_url() -> String {
+    SITE_URL.read().unwrap_or_else(|e| e.into_inner()).clone()
+}
+
+/// Тип страницы для `og:type`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OgType {
+    Website,
+    Article,
+}
+
+impl OgType {
+    /// Значение атрибута `content` по спецификации OpenGraph.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            OgType::Website => "website",
+            OgType::Article => "article",
+        }
+    }
+}
+
+/// Мета-данные одной страницы: то, что обязано **отличаться** от страницы
+/// к странице.
+///
+/// Отчёт краулера нашёл ровно эту ошибку: `title` и `description` были
+/// одинаковыми на всех семи страницах (100% дубликатов). Одинаковый заголовок
+/// — это ещё и потерянные запросы: поисковик не может показать по одному
+/// сниппету, чем `/services` отличается от `/blog`.
+///
+/// Абсолютные адреса (`canonical`, `image`) собираются здесь, а не в шаблоне:
+/// они нужны и в `og:url`, и в `og:image`, и `<link rel="canonical">`, а
+/// относительный адрес в `canonical` — это ошибка, которую видно только в
+/// отчёте краулера.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PageMeta {
+    title: String,
+    description: String,
+    canonical: String,
+    og_type: OgType,
+    image: Option<String>,
+    noindex: bool,
+}
+
+impl PageMeta {
+    /// Заголовок страницы (`<title>`).
+    pub fn title(&self) -> &str {
+        &self.title
+    }
+
+    /// Описание для сниппета (`description`, `og:description`).
+    pub fn description(&self) -> &str {
+        &self.description
+    }
+
+    /// Канонический адрес страницы (абсолютный).
+    pub fn canonical(&self) -> &str {
+        &self.canonical
+    }
+
+    /// Тип страницы для `og:type`.
+    pub fn og_type(&self) -> OgType {
+        self.og_type
+    }
+
+    /// Картинка для соцсетей (абсолютный адрес), если есть.
+    pub fn image(&self) -> Option<&str> {
+        self.image.as_deref()
+    }
+
+    /// Страницу не нужно индексировать (404 и админка).
+    pub fn is_noindex(&self) -> bool {
+        self.noindex
+    }
+}
+
+/// Мета-данные для пути запроса.
+///
+/// Статья передаётся вызывающим, а не ищется здесь: снимок опубликованного
+/// живёт в [`crate::services::article::PublishedArticles`], и прятать эту
+/// зависимость внутрь SEO-модуля значило бы делать функцию непроверяемой.
+/// `None` для пути `/blog/{slug}` означает «такой статьи нет» — это 404.
+///
+/// Данные об авторе берутся из [`SiteContent`] (P3: факты о себе не хардкодятся
+/// в коде) — тот же источник, что и у страниц.
+pub fn page_meta(path: &str, site_url: &str, article: Option<&Article>) -> PageMeta {
+    let base = site_url.trim().trim_end_matches('/');
+    let path = canonical_path(path);
+    let content = SiteContent::get();
+    let name = content.profile.name.trim();
+    let role = content.profile.title.trim();
+
+    // Статья блога: заголовок и описание — её собственные.
+    if let Some(_slug) = path.strip_prefix("/blog/") {
+        let Some(article) = article else {
+            return not_found(base, name);
+        };
+        return PageMeta {
+            title: article.title.trim().to_string(),
+            description: clamp_description(&article.description(), DESCRIPTION_MAX),
+            // Перекрёстный канонический адрес (кросспостинг): если статья
+            // опубликована ещё и на другой площадке, каноническим может быть
+            // он. Поле есть в админке с самого начала, но в разметку не
+            // попадало — то есть не работало.
+            canonical: absolute(base, article.canonical_url.as_deref().unwrap_or(&path)),
+            og_type: OgType::Article,
+            image: article
+                .cover_image_url
+                .as_deref()
+                .map(|cover| absolute(base, cover))
+                .or_else(|| Some(default_og_image(base))),
+            noindex: false,
+        };
+    }
+
+    let skills = joined(&content.profile.skills, 70);
+    let services = joined(
+        &content
+            .services
+            .iter()
+            .map(|s| s.title.clone())
+            .collect::<Vec<_>>(),
+        100,
+    );
+    let projects = joined(
+        &content
+            .projects
+            .iter()
+            .map(|p| p.title.clone())
+            .collect::<Vec<_>>(),
+        110,
+    );
+    let experience = content.profile.experience_years;
+    let completed = content.profile.projects_completed;
+
+    match path.as_str() {
+        "/" => PageMeta::new(
+            format!("{name} — {role}"),
+            format!("{role}: {skills}. {experience} лет опыта, {completed}+ проектов."),
+            absolute(base, "/"),
+            OgType::Website,
+            Some(default_og_image(base)),
+        ),
+        "/services" => PageMeta::new(
+            format!("Услуги — {name}: AI-системы, MCP-серверы, голосовые боты"),
+            format!("Услуги: {services}. Ориентировочные цены, сроки и формат работы — в карточках."),
+            absolute(base, "/services"),
+            OgType::Website,
+            Some(default_og_image(base)),
+        ),
+        "/projects" => PageMeta::new(
+            format!("Проекты и кейсы «было → стало» — {name}"),
+            format!("Кейсы с цифрами: {projects}."),
+            absolute(base, "/projects"),
+            OgType::Website,
+            Some(default_og_image(base)),
+        ),
+        "/blog" => PageMeta::new(
+            format!("Блог о локальном инференсе и приватных AI-системах — {name}"),
+            "Заметки о приватных AI-системах, локальном инференсе и разработке: замеры, конфиги и разборы без облачных сервисов.".to_string(),
+            absolute(base, "/blog"),
+            OgType::Website,
+            Some(default_og_image(base)),
+        ),
+        "/chat" => PageMeta::new(
+            format!("Задать вопрос об услугах и сроках — {name}"),
+            "AI-ассистент отвечает про услуги, цены и сроки и помнит контекст разговора. Заявка — в один клик, без регистрации.".to_string(),
+            absolute(base, "/chat"),
+            OgType::Website,
+            Some(default_og_image(base)),
+        ),
+        "/contact" => PageMeta::new(
+            format!("Контакты и заявка — {name}"),
+            "Telegram, email и форма заявки. Опишите проект: задача, сроки, бюджет — отвечу в течение 24 часов.".to_string(),
+            absolute(base, "/contact"),
+            OgType::Website,
+            Some(default_og_image(base)),
+        ),
+        // Админку закрывает и robots.txt, но `noindex` надёжнее: он сработает,
+        // даже если страницу откроют по прямой ссылке из чужого индекса.
+        "/admin" => PageMeta {
+            noindex: true,
+            ..PageMeta::new(
+                format!("Админка — {name}"),
+                "Служебная страница: заявки, чаты, статьи и настройки сайта.".to_string(),
+                absolute(base, "/admin"),
+                OgType::Website,
+                None,
+            )
+        },
+        _ => not_found(base, name),
+    }
+}
+
+impl PageMeta {
+    /// Собирает метаданные, обрезая описание до [`DESCRIPTION_MAX`].
+    fn new(
+        title: String,
+        description: String,
+        canonical: String,
+        og_type: OgType,
+        image: Option<String>,
+    ) -> Self {
+        Self {
+            title: clamp_description(&title, 120),
+            description: clamp_description(&description, DESCRIPTION_MAX),
+            canonical,
+            og_type,
+            image,
+            noindex: false,
+        }
+    }
+}
+
+/// Метаданные несуществующей страницы: заголовок для человека и `noindex`,
+/// чтобы «мягкая» 404 не попала в индекс.
+///
+/// Канонического адреса здесь нет намеренно: он говорил бы поисковику, что
+/// страница «на самом деле» — это главная. Пустая строка означает «тег не
+/// рендерить» (см. `ui::shell`).
+fn not_found(base: &str, name: &str) -> PageMeta {
+    PageMeta {
+        title: clamp_description(&format!("Страница не найдена — {name}"), 120),
+        description: "Такой страницы нет. Возможно, адрес устарел или в нём опечатка.".to_string(),
+        canonical: String::new(),
+        og_type: OgType::Website,
+        image: Some(default_og_image(base)),
+        noindex: true,
+    }
+}
+
+/// Приводит путь к каноническому виду: без строки запроса, якоря и
+/// завершающего слэша (`/blog/` и `/blog` — одна страница, а не две).
+fn canonical_path(path: &str) -> String {
+    let path = path.split(['?', '#']).next().unwrap_or("/");
+    let trimmed = path.trim_end_matches('/');
+    if trimmed.is_empty() {
+        "/".to_string()
+    } else {
+        trimmed.to_string()
+    }
+}
+
+/// Достраивает абсолютный адрес из пути или внешнего URL.
+fn absolute(base: &str, url: &str) -> String {
+    if url.starts_with("http://") || url.starts_with("https://") {
+        return url.to_string();
+    }
+    format!("{base}/{}", url.trim_start_matches('/'))
+}
+
+/// Картинка для соцсетей по умолчанию — своя, а не чужая: её отдаёт
+/// приложение (`assets/og-default.png`), адрес не зависит от внешнего хостинга.
+///
+/// Версия в адресе — та же дисциплина, что у CSS и JS: картинка меняется редко,
+/// но когда меняется, площадки и браузеры должны взять новую, а не годовалую
+/// копию из кэша.
+fn default_og_image(base: &str) -> String {
+    absolute(
+        base,
+        &crate::api::assets::versioned(crate::api::assets::OG_IMAGE_PATH),
+    )
+}
+
+/// Склеивает первые элементы списка, пока укладывается в бюджет символов.
+///
+/// Нужно, чтобы `description` собирался из настоящих данных (услуг, кейсов,
+/// навыков), а не из ещё одной копии фактов о себе в коде.
+fn joined(items: &[String], budget: usize) -> String {
+    let mut out = String::new();
+    for item in items {
+        let item = item.trim();
+        if item.is_empty() {
+            continue;
+        }
+        let extra = if out.is_empty() { 0 } else { 2 };
+        if out.chars().count() + extra + item.chars().count() > budget {
+            break;
+        }
+        if !out.is_empty() {
+            out.push_str(", ");
+        }
+        out.push_str(item);
+    }
+    out
+}
+
+/// Обрезает текст по границе слова, добавляя многоточие.
+fn clamp_description(text: &str, max: usize) -> String {
+    let text = text.trim();
+    if text.chars().count() <= max {
+        return text.to_string();
+    }
+
+    let mut out = String::new();
+    for word in text.split_whitespace() {
+        if out.chars().count() + word.chars().count() + 1 > max.saturating_sub(1) {
+            break;
+        }
+        if !out.is_empty() {
+            out.push(' ');
+        }
+        out.push_str(word);
+    }
+
+    if out.is_empty() {
+        // Одно слово длиннее предела — режем по символам.
+        out = text.chars().take(max.saturating_sub(1)).collect();
+    }
+    out.push('…');
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::memory::content::fallback_content;
+    use crate::services::article::ArticleStatus;
+
+    /// Публичный адрес сайта в тестах.
+    const SITE: &str = "https://inteli-dev.ru";
+
+    /// Страницы с постоянным адресом: заголовок и описание обязаны быть у
+    /// каждой и не повторяться — ровно это и нашёл краулер.
+    const STATIC_PATHS: &[&str] = &["/", "/services", "/projects", "/blog", "/chat", "/contact"];
+
+    /// `page_meta` читает автора из глобального контента. `set_global`
+    /// идемпотентен, поэтому звать его из тестов безопасно.
+    fn article(slug: &str) -> Article {
+        SiteContent::set_global(fallback_content());
+
+        Article {
+            id: 1,
+            slug: slug.to_string(),
+            title: "35B-модель на RTX 5080 и RTX 3060".to_string(),
+            summary: "Замеры скорости и конфиг".to_string(),
+            body_markdown: "## Стенд\n\nТекст статьи.".to_string(),
+            cover_image_url: Some("/media/1e65d7d8.webp".to_string()),
+            tags: vec!["инференс".to_string()],
+            status: ArticleStatus::Published,
+            published_at: Some("2026-09-24T12:36:13Z".to_string()),
+            created_at: String::new(),
+            updated_at: String::new(),
+            source: "admin".to_string(),
+            external_id: None,
+            canonical_url: None,
+        }
+    }
+
+    #[test]
+    fn static_pages_have_unique_titles_and_descriptions() {
+        SiteContent::set_global(fallback_content());
+
+        let mut titles = std::collections::HashSet::new();
+        let mut descriptions = std::collections::HashSet::new();
+
+        for path in STATIC_PATHS {
+            let meta = page_meta(path, SITE, None);
+
+            assert!(!meta.title().is_empty(), "{path}: пустой title");
+            assert!(!meta.description().is_empty(), "{path}: пустое description");
+            assert!(
+                meta.description().chars().count() <= DESCRIPTION_MAX,
+                "{path}: description длиннее предела сниппета"
+            );
+            assert!(
+                titles.insert(meta.title().to_string()),
+                "{path}: title повторяет другой — {}",
+                meta.title()
+            );
+            assert!(
+                descriptions.insert(meta.description().to_string()),
+                "{path}: description повторяет другой"
+            );
+        }
+    }
+
+    #[test]
+    fn canonical_is_absolute_and_points_at_the_same_page() {
+        SiteContent::set_global(fallback_content());
+
+        for path in STATIC_PATHS {
+            let meta = page_meta(path, "https://inteli-dev.ru/", None);
+            let expected = if *path == "/" {
+                "https://inteli-dev.ru/".to_string()
+            } else {
+                format!("https://inteli-dev.ru{path}")
+            };
+
+            assert_eq!(meta.canonical(), expected, "{path}: неверный canonical");
+        }
+    }
+
+    #[test]
+    fn trailing_slash_and_query_string_are_the_same_page() {
+        // `/blog/`, `/blog?utm=x` и `/blog` — одна страница: разными canonical
+        // мы сами создали бы дубликаты.
+        SiteContent::set_global(fallback_content());
+
+        let plain = page_meta("/blog", SITE, None);
+        for alias in ["/blog/", "/blog?utm_source=vk", "/blog#top"] {
+            let meta = page_meta(alias, SITE, None);
+            assert_eq!(meta.canonical(), plain.canonical(), "{alias}");
+            assert_eq!(meta.title(), plain.title(), "{alias}");
+        }
+    }
+
+    #[test]
+    fn unknown_path_is_a_noindex_404() {
+        SiteContent::set_global(fallback_content());
+
+        let meta = page_meta("/net-takoy-stranicy", SITE, None);
+        assert!(meta.is_noindex(), "404 обязан быть noindex");
+        assert!(meta.title().contains("не найдена"));
+        // Канонический адрес у 404 отсутствует: иначе мы бы сообщали, что это
+        // копия главной.
+        assert!(meta.canonical().is_empty());
+        assert!(
+            !meta.title().contains("net-takoy"),
+            "адрес не должен попадать в заголовок: это отражённый текст"
+        );
+    }
+
+    #[test]
+    fn admin_is_noindex() {
+        SiteContent::set_global(fallback_content());
+        assert!(page_meta("/admin", SITE, None).is_noindex());
+    }
+
+    #[test]
+    fn blog_post_uses_its_own_title_description_and_cover() {
+        let article = article("35b");
+
+        let meta = page_meta("/blog/35b", SITE, Some(&article));
+        assert_eq!(meta.title(), article.title);
+        assert_eq!(meta.description(), "Замеры скорости и конфиг");
+        assert_eq!(meta.canonical(), "https://inteli-dev.ru/blog/35b");
+        assert_eq!(meta.og_type(), OgType::Article);
+        assert_eq!(
+            meta.image(),
+            Some("https://inteli-dev.ru/media/1e65d7d8.webp"),
+            "относительный адрес обложки обязан стать абсолютным"
+        );
+        assert!(!meta.is_noindex());
+    }
+
+    #[test]
+    fn blog_post_without_summary_falls_back_to_the_body() {
+        let mut article = article("35b");
+        article.summary = String::new();
+
+        let meta = page_meta("/blog/35b", SITE, Some(&article));
+        assert!(
+            meta.description().contains("Стенд"),
+            "описание должно собираться из текста: {}",
+            meta.description()
+        );
+    }
+
+    #[test]
+    fn crossposted_article_keeps_its_canonical() {
+        // Статья выложена ещё и на другой площадке: каноническим должен быть
+        // тот адрес, иначе поисковик выберет копию сам.
+        let mut article = article("35b");
+        article.canonical_url = Some("https://habr.com/ru/articles/123456/".to_string());
+        assert_eq!(
+            page_meta("/blog/35b", SITE, Some(&article)).canonical(),
+            "https://habr.com/ru/articles/123456/"
+        );
+
+        // Локальный путь в поле канонического — тоже допустимый вариант.
+        article.canonical_url = Some("/blog/original".to_string());
+        assert_eq!(
+            page_meta("/blog/35b", SITE, Some(&article)).canonical(),
+            "https://inteli-dev.ru/blog/original"
+        );
+    }
+
+    #[test]
+    fn missing_article_is_a_noindex_404() {
+        SiteContent::set_global(fallback_content());
+
+        // Слаг есть в адресе, но статьи с ним нет — это 404, и индексировать
+        // его нельзя.
+        let meta = page_meta("/blog/chernovik", SITE, None);
+        assert!(meta.is_noindex());
+        assert!(meta.title().contains("не найдена"));
+    }
+
+    #[test]
+    fn every_page_has_an_og_image() {
+        let meta = page_meta("/", SITE, None);
+        let image = meta.image().expect("картинка для соцсетей");
+        assert!(
+            image.starts_with("https://inteli-dev.ru/og.png"),
+            "og:image обязан быть абсолютным: {image}"
+        );
+    }
+
+    #[test]
+    fn description_is_clamped_by_whole_words() {
+        let long = "слово ".repeat(60);
+        let clamped = clamp_description(&long, 40);
+
+        assert!(clamped.chars().count() <= 40);
+        assert!(clamped.ends_with('…'));
+        assert!(!clamped.contains("слов…"), "слово разрезано: {clamped}");
+
+        // Короткий текст не трогаем.
+        assert_eq!(clamp_description("  коротко  ", 40), "коротко");
+    }
+
+    #[test]
+    fn clamped_description_survives_a_single_long_word() {
+        let clamped = clamp_description(&"a".repeat(500), 20);
+        assert!(clamped.chars().count() <= 20);
+        assert!(clamped.ends_with('…'));
+    }
+
+    #[test]
+    fn site_url_global_ignores_the_trailing_slash() {
+        set_site_url("https://inteli-dev.ru/");
+        assert_eq!(site_url(), "https://inteli-dev.ru");
+        set_site_url("");
+        assert_eq!(site_url(), "");
+    }
 
     #[test]
     fn robots_points_at_the_given_site() {

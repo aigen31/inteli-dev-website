@@ -1075,7 +1075,10 @@ ul { margin: 0; padding: 0; list-style: none; }
   height: 1rem;
   flex: none;
 }
-.card-title { font-size: var(--text-h3); margin-bottom: var(--space-sm); color: #fff; }
+/* Вес задан явно: уровень заголовка карточки зависит от страницы (h2 на
+   /services и /projects, h3 внутри секций главной), а выглядеть они должны
+   одинаково — иначе h2 получал бы вес 700 из общего правила. */
+.card-title { font-size: var(--text-h3); font-weight: 600; margin-bottom: var(--space-sm); color: #fff; }
 .card-text { color: var(--color-text-secondary); font-size: var(--text-small); }
 .card-price { display: inline-block; margin-top: var(--space-sm); font-weight: 700; color: var(--color-primary); }
 
@@ -1436,7 +1439,8 @@ ul { margin: 0; padding: 0; list-style: none; }
 .post-card:hover { border-color: var(--color-border-strong); transform: translateY(-2px); }
 .post-card-cover { display: block; border-radius: var(--radius-md); overflow: hidden; }
 .post-card-cover img { width: 100%; height: 100%; object-fit: cover; aspect-ratio: 16 / 10; }
-.post-card-title { font-size: var(--text-h3); margin-bottom: var(--space-xs); }
+/* Как и у `.card-title`: уровень зависит от страницы, вид — нет. */
+.post-card-title { font-size: var(--text-h3); font-weight: 600; margin-bottom: var(--space-xs); }
 .post-card-title a { color: #fff; }
 .post-card-title a:hover { color: var(--color-primary); }
 .post-card-summary { color: var(--color-text-secondary); margin-bottom: var(--space-sm); }

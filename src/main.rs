@@ -116,13 +116,14 @@ async fn run(config: AppConfig) -> AppResult<()> {
         None => tracing::info!("github: логин не задан, ссылка в шапке не показывается"),
     }
 
-    // 3.4. Счётчики аналитики (Яндекс.Метрика и Google tag): вставляются в
-    //      <head> каждой страницы. Публикуются здесь, потому что `shell()` —
-    //      обёртка всего документа, а в неё конфиг не прокидывается (Leptos
-    //      вызывает её без пропсов). Пустые идентификаторы выключают счётчики:
-    //      в разработке они не нужны, иначе визиты разработчика уходят в живую
-    //      статистику сайта.
+    // 3.4. Счётчики аналитики (Яндекс.Метрика и Google tag) и мета-данные
+    //      страниц (canonical, OpenGraph): и то, и другое вставляется в <head>
+    //      каждой страницы. Публикуются здесь, потому что `shell()` — обёртка
+    //      всего документа, а в неё конфиг не прокидывается (Leptos вызывает её
+    //      без пропсов). Пустые идентификаторы выключают счётчики: в разработке
+    //      они не нужны, иначе визиты разработчика уходят в живую статистику.
     inteli_dev::services::seo::set_counters(config.seo.metrika_id(), config.seo.google_tag_id());
+    inteli_dev::services::seo::set_site_url(&config.server.public_url);
     let counters = inteli_dev::services::seo::counters();
     match counters.metrika() {
         Some(metrika) => tracing::info!("Яндекс.Метрика включена: счётчик {}", metrika.id()),
@@ -132,6 +133,10 @@ async fn run(config: AppConfig) -> AppResult<()> {
         Some(tag) => tracing::info!("Google tag включён: {}", tag.id()),
         None => tracing::info!("Google tag выключен (идентификатор не задан)"),
     }
+    tracing::info!(
+        "мета страниц: canonical и og:image строятся от {}",
+        inteli_dev::services::seo::site_url()
+    );
 
     // 4. Cache + rate limiting.
     let cache = Arc::new(InMemoryCache::new(Duration::from_secs(
@@ -244,14 +249,18 @@ async fn run(config: AppConfig) -> AppResult<()> {
         started_at: Instant::now(),
     };
 
-    // 7. Собираем router: API + Leptos SSR + fallback.
+    // 7. Собираем router: API + Leptos SSR + fallback. Заголовки безопасности
+    //    ставятся одним слоем поверх всего: CSP документа вычисляется в
+    //    `shell()` (там известен nonce), базовый набор — здесь.
     let routes = generate_route_list(App);
+    let shell = inteli_dev::ui::shell::shell;
     let app: Router = api::routes(&state.config.seo)
         .leptos_routes(&state, routes, {
             let leptos_options = leptos_options.clone();
             move || shell(leptos_options.clone())
         })
         .fallback(leptos_axum::file_and_error_handler::<AppState, _>(shell))
+        .layer(axum::middleware::from_fn(inteli_dev::security::headers))
         .with_state(state);
 
     tracing::info!("listening on http://{addr}");
@@ -272,79 +281,5 @@ fn build_leptos_options(addr: std::net::SocketAddr) -> LeptosOptions {
             tracing::error!("Leptos configuration failed: {e}");
             std::process::exit(1);
         }
-    }
-}
-
-/// `<head>`-часть счётчика Яндекс.Метрики: `<script>` с инициализацией и
-/// пиксель в `<noscript>` для визитов без JavaScript.
-///
-/// Возвращает `None`, когда счётчик выключен, — тогда в разметке не остаётся
-/// ни одного упоминания Метрики. Тело `<script>` вставляется через
-/// `inner_html`: это уже готовый JavaScript, и экранировать в нём нечего,
-/// кроме номера счётчика, который проверен на «только цифры»
-/// (`services::seo::is_valid_metrika_id`).
-fn metrika_view() -> Option<impl IntoView> {
-    let metrika = inteli_dev::services::seo::counters().metrika().cloned()?;
-    let script = metrika.script();
-    let watch = metrika.watch_url();
-
-    Some(view! {
-        <script type="text/javascript" inner_html=script></script>
-        <noscript>
-            <div>
-                <img src=watch style="position:absolute; left:-9999px" alt=""/>
-            </div>
-        </noscript>
-    })
-}
-
-/// `<head>`-часть Google-тега: `gtag.js` и инлайновая настройка `dataLayer`.
-///
-/// `async` обязателен: без него внешний скрипт блокирует разбор страницы.
-/// Возвращает `None`, когда тег выключен.
-fn google_tag_view() -> Option<impl IntoView> {
-    let tag = inteli_dev::services::seo::counters().google_tag().cloned()?;
-    let src = tag.script_src();
-    let inline = tag.inline_script();
-
-    Some(view! {
-        <script async src=src></script>
-        <script inner_html=inline></script>
-    })
-}
-
-/// HTML-обёртка всех страниц (SSR).
-fn shell(_options: LeptosOptions) -> impl IntoView {
-    // Счётчики аналитики (Метрика и Google tag). Приходят из конфига: при
-    // пустых идентификаторах в разметке не остаётся ни строчки от них (см.
-    // `services::seo::Counters`). Стоят сразу после charset — и Метрика, и
-    // Google рекомендуют ставить счётчики как можно выше, чтобы запрос тега
-    // начался раньше и визит не потерялся.
-    let metrika = metrika_view();
-    let google_tag = google_tag_view();
-    view! {
-        <!DOCTYPE html>
-        <html lang="ru">
-            <head>
-                <meta charset="utf-8"/>
-                {metrika}
-                {google_tag}
-                <meta name="viewport" content="width=device-width, initial-scale=1"/>
-                <meta name="description" content="Fullstack-разработчик и архитектор приватных AI-систем: локальный инференс, MCP-серверы, голосовые ассистенты, PHP + JS."/>
-                <title>{"inteli.dev — Fullstack & приватные AI-системы"}</title>
-                <link rel="stylesheet" href="/assets/style.css"/>
-                <link rel="manifest" href="/manifest.json"/>
-                <link rel="icon" href="/favicon.svg" type="image/svg+xml"/>
-                <script src="/assets/main.js" defer></script>
-                // Секции прячет CSS, показывает JS. Без скриптов показывать
-                // некому — снимаем скрытие, иначе страница остаётся пустой.
-                <noscript>
-                    <style>".section, .hero { opacity: 1; transform: none; }"</style>
-                </noscript>
-            </head>
-            <body>
-                <App/>
-            </body>
-        </html>
     }
 }

@@ -16,6 +16,7 @@ pub mod layout;
 pub mod projects;
 pub mod services;
 pub mod shared;
+pub mod shell;
 
 use leptos::prelude::*;
 use leptos_router::components::{Route, Router, Routes};

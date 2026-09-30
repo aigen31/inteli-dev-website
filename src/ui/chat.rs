@@ -51,6 +51,10 @@ pub fn Chat() -> impl IntoView {
                         autocomplete="off"
                         maxlength=max_chars
                         aria-describedby="chat-hint"
+                        // Видимой подписи у поля нет (дизайн чата), поэтому
+                        // доступное имя задаётся здесь — как в hero-терминале
+                        // на главной и как требует RULES/ui-rules.md.
+                        aria-label="Ваш вопрос"
                     />
                     <button id="chat-send" type="button" class="btn btn-primary">Отправить</button>
                 </div>

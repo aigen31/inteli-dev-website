@@ -12,6 +12,7 @@ pub mod limits;
 pub mod llm;
 pub mod memory;
 pub mod notification;
+pub mod security;
 pub mod services;
 pub mod settings;
 pub mod state;

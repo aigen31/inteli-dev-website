@@ -17,7 +17,7 @@ pub fn Services() -> impl IntoView {
             </div>
             <p class="subtitle">Что я делаю и сколько это стоит (ориентировочно).</p>
             <div class="cards-grid">
-                {services.into_iter().map(|s| view! { <ServiceCard service=s/> }).collect::<Vec<_>>()}
+                {services.into_iter().map(|s| view! { <ServiceCard service=s level=2/> }).collect::<Vec<_>>()}
             </div>
             <div class="cta-buttons">
                 <SecondaryButton text="Обсудить задачу" href="/contact"/>

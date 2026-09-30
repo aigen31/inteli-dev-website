@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Обложка для соцсетей (og:image / twitter:image), 1200×630.
+
+  Это ИСХОДНИК: в приложение встраивается готовый PNG (`assets/og-default.png`),
+  потому что og:image обязан быть растровым — SVG не поддерживают ни Telegram,
+  ни VK, ни Twitter. Пересобрать после правки:
+
+      scripts/make-og-image.sh
+
+  Палитра — из assets/style.css (тёмный индиго/фиолетовый).
+  Текст статичен: имя и роль дублируют контент (OpenViking). Если меняются
+  имя или позиционирование — картинку нужно пересобрать.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#16133a"/>
+      <stop offset="55%" stop-color="#241f5e"/>
+      <stop offset="100%" stop-color="#2b2c7a"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0%" stop-color="#8b7ff5" stop-opacity="0.45"/>
+      <stop offset="100%" stop-color="#8b7ff5" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#8b7ff5"/>
+      <stop offset="100%" stop-color="#5bd75b"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1200" height="630" fill="url(#bg)"/>
+  <circle cx="1080" cy="60" r="420" fill="url(#glow)"/>
+  <circle cx="120" cy="620" r="300" fill="url(#glow)" opacity="0.6"/>
+
+  <!-- Мотив hero: фигурные скобки и код-терминал -->
+  <text x="1120" y="250" text-anchor="end" font-family="Adwaita Mono, DejaVu Sans Mono, monospace"
+        font-size="240" font-weight="700" fill="#8b7ff5" opacity="0.16">&lt;/&gt;</text>
+
+  <!-- Рамка-«окно» терминала -->
+  <rect x="80" y="96" width="1040" height="438" rx="24" ry="24"
+        fill="#191536" fill-opacity="0.55" stroke="#8b7ff5" stroke-opacity="0.35" stroke-width="2"/>
+  <circle cx="124" cy="140" r="9" fill="#ff5f56"/>
+  <circle cx="156" cy="140" r="9" fill="#ffbd44"/>
+  <circle cx="188" cy="140" r="9" fill="#4cd964"/>
+  <text x="228" y="149" font-family="Adwaita Mono, DejaVu Sans Mono, monospace"
+        font-size="22" fill="#8b8ad0">inteli-dev — приватные AI-системы</text>
+
+  <!-- Имя и роль -->
+  <text x="128" y="288" font-family="Adwaita Sans, DejaVu Sans, Liberation Sans, sans-serif"
+        font-size="80" font-weight="700" fill="#f4f4ff">Евгений Биль</text>
+  <text x="128" y="356" font-family="Adwaita Sans, DejaVu Sans, Liberation Sans, sans-serif"
+        font-size="34" fill="#c6c5f2">Fullstack-разработчик и архитектор</text>
+  <text x="128" y="402" font-family="Adwaita Sans, DejaVu Sans, Liberation Sans, sans-serif"
+        font-size="34" fill="#c6c5f2">приватных AI-систем</text>
+
+  <!-- Навыки -->
+  <g font-family="Adwaita Sans, DejaVu Sans, Liberation Sans, sans-serif" font-size="24">
+    <rect x="128" y="444" width="290" height="54" rx="27" fill="#8b7ff5" fill-opacity="0.18"/>
+    <text x="273" y="479" text-anchor="middle" fill="#f4f4ff">Локальный инференс</text>
+
+    <rect x="438" y="444" width="216" height="54" rx="27" fill="#8b7ff5" fill-opacity="0.18"/>
+    <text x="546" y="479" text-anchor="middle" fill="#f4f4ff">MCP-серверы</text>
+
+    <rect x="674" y="444" width="246" height="54" rx="27" fill="#8b7ff5" fill-opacity="0.18"/>
+    <text x="797" y="479" text-anchor="middle" fill="#f4f4ff">Голосовые боты</text>
+  </g>
+
+  <!-- Акцентная линия внизу -->
+  <rect x="128" y="566" width="180" height="6" rx="3" fill="url(#accent)"/>
+</svg>

@@ -173,7 +173,11 @@ async fn test_state_with(bot_config: SettingsBotConfig, llm_requests_per_hour: u
 /// Отдельные тесты собирают роутер сами — с ключом IndexNow и файлами
 /// подтверждения прав, — поэтому здесь именно значение по умолчанию.
 fn test_router(state: &AppState) -> axum::Router {
-    api::routes(&inteli_dev::config::SeoConfig::default()).with_state(state.clone())
+    // Слой безопасности — тот же, что в `main.rs`: иначе тесты проверяли бы
+    // заголовки не того ответа, который уходит клиенту.
+    api::routes(&inteli_dev::config::SeoConfig::default())
+        .layer(axum::middleware::from_fn(inteli_dev::security::headers))
+        .with_state(state.clone())
 }
 
 /// Публичный адрес сайта в тестах — из него собираются ссылки в RSS и событиях.
@@ -1598,3 +1602,301 @@ async fn article_images_are_absolute_in_rss() {
 }
 
 
+
+// ---------------------------------------------------------------------------
+// SSR-страницы: <head>, заголовки безопасности и кэш встроенных ресурсов
+// ---------------------------------------------------------------------------
+
+/// Замок на глобальные настройки SEO (адрес сайта, счётчики).
+///
+/// Они одни на процесс, а тесты идут параллельно: без замка один тест увидел бы
+/// адрес сайта, выставленный другим. Тот же приём, что у `articles_lock`.
+fn seo_lock() -> std::sync::MutexGuard<'static, ()> {
+    static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    LOCK.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+/// Роутер со всеми SSR-страницами — тот же, что собирает `main.rs`.
+///
+/// `test_router` монтирует только API: `shell()` живёт вне его, а заголовок,
+/// canonical, OpenGraph и CSP собираются именно там — то есть проверять их
+/// нечем, кроме настоящего роутера.
+fn ssr_router(state: &AppState) -> axum::Router {
+    use leptos_axum::LeptosRoutes;
+
+    let routes = leptos_axum::generate_route_list(inteli_dev::ui::App);
+
+    api::routes(&inteli_dev::config::SeoConfig::default())
+        .leptos_routes(state, routes, {
+            let options = state.leptos_options.clone();
+            move || inteli_dev::ui::shell::shell(options.clone())
+        })
+        .fallback(leptos_axum::file_and_error_handler::<AppState, _>(
+            inteli_dev::ui::shell::shell,
+        ))
+        .layer(axum::middleware::from_fn(inteli_dev::security::headers))
+        .with_state(state.clone())
+}
+
+/// GET страницы: статус, заголовки ответа и HTML.
+async fn get_page(
+    state: &AppState,
+    uri: &str,
+) -> (StatusCode, axum::http::HeaderMap, String) {
+    let req = Request::builder()
+        .method("GET")
+        .uri(uri)
+        .body(Body::empty())
+        .unwrap();
+
+    let resp = ssr_router(state).oneshot(req).await.unwrap();
+    let status = resp.status();
+    let headers = resp.headers().clone();
+    let bytes = resp.into_body().collect().await.unwrap().to_bytes();
+    (status, headers, String::from_utf8_lossy(&bytes).into_owned())
+}
+
+/// Текст между двумя маркерами (содержимое `<title>`).
+fn between<'a>(html: &'a str, start: &str, end: &str) -> Option<&'a str> {
+    let from = html.find(start)? + start.len();
+    let to = html[from..].find(end)? + from;
+    Some(&html[from..to])
+}
+
+/// Значение атрибута в куске HTML, начинающемся с тега.
+fn attr_value(tag: &str, attr: &str) -> Option<String> {
+    let key = format!("{attr}=\"");
+    let start = tag.find(&key)? + key.len();
+    let end = tag[start..].find('"')? + start;
+    Some(tag[start..end].to_string())
+}
+
+/// Значение `content` у `<meta property="og:…">`.
+///
+/// Порядок атрибутов в разметке — не контракт, поэтому тег ищется по
+/// `property`, а значение берётся из него.
+fn og_content(html: &str, property: &str) -> Option<String> {
+    let needle = format!("property=\"{property}\"");
+    let tag = html.split("<meta ").find(|tag| tag.contains(&needle))?;
+    attr_value(tag, "content")
+}
+
+/// Адрес из `<link rel="canonical" href="…">`.
+fn canonical_href(html: &str) -> Option<String> {
+    let tag = html
+        .split("<link ")
+        .find(|tag| tag.contains("rel=\"canonical\""))?;
+    attr_value(tag, "href")
+}
+
+/// Страницы с постоянным адресом: у каждой свой заголовок и свой canonical.
+#[tokio::test]
+async fn ssr_pages_have_unique_titles_and_canonical() {
+    let _guard = seo_lock();
+    let state = test_state().await;
+    inteli_dev::services::seo::set_site_url(test_public_url());
+    // Счётчики выключены: разметку Метрики проверяет отдельный тест.
+    inteli_dev::services::seo::set_counters(None, None);
+
+    let mut titles = std::collections::HashSet::new();
+
+    for path in ["/", "/services", "/projects", "/blog", "/chat", "/contact"] {
+        let (status, headers, html) = get_page(&state, path).await;
+        assert_eq!(status, StatusCode::OK, "{path}");
+
+        // Краулер нашёл одинаковый title и description на всех страницах.
+        let title = between(&html, "<title>", "</title>")
+            .unwrap_or_default()
+            .to_string();
+        assert!(!title.is_empty(), "{path}: пустой title");
+        assert!(
+            titles.insert(title.clone()),
+            "{path}: title повторяет другой — {title}"
+        );
+
+        // Canonical обязан быть абсолютным и указывать на саму страницу.
+        let expected = if path == "/" {
+            format!("{}/", test_public_url())
+        } else {
+            format!("{}{path}", test_public_url())
+        };
+        assert_eq!(
+            canonical_href(&html).as_deref(),
+            Some(expected.as_str()),
+            "{path}: неверный canonical"
+        );
+
+        // OpenGraph: без него ссылка в мессенджере разворачивается в голый URL.
+        for property in ["og:type", "og:title", "og:description", "og:url", "og:image"] {
+            let content = og_content(&html, property)
+                .unwrap_or_else(|| panic!("{path}: нет {property}"));
+            assert!(!content.is_empty(), "{path}: пустой {property}");
+        }
+        assert_eq!(og_content(&html, "og:type").as_deref(), Some("website"));
+        assert_eq!(
+            og_content(&html, "og:url").as_deref(),
+            Some(expected.as_str()),
+            "{path}: og:url расходится с canonical"
+        );
+        assert!(html.contains("name=\"twitter:card\""), "{path}: нет twitter:card");
+
+        // Заголовки безопасности приложения (в nginx их нет — иначе дубли).
+        let csp = headers
+            .get(header::CONTENT_SECURITY_POLICY)
+            .unwrap_or_else(|| panic!("{path}: нет CSP"))
+            .to_str()
+            .unwrap()
+            .to_string();
+        assert!(csp.contains("nonce-"), "{path}: CSP без nonce: {csp}");
+        assert!(
+            csp.contains("https://mc.yandex.ru"),
+            "{path}: CSP зарежет Метрику: {csp}"
+        );
+
+        for name in [
+            "x-content-type-options",
+            "x-frame-options",
+            "referrer-policy",
+            "permissions-policy",
+            "cross-origin-opener-policy",
+            "cross-origin-resource-policy",
+        ] {
+            let value = headers
+                .get(name)
+                .unwrap_or_else(|| panic!("{path}: нет заголовка {name}"))
+                .to_str()
+                .unwrap();
+            assert!(!value.is_empty(), "{path}: пустой {name}");
+        }
+
+        // Дубль этого заголовка краулер видел как `nosniff, nosniff`.
+        assert_eq!(
+            headers["x-content-type-options"], "nosniff",
+            "{path}: X-Content-Type-Options продублирован"
+        );
+    }
+}
+
+/// Инлайновые счётчики обязаны нести nonce из CSP: иначе браузер их не выполнит,
+/// а заметно это будет только по пустым графикам.
+#[tokio::test]
+async fn analytics_scripts_carry_the_csp_nonce() {
+    let _guard = seo_lock();
+    let state = test_state().await;
+    inteli_dev::services::seo::set_site_url(test_public_url());
+    inteli_dev::services::seo::set_counters(Some("113215363"), Some("G-YNP4E8TF80"));
+
+    let (_, headers, html) = get_page(&state, "/").await;
+    let csp = headers
+        .get(header::CONTENT_SECURITY_POLICY)
+        .expect("CSP")
+        .to_str()
+        .unwrap()
+        .to_string();
+
+    let nonce = between(&csp, "'nonce-", "'").expect("nonce в CSP").to_string();
+    assert!(
+        html.contains(&format!("nonce=\"{nonce}\"")),
+        "в разметке нет nonce {nonce}"
+    );
+    assert!(html.contains("ym(113215363, 'init'"), "нет инициализации Метрики");
+    assert!(
+        html.contains("gtag('config', 'G-YNP4E8TF80')"),
+        "нет инициализации Google-тега"
+    );
+
+    // Пустые идентификаторы — ни строчки счётчиков в разметке (в разработке
+    // иначе визиты разработчика уходят в живую статистику).
+    inteli_dev::services::seo::set_counters(None, None);
+    let (_, _, html) = get_page(&state, "/").await;
+    for needle in ["mc.yandex.ru", "googletagmanager", "gtag("] {
+        assert!(!html.contains(needle), "в разметке остался {needle}");
+    }
+}
+
+/// Статья отдаёт свои заголовок, описание и обложку — и остаётся индексируемой.
+#[tokio::test]
+async fn ssr_article_page_has_its_own_meta() {
+    let _guard = seo_lock();
+    let _articles = articles_lock();
+    let state = test_state().await;
+    inteli_dev::services::seo::set_site_url(test_public_url());
+    inteli_dev::services::seo::set_counters(None, None);
+
+    let article = create_article(&state, "Статья с мета-тегами", "published").await;
+    let slug = article["slug"].as_str().unwrap();
+
+    let (status, _, html) = get_page(&state, &format!("/blog/{slug}")).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(
+        between(&html, "<title>", "</title>"),
+        Some("Статья с мета-тегами")
+    );
+    assert_eq!(
+        canonical_href(&html).as_deref(),
+        Some(format!("{}/blog/{slug}", test_public_url()).as_str())
+    );
+    assert_eq!(
+        og_content(&html, "og:type").as_deref(),
+        Some("article"),
+        "у статьи должен быть og:type=article"
+    );
+    // Обложки у статьи нет — в og:image уходит общая карточка сайта, а не
+    // пустое место: ссылка без картинки разворачивается хуже.
+    assert_eq!(
+        og_content(&html, "og:image").as_deref(),
+        Some(format!("{}/og.png?v={}", test_public_url(), inteli_dev::api::assets::version()).as_str())
+    );
+    assert!(html.contains("name=\"twitter:card\" content=\"summary_large_image\""));
+
+    // Заголовок и H1 страницы совпадают с заголовком статьи.
+    assert!(html.contains("<h1>Статья с мета-тегами</h1>"));
+}
+
+/// Несуществующая страница — это 404 и `noindex`, а не «мягкая» 200.
+#[tokio::test]
+async fn ssr_unknown_page_is_a_noindex_404() {
+    let _guard = seo_lock();
+    let state = test_state().await;
+    inteli_dev::services::seo::set_site_url(test_public_url());
+    inteli_dev::services::seo::set_counters(None, None);
+
+    let (status, _, html) = get_page(&state, "/net-takoy-stranicy").await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    assert!(
+        html.contains("<meta name=\"robots\" content=\"noindex"),
+        "404 обязан быть noindex"
+    );
+    // Канонического адреса у 404 нет: он говорил бы, что это копия главной.
+    assert!(canonical_href(&html).is_none(), "у 404 не должно быть canonical");
+
+    // Админка тоже не для индекса.
+    let (_, _, html) = get_page(&state, "/admin").await;
+    assert!(html.contains("<meta name=\"robots\" content=\"noindex"));
+}
+
+/// Встроенные ресурсы кэшируются год только с версией в адресе.
+#[tokio::test]
+async fn embedded_assets_are_versioned_and_cached() {
+    let state = test_state().await;
+    let version = inteli_dev::api::assets::version();
+
+    let (status, headers, _) = get_page(&state, &format!("/assets/style.css?v={version}")).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(headers[header::CONTENT_TYPE], "text/css; charset=utf-8");
+    assert!(
+        headers[header::CACHE_CONTROL].to_str().unwrap().contains("immutable"),
+        "версионированный ресурс должен кэшироваться надолго"
+    );
+
+    // Без версии — короткий кэш: содержимое могло измениться.
+    let (_, headers, _) = get_page(&state, "/assets/style.css").await;
+    let cache = headers[header::CACHE_CONTROL].to_str().unwrap();
+    assert!(cache.contains("max-age=3600"), "получили {cache}");
+    assert!(!cache.contains("immutable"));
+
+    // Обложка для соцсетей отдаётся как PNG (SVG площадки не понимают).
+    let (status, headers, _) = get_page(&state, "/og.png").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(headers[header::CONTENT_TYPE], "image/png");
+}

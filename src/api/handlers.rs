@@ -1,6 +1,6 @@
 //! Обработчики HTTP API.
 
-use axum::extract::{Path, Query, State};
+use axum::extract::{Path, Query, RawQuery, State};
 use axum::http::header::{self, HeaderMap};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
@@ -566,8 +566,11 @@ pub async fn admin_upload_media(
 ///
 /// Файл неизменяем: имя — это хеш содержимого. Поэтому ответ кэшируется
 /// навсегда, а `ETag` (он же хеш) позволяет браузеру не качать картинку
-/// повторно. `nosniff` обязателен: мы отдаём то, что загрузил пользователь, и
-/// браузер не должен угадывать тип по содержимому.
+/// повторно.
+///
+/// `X-Content-Type-Options: nosniff` здесь не ставится: его добавляет общий
+/// middleware (`security::headers`) ко всем ответам. Раньше заголовок был и
+/// тут, и в nginx — краулер видел `nosniff, nosniff` в одном ответе.
 pub async fn media_file(
     State(state): State<AppState>,
     Path(name): Path<String>,
@@ -596,7 +599,6 @@ pub async fn media_file(
         .status(StatusCode::OK)
         .header(header::CONTENT_TYPE, file.content_type)
         .header(header::CACHE_CONTROL, MEDIA_CACHE_CONTROL)
-        .header("x-content-type-options", "nosniff")
         .header(header::ETAG, etag)
         .body(axum::body::Body::from(file.bytes))
         .map_err(|e| ApiError(AppError::Internal(e.to_string())))
@@ -626,17 +628,57 @@ fn event_json(event: &crate::storage::article::ArticleEvent) -> serde_json::Valu
 // Static assets
 // ---------------------------------------------------------------------------
 
-pub async fn style_css() -> impl IntoResponse {
+/// Значение параметра `v` из строки запроса (`?v=1a2b3c4d`).
+///
+/// Разбирается вручную, а не через `Query<T>`: ошибка десериализации в
+/// экстракторе — это 400 на обычный CSS, а мусор в строке запроса не повод не
+/// отдать файл.
+fn query_version(raw: Option<&str>) -> Option<&str> {
+    raw?.split('&').find_map(|pair| pair.strip_prefix("v="))
+}
+
+/// `Cache-Control` для встроенного ресурса.
+///
+/// Год кэша разрешён только адресу с текущей версией: содержимое по такому
+/// адресу действительно не меняется (`assets::versioned`). Адрес без версии или
+/// с чужой версией не должен залипнуть в браузере на год.
+fn asset_cache_control(version: Option<&str>) -> &'static str {
+    if version == Some(assets::version()) {
+        assets::CACHE_IMMUTABLE
+    } else {
+        assets::CACHE_SHORT
+    }
+}
+
+/// Ответ со встроенным текстовым ресурсом и правильным кэшем.
+fn asset_response(
+    content_type: &'static str,
+    body: &'static str,
+    version: Option<&str>,
+) -> Response {
     (
-        [(header::CONTENT_TYPE, "text/css; charset=utf-8")],
+        [
+            (header::CONTENT_TYPE, content_type),
+            (header::CACHE_CONTROL, asset_cache_control(version)),
+        ],
+        body,
+    )
+        .into_response()
+}
+
+pub async fn style_css(raw: RawQuery) -> Response {
+    asset_response(
+        "text/css; charset=utf-8",
         assets::STYLE_CSS,
+        query_version(raw.0.as_deref()),
     )
 }
 
-pub async fn main_js() -> impl IntoResponse {
-    (
-        [(header::CONTENT_TYPE, "application/javascript")],
+pub async fn main_js(raw: RawQuery) -> Response {
+    asset_response(
+        "application/javascript",
         assets::MAIN_JS,
+        query_version(raw.0.as_deref()),
     )
 }
 
@@ -649,10 +691,11 @@ pub async fn robots(State(state): State<AppState>) -> impl IntoResponse {
     )
 }
 
-pub async fn manifest() -> impl IntoResponse {
-    (
-        [(header::CONTENT_TYPE, "application/manifest+json")],
+pub async fn manifest(raw: RawQuery) -> Response {
+    asset_response(
+        "application/manifest+json",
         assets::MANIFEST_JSON,
+        query_version(raw.0.as_deref()),
     )
 }
 
@@ -672,9 +715,26 @@ pub async fn rss(State(state): State<AppState>) -> impl IntoResponse {
     )
 }
 
-pub async fn favicon() -> impl IntoResponse {
-    (
-        [(header::CONTENT_TYPE, "image/svg+xml")],
+pub async fn favicon(raw: RawQuery) -> Response {
+    asset_response(
+        "image/svg+xml",
         assets::FAVICON_SVG,
+        query_version(raw.0.as_deref()),
     )
+}
+
+/// Обложка для соцсетей (`og:image`). Отдаётся как PNG: SVG не поддерживают
+/// ни Telegram, ни VK, ни Twitter.
+pub async fn og_image(raw: RawQuery) -> Response {
+    (
+        [
+            (header::CONTENT_TYPE, "image/png"),
+            (
+                header::CACHE_CONTROL,
+                asset_cache_control(query_version(raw.0.as_deref())),
+            ),
+        ],
+        assets::OG_IMAGE,
+    )
+        .into_response()
 }

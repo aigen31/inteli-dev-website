@@ -17,7 +17,7 @@ pub fn Projects() -> impl IntoView {
             </div>
             <p class="subtitle">{"Конкретные кейсы «до → после» с цифрами."}</p>
             <div class="cards-grid cards-grid-2">
-                {projects.into_iter().map(|p| view! { <ProjectCard project=p/> }).collect::<Vec<_>>()}
+                {projects.into_iter().map(|p| view! { <ProjectCard project=p level=2/> }).collect::<Vec<_>>()}
             </div>
             <div class="cta-buttons">
                 <SecondaryButton text="Хочу так же" href="/contact"/>

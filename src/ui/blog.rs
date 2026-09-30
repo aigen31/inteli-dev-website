@@ -9,6 +9,7 @@ use leptos::prelude::*;
 use leptos_router::hooks::use_params_map;
 
 use crate::services::article::{Article, ArticleHead, PublishedArticles};
+use crate::ui::shared::card_heading;
 use crate::ui::NotFound;
 
 /// Сколько последних статей показывать тизером на главной.
@@ -56,7 +57,10 @@ fn tag_list(tags: &[String]) -> AnyView {
 }
 
 /// Карточка статьи в списке.
-fn article_card(article: ArticleHead) -> AnyView {
+///
+/// `level` — уровень заголовка: 2 в списке `/blog` (карточка — самостоятельный
+/// блок), 3 в тизере на главной (карточки внутри секции «Последние статьи»).
+fn article_card(article: ArticleHead, level: u8) -> AnyView {
     let href = article.url_path();
     let date = article
         .published_at
@@ -71,16 +75,28 @@ fn article_card(article: ArticleHead) -> AnyView {
         Some(article.summary.clone())
     };
     let tags = tag_list(&article.tags);
+    let heading = card_heading(
+        level,
+        "post-card-title",
+        article.title.clone(),
+        Some(href.clone()),
+    );
+    // Ссылка на обложку ведёт туда же, куда заголовок. Раньше она была
+    // `aria-hidden` с пустым `alt`: доступного имени у ссылки не было вовсе, и
+    // краулер отметил это как «unnamed link» на двух страницах. Имя берём из
+    // заголовка, `tabindex="-1"` оставляем — с клавиатуры вторая ссылка на ту
+    // же статью только мешает.
+    let cover_label = article.title.clone();
 
     view! {
         <article class="post-card">
             {cover.map(|src| view! {
-                <a class="post-card-cover" href=href.clone() tabindex="-1" aria-hidden="true">
+                <a class="post-card-cover" href=href.clone() tabindex="-1" aria-label=cover_label.clone()>
                     <img src=src alt="" loading="lazy"/>
                 </a>
             })}
             <div class="post-card-body">
-                <h2 class="post-card-title"><a href=href.clone()>{article.title.clone()}</a></h2>
+                {heading}
                 <p class="post-meta">
                     <time datetime=article.published_at.clone().unwrap_or_default()>{date}</time>
                     <span aria-hidden="true">{"·"}</span>
@@ -117,7 +133,7 @@ pub fn Blog() -> impl IntoView {
             } else {
                 view! {
                     <div class="post-list">
-                        {articles.into_iter().map(article_card).collect_view()}
+                        {articles.into_iter().map(|a| article_card(a, 2)).collect_view()}
                     </div>
                 }.into_any()
             }}
@@ -168,8 +184,10 @@ pub fn BlogPost() -> impl IntoView {
                     <span>{reading} " мин чтения"</span>
                 </p>
                 {tag_list(&article.tags)}
-            </header>            {article.cover_image_url.clone().map(|src| view! {
-                <img class="post-cover" src=src alt="" loading="lazy"/>
+            </header>            // Обложка статьи — содержательная картинка, а не декор: пустой
+            // `alt` отправлял её в никуда (и в поиск по картинкам тоже).
+            {article.cover_image_url.clone().map(|src| view! {
+                <img class="post-cover" src=src alt=article.title.clone() loading="lazy"/>
             })}
 
             <div class="prose" inner_html=body></div>
@@ -208,7 +226,7 @@ pub fn LatestArticles() -> impl IntoView {
                 <a class="section-more" href="/blog">"Все статьи →"</a>
             </div>
             <div class="post-list">
-                {articles.into_iter().map(|a| article_card(a.head())).collect_view()}
+                {articles.into_iter().map(|a| article_card(a.head(), 3)).collect_view()}
             </div>
         </section>
     }
