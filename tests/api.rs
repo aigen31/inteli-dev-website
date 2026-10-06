@@ -1914,6 +1914,41 @@ async fn counter_ids_reach_the_client_script() {
     }
 }
 
+/// Внешние `tag.js` и `gtag.js` не должны попадать в разметку тегами `<script
+/// src>`: тогда третий домен снова оказывается в критическом пути загрузки.
+/// Их подключает загрузчик после `load`.
+#[tokio::test]
+async fn counters_are_not_external_scripts_in_the_markup() {
+    let _guard = seo_lock();
+    let state = test_state().await;
+    inteli_dev::services::seo::set_site_url(test_public_url());
+    inteli_dev::services::seo::set_counters(Some("113215363"), Some("G-YNP4E8TF80"));
+
+    let (_, _, html) = get_page(&state, "/contact").await;
+
+    // Пиксель в `<noscript>` — это `<img src="https://mc.yandex.ru/watch/…">`,
+    // то есть картинка, а не скрипт: смотрим только открывающие теги `<script`.
+    for rest in html.split("<script").skip(1) {
+        let open = match rest.find('>') {
+            Some(end) => &rest[..end],
+            None => rest,
+        };
+        for src in ["https://mc.yandex.ru", "https://www.googletagmanager.com"] {
+            assert!(
+                !open.contains(src),
+                "внешний тег аналитики остался в разметке: {open}"
+            );
+        }
+    }
+
+    // Загрузчик на месте и умеет откладывать загрузку и пропускать синтетику.
+    assert!(html.contains("requestIdleCallback"), "нет отложенной загрузки");
+    assert!(html.contains("Chrome-Lighthouse"), "нет пропуска синтетики");
+
+    inteli_dev::services::seo::set_counters(None, None);
+}
+
+
 /// Статья отдаёт свои заголовок, описание и обложку — и остаётся индексируемой.
 #[tokio::test]
 async fn ssr_article_page_has_its_own_meta() {
@@ -2000,3 +2035,5 @@ async fn embedded_assets_are_versioned_and_cached() {
     assert_eq!(status, StatusCode::OK);
     assert_eq!(headers[header::CONTENT_TYPE], "image/png");
 }
+
+

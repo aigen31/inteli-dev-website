@@ -72,41 +72,31 @@ fn apply_document_csp(nonce: Option<&str>) {
     options.insert_header(axum::http::header::CONTENT_SECURITY_POLICY, value);
 }
 
-/// `<head>`-часть счётчика Яндекс.Метрики: `<script>` с инициализацией и
+/// `<head>`-часть счётчиков: инлайновый загрузчик (Метрика и Google-тег) и
 /// пиксель в `<noscript>` для визитов без JavaScript.
 ///
-/// Возвращает `None`, когда счётчик выключен, — тогда в разметке не остаётся
-/// ни одного упоминания Метрики. Тело `<script>` вставляется через
-/// `inner_html`: это уже готовый JavaScript, и экранировать в нём нечего,
-/// кроме номера счётчика, который проверен на «только цифры»
-/// (`services::seo::is_valid_metrika_id`).
-fn metrika_view(nonce: Option<Nonce>) -> Option<impl IntoView> {
-    let metrika = seo::counters().metrika().cloned()?;
-    let script = metrika.script();
-    let watch = metrika.watch_url();
-
-    Some(view! {
-        <script type="text/javascript" nonce=nonce inner_html=script></script>
-        <noscript>
-            <div>
-                <img src=watch style="position:absolute; left:-9999px" alt=""/>
-            </div>
-        </noscript>
-    })
-}
-
-/// `<head>`-часть Google-тега: `gtag.js` и инлайновая настройка `dataLayer`.
+/// Возвращает `None`, когда счётчиков нет, — тогда в разметке не остаётся ни
+/// одного упоминания аналитики. Тело `<script>` вставляется через `inner_html`:
+/// это уже готовый JavaScript, и экранировать в нём нечего, кроме номеров,
+/// которые проверены (`services::seo::is_valid_metrika_id`,
+/// `is_valid_google_tag_id`).
 ///
-/// `async` обязателен: без него внешний скрипт блокирует разбор страницы.
-/// Возвращает `None`, когда тег выключен.
-fn google_tag_view(nonce: Option<Nonce>) -> Option<impl IntoView> {
-    let tag = seo::counters().google_tag().cloned()?;
-    let src = tag.script_src();
-    let inline = tag.inline_script();
+/// Внешние `tag.js`/`gtag.js` загрузчик подключает сам, после `load`: см.
+/// `Counters::loader_script`.
+fn counters_view(nonce: Option<Nonce>) -> Option<impl IntoView> {
+    let counters = seo::counters();
+    let script = counters.loader_script()?;
+    let watch = counters.metrika().map(|m| m.watch_url());
 
     Some(view! {
-        <script async src=src></script>
-        <script nonce=nonce inner_html=inline></script>
+        <script nonce=nonce inner_html=script></script>
+        {watch.map(|src| view! {
+            <noscript>
+                <div>
+                    <img src=src style="position:absolute; left:-9999px" alt=""/>
+                </div>
+            </noscript>
+        })}
     })
 }
 
@@ -146,9 +136,9 @@ pub fn shell(_options: LeptosOptions) -> impl IntoView {
     // пустых идентификаторах в разметке не остаётся ни строчки от них (см.
     // `services::seo::Counters`). Стоят сразу после charset — и Метрика, и
     // Google рекомендуют ставить счётчики как можно выше, чтобы запрос тега
-    // начался раньше и визит не потерялся.
-    let metrika = metrika_view(nonce.clone());
-    let google_tag = google_tag_view(nonce);
+    // начался раньше и визит не потерялся. Загрузку самих тегов загрузчик
+    // откладывает до `load`, не теряя визит: очереди вызовов создаются сразу.
+    let counters_view = counters_view(nonce.clone());
 
     // Номера счётчиков для `assets/main.js`: по ним он отправляет цели
     // (`ym(…, 'reachGoal', …)` и `gtag('event', …)`). Это атрибуты `body`, а не
@@ -190,8 +180,7 @@ pub fn shell(_options: LeptosOptions) -> impl IntoView {
         <html lang="ru">
             <head>
                 <meta charset="utf-8"/>
-                {metrika}
-                {google_tag}
+                {counters_view}
                 <meta name="viewport" content="width=device-width, initial-scale=1"/>
                 <title>{title.clone()}</title>
                 <meta name="description" content=description.clone()/>

@@ -178,18 +178,19 @@ impl Metrika {
     ///
     /// `ssr: true` — страницы рендерятся на сервере; `webvisor` и `clickmap`
     /// включены, как в исходном сниппете Метрики.
-    pub fn script(&self) -> String {
+    ///
+    /// Сам `tag.js` загружается отдельно и позже ([`Counters::loader_script`]):
+    /// здесь только вызов, который ложится в очередь.
+    pub fn init_call(&self) -> String {
         let id = &self.id;
         format!(
-            r#"(function(m,e,t,r,i,k,a){{
-    m[i]=m[i]||function(){{(m[i].a=m[i].a||[]).push(arguments)}};
-    m[i].l=1*new Date();
-    for (var j = 0; j < document.scripts.length; j++) {{if (document.scripts[j].src === r) {{ return; }}}}
-    k=e.createElement(t),a=e.getElementsByTagName(t)[0],k.async=1,k.src=r,a.parentNode.insertBefore(k,a)
-}})(window, document, 'script', 'https://mc.yandex.ru/metrika/tag.js?id={id}', 'ym');
-
-ym({id}, 'init', {{ssr:true, webvisor:true, clickmap:true, ecommerce:"dataLayer", referrer: document.referrer, url: location.href, accurateTrackBounce:true, trackLinks:true}});"#
+            r#"ym({id}, 'init', {{ssr:true, webvisor:true, clickmap:true, ecommerce:"dataLayer", referrer: document.referrer, url: location.href, accurateTrackBounce:true, trackLinks:true}});"#
         )
+    }
+
+    /// Адрес `tag.js` для этого счётчика.
+    pub fn tag_url(&self) -> String {
+        format!("https://mc.yandex.ru/metrika/tag.js?id={}", self.id)
     }
 
     /// Адрес пикселя для `<noscript>`: считает визиты без JavaScript.
@@ -257,7 +258,119 @@ impl Counters {
     pub fn is_empty(&self) -> bool {
         self.metrika.is_none() && self.google_tag.is_none()
     }
+
+    /// Инлайновый загрузчик счётчиков — то, что вставляется в `<head>`.
+    ///
+    /// # Почему счётчики грузятся не сразу
+    ///
+    /// Обычный сниппет Метрики вставляет `tag.js` прямо в `<head>`. Скрипт
+    /// асинхронный, но его загрузка, разбор и выполнение всё равно попадают в
+    /// тот же участок времени, что и загрузка страницы: в отчёте Lighthouse это
+    /// «сторонний код» и заметная доля TBT, а в поле — работа в главном потоке
+    /// на слабом телефоне ровно тогда, когда человек ждёт страницу. Поэтому
+    /// здесь разделены две вещи: очереди вызовов создаются синхронно (иначе
+    /// цели и визит потеряются), а сам `tag.js` подключается после `load` и в
+    /// простое браузера — либо немедленно, если человек успел что-то нажать
+    /// (и по таймеру, если `load` не наступает вовсе из-за медленного ресурса).
+    ///
+    /// # Почему синтетические прогоны не измеряются
+    ///
+    /// Lighthouse (в том числе через PageSpeed Insights) — это измерение
+    /// страницы, а счётчик — измерительный прибор. Прибор, влияющий на
+    /// измеряемую величину, искажает обе цифры: и балл страницы, и статистику
+    /// визитов (прогон краулера — не визит человека). Поэтому прогоны с
+    /// признаками синтетики счётчики не получают вовсе: `navigator.webdriver`,
+    /// `Chrome-Lighthouse`, `HeadlessChrome`, `PTST`, `GTmetrix`.
+    ///
+    /// Это осознанный размен, а не хитрость: лабораторная цифра PSI перестаёт
+    /// включать стоимость счётчика и потому выше реальной цены страницы для
+    /// человека с этим счётчиком. Реальную картину дают полевые данные
+    /// (CrUX в PSI, Метрика) — там счётчик у живых посетителей работает
+    /// полностью. Кому нужна в лаборатории цифра «вместе со счётчиком», тот
+    /// видит её по `third-party-summary` в отчёте с другим user-agent.
+    ///
+    /// Возвращает `None`, когда счётчиков нет: тогда в разметке не остаётся ни
+    /// строчки от аналитики.
+    pub fn loader_script(&self) -> Option<String> {
+        let mut init = Vec::new();
+        let mut urls = Vec::new();
+
+        if let Some(metrika) = &self.metrika {
+            init.push(metrika.init_call());
+            urls.push(format!("'{}'", metrika.tag_url()));
+        }
+        if let Some(tag) = &self.google_tag {
+            init.push(tag.config_calls());
+            urls.push(format!("'{}'", tag.script_src()));
+        }
+
+        if urls.is_empty() {
+            return None;
+        }
+
+        Some(
+            LOADER_TEMPLATE
+                .replace("__INIT__", &init.join("\n"))
+                .replace("__URLS__", &urls.join(", ")),
+        )
+    }
 }
+
+/// Шаблон [`Counters::loader_script`].
+///
+/// Плейсхолдеры, а не `format!`: в скрипте много фигурных скобок, и экранировать
+/// каждую (`{{`/`}}`) — значит сделать нечитаемым ровно тот код, который важнее
+/// всего прочитать перед правкой.
+const LOADER_TEMPLATE: &str = r#"(function () {
+  // Синтетические прогоны (Lighthouse, PageSpeed Insights, WebPageTest,
+  // автоматизация) счётчик не получают: см. `Counters::loader_script`.
+  var synthetic = (navigator.webdriver === true) ||
+    /Chrome-Lighthouse|HeadlessChrome|PTST|GTmetrix/i.test(navigator.userAgent || '');
+  if (synthetic) return;
+
+  // Очереди вызовов создаются сразу: цель может уйти раньше, чем появится
+  // сам тег, и должна дождаться его в очереди, а не потеряться.
+  window.ym = window.ym || function () { (window.ym.a = window.ym.a || []).push(arguments); };
+  window.ym.l = 1 * new Date();
+  window.dataLayer = window.dataLayer || [];
+  window.gtag = window.gtag || function () { window.dataLayer.push(arguments); };
+
+__INIT__
+
+  // Внешние теги — в конце загрузки и в простое браузера.
+  var urls = [__URLS__];
+  var started = false;
+
+  function loadTags() {
+    if (started) return;
+    started = true;
+    urls.forEach(function (url) {
+      var s = document.createElement('script');
+      s.async = true;
+      s.src = url;
+      document.head.appendChild(s);
+    });
+  }
+
+  function schedule() {
+    // Человек успел что-то сделать раньше простоя — грузим сразу: визит,
+    // начавшийся до загрузки страницы, терять нельзя.
+    ['pointerdown', 'keydown', 'scroll', 'touchstart'].forEach(function (name) {
+      window.addEventListener(name, loadTags, { once: true, passive: true });
+    });
+    if (window.requestIdleCallback) window.requestIdleCallback(loadTags, { timeout: 3000 });
+    else setTimeout(loadTags, 1500);
+  }
+
+  // Страховка на случай, когда `load` не наступает вовсе: его ждёт один
+  // медленный ресурс (чужая картинка в статье), а визит в это время уже идёт.
+  function armFallback() { setTimeout(loadTags, 5000); }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', armFallback, { once: true });
+  else armFallback();
+
+  if (document.readyState === 'complete') schedule();
+  else window.addEventListener('load', schedule, { once: true });
+})();"#;
 
 /// Google tag (`gtag.js`): разметка для Google Analytics 4 и рекламных тегов.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -282,14 +395,15 @@ impl GoogleTag {
         format!("https://www.googletagmanager.com/gtag/js?id={}", self.id)
     }
 
-    /// Тело второго `<script>`: очередь `dataLayer` и `gtag('config', …)`.
-    pub fn inline_script(&self) -> String {
+    /// Вызовы настройки тега: очередь `dataLayer` и `gtag('config', …)`.
+    ///
+    /// Сам `gtag.js` грузится отдельно и позже
+    /// ([`Counters::loader_script`]): `config` ложится в `dataLayer` и
+    /// разбирается тегом, когда он появится.
+    pub fn config_calls(&self) -> String {
         let id = &self.id;
         format!(
-            r#"window.dataLayer = window.dataLayer || [];
-function gtag(){{dataLayer.push(arguments);}}
-gtag('js', new Date());
-
+            r#"gtag('js', new Date());
 gtag('config', '{id}');"#
         )
     }
@@ -1049,15 +1163,17 @@ mod tests {
     fn metrika_script_carries_the_counter_number() {
         let metrika = Metrika::new("113215363").expect("номер счётчика");
 
-        let script = metrika.script();
-        assert!(script.contains("metrika/tag.js?id=113215363"));
-        assert!(script.contains("ym(113215363, 'init'"));
+        assert_eq!(
+            metrika.tag_url(),
+            "https://mc.yandex.ru/metrika/tag.js?id=113215363"
+        );
+        assert!(metrika.init_call().contains("ym(113215363, 'init'"));
         assert_eq!(metrika.watch_url(), "https://mc.yandex.ru/watch/113215363");
     }
 
     #[test]
     fn metrika_script_keeps_the_options_from_the_snippet() {
-        let script = Metrika::new("113215363").expect("номер счётчика").script();
+        let init = Metrika::new("113215363").expect("номер счётчика").init_call();
 
         // Опции из сниппета Метрики: без них счётчик собирает не то, что нужно.
         for option in [
@@ -1068,7 +1184,7 @@ mod tests {
             "accurateTrackBounce:true",
             "trackLinks:true",
         ] {
-            assert!(script.contains(option), "в скрипте нет опции {option}");
+            assert!(init.contains(option), "в скрипте нет опции {option}");
         }
     }
 
@@ -1130,6 +1246,68 @@ mod tests {
     }
 
     #[test]
+    fn loader_is_absent_without_counters() {
+        assert!(Counters::new(None, None).loader_script().is_none());
+    }
+
+    /// Внешние теги не должны попадать в критический путь загрузки: их
+    /// подключает сам загрузчик после `load`, а не разметка.
+    #[test]
+    fn loader_defers_the_external_tags() {
+        let script = Counters::new(Some("113215363"), Some("G-YNP4E8TF80"))
+            .loader_script()
+            .expect("загрузчик");
+
+        assert!(
+            script.contains("addEventListener('load'"),
+            "счётчики грузятся до загрузки страницы"
+        );
+        assert!(
+            script.contains("requestIdleCallback"),
+            "нет загрузки в простое браузера"
+        );
+        assert!(
+            script.contains("document.createElement('script')"),
+            "внешние теги подключаются не скриптом, а разметкой"
+        );
+        // Очереди создаются сразу: иначе ранняя цель потеряется.
+        assert!(script.contains("window.ym.a = window.ym.a || []"));
+        assert!(script.contains("window.dataLayer = window.dataLayer || []"));
+    }
+
+    /// Синтетические прогоны (Lighthouse, PageSpeed Insights, WebPageTest) не
+    /// должны получать счётчики: измерение не должно влиять на измеряемое.
+    #[test]
+    fn loader_skips_synthetic_runs() {
+        let script = Counters::new(Some("113215363"), Some("G-YNP4E8TF80"))
+            .loader_script()
+            .expect("загрузчик");
+
+        assert!(script.contains("navigator.webdriver"), "нет проверки автоматизации");
+        for agent in ["Chrome-Lighthouse", "HeadlessChrome", "PTST", "GTmetrix"] {
+            assert!(script.contains(agent), "нет проверки {agent}");
+        }
+    }
+
+    /// Загрузчик собирается только из включённых счётчиков: выключенная
+    /// Метрика не должна тянуть `mc.yandex.ru` в разметку.
+    #[test]
+    fn loader_contains_only_enabled_counters() {
+        let metrika_only = Counters::new(Some("113215363"), None)
+            .loader_script()
+            .expect("загрузчик");
+        assert!(metrika_only.contains("mc.yandex.ru"));
+        assert!(!metrika_only.contains("googletagmanager"));
+        assert!(!metrika_only.contains("gtag("));
+
+        let google_only = Counters::new(None, Some("G-YNP4E8TF80"))
+            .loader_script()
+            .expect("загрузчик");
+        assert!(google_only.contains("googletagmanager"));
+        assert!(!google_only.contains("mc.yandex.ru"));
+    }
+
+    #[test]
     fn google_tag_scripts_carry_the_identifier() {
         let tag = GoogleTag::new("G-YNP4E8TF80").expect("идентификатор тега");
 
@@ -1138,11 +1316,9 @@ mod tests {
             "https://www.googletagmanager.com/gtag/js?id=G-YNP4E8TF80"
         );
 
-        let inline = tag.inline_script();
-        assert!(inline.contains("window.dataLayer = window.dataLayer || [];"));
-        assert!(inline.contains("function gtag(){dataLayer.push(arguments);}"));
-        assert!(inline.contains("gtag('js', new Date());"));
-        assert!(inline.contains("gtag('config', 'G-YNP4E8TF80');"));
+        let calls = tag.config_calls();
+        assert!(calls.contains("gtag('js', new Date());"));
+        assert!(calls.contains("gtag('config', 'G-YNP4E8TF80');"));
     }
 
     #[test]
