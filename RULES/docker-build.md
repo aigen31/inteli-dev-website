@@ -166,7 +166,8 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --build
 |---|---|---|
 | TLS, редирект `www → apex`, сжатие (`compress`: brotli, zstd, gzip) | Traefik (labels в `docker-compose.prod.yml`) | Traefik терминирует TLS и умеет brotli; `gzip on` в nginx не дал бы brotli дойти до клиента — ответ с готовым `Content-Encoding` Traefik не пережимает |
 | `server_tokens off`, HSTS, `client_max_body_size` | nginx (`docker/nginx/default.conf`) | транспорт и лимиты запроса — рядом с проксированием |
-| CSP с nonce, `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy`, COOP, CORP | приложение (`src/security.rs`) | CSP обязан содержать nonce конкретного ответа, а его генерирует Leptos. В nginx их дублировать нельзя: `add_header` добавит второй заголовок (`nosniff, nosniff` — это замечание аудита) |
+| CSP с nonce, `X-Content-Type-Options`, `Referrer-Policy`, `Permissions-Policy`, COOP, CORP | приложение (`src/security.rs`) | CSP обязан содержать nonce конкретного ответа, а его генерирует Leptos. В nginx их дублировать нельзя: `add_header` добавит второй заголовок (`nosniff, nosniff` — это замечание аудита) |
+| `frame-ancestors` (кто вправе встраивать нас во фрейм) | приложение (`src/security.rs`), **без** `X-Frame-Options` | XFO умеет только `DENY`/`SAMEORIGIN` и не выражает список, а Метрике нужно открывать страницу в конструкторе целей и Вебвизоре. В nginx `X-Frame-Options` тоже не ставить — вернётся та же ошибка |
 | Кэш CSS/JS/favicon/manifest/og.png | приложение (`src/api/assets.rs`) | адрес несёт `?v=<хеш содержимого>`, и только приложение знает текущую версию |
 
 Проверка после деплоя:
@@ -174,10 +175,14 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --build
 ```bash
 curl -sI https://inteli-dev.ru/ | grep -iE "server|content-security|strict-transport"
 curl -s -H 'Accept-Encoding: br' -D- -o /dev/null https://inteli-dev.ru/ | grep -i content-encoding
+# Встраивание: X-Frame-Options быть не должно, а Метрика должна быть в frame-ancestors.
+curl -sI https://inteli-dev.ru/contact | grep -ic "x-frame-options"   # ожидаем 0
+curl -sI https://inteli-dev.ru/contact | grep -o "frame-ancestors [^;]*"
 ```
 
 В заголовке `Server` не должно быть версии, а при `Accept-Encoding: br` —
-`Content-Encoding: br`.
+`Content-Encoding: br`. Если `x-frame-options` вернётся, конструктор целей
+Метрики снова начнёт показывать «Ошибка при загрузке страницы».
 
 ### Базовая конфигурация (все сервисы)
 ```yaml

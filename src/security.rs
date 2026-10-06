@@ -43,17 +43,59 @@ pub const BASELINE_CSP: &str =
 /// Метрика отдаёт `tag.js` со своего домена (и запускает вебвизор), Google —
 /// `gtag.js`. Оба адреса обязаны быть в `script-src`, иначе счётчики молча
 /// перестанут считать.
-const ANALYTICS_SCRIPTS: &str = "https://mc.yandex.ru https://www.googletagmanager.com";
+///
+/// `https://yastatic.net` — из [списка адресов Метрики для CSP](https://yandex.ru/support/metrica/code/install-counter-csp.html):
+/// оттуда приезжают ресурсы плеера Вебвизора. Без него счётчик считает, а
+/// визуальные инструменты в панели — нет.
+const ANALYTICS_SCRIPTS: &str =
+    "https://mc.yandex.ru https://www.googletagmanager.com https://yastatic.net";
 
 /// Куда счётчикам разрешено отправлять данные.
 ///
 /// `wss://mc.yandex.ru` здесь не для красоты: вебвизор Метрики поднимает
 /// WebSocket на `solid.ws`, а схема `wss` не покрывается https-правилом — без
 /// него браузер блокирует соединение и запись визитов молча не работает.
+///
+/// Домены `mc.webvisor.*` — из списка адресов Метрики: оттуда приходит плеер
+/// записей. Они идут и в `connect-src`, и во `frame-src`, потому что плеер
+/// открывается фреймом, а данные тянет запросами.
 const ANALYTICS_CONNECT: &str = "https://mc.yandex.ru wss://mc.yandex.ru \
+                                 https://mc.webvisor.com wss://mc.webvisor.com \
+                                 https://mc.webvisor.org wss://mc.webvisor.org \
                                  https://www.googletagmanager.com \
                                  https://www.google-analytics.com https://*.google-analytics.com \
                                  https://*.analytics.google.com";
+
+/// Кто имеет право встраивать наши страницы в `<iframe>`.
+///
+/// Список взят из [документации Метрики](https://yandex.ru/support/metrica/code/install-counter-csp.html):
+/// её интерфейс открывает сайт у себя, когда вы настраиваете цель визуально
+/// (конструктор целей) или смотрите Вебвизор, карты кликов, ссылок и
+/// скроллинга. Со `'self'` фрейм остаётся пустым, и Метрика показывает
+/// «Ошибка при загрузке страницы».
+///
+/// Отсюда же следует, что **`X-Frame-Options` у нас нет**: он умеет только
+/// `DENY` и `SAMEORIGIN`, а список источников в нём выразить нечем
+/// (`ALLOW-FROM` устарел и браузерами игнорируется). Разрешение на встраивание
+/// живёт целиком в `frame-ancestors`, где список — это просто список.
+const METRIKA_FRAME_ANCESTORS: &str = "https://metrika.yandex.ru https://metrika.ya.ru \
+     https://metrika.yandex https://metrika.yandex.by https://metrika.yandex.com \
+     https://metrika.yandex.com.tr https://metrika.yandex.kz https://metrika.yandex.uz \
+     https://metrica.yandex.ru https://metrica.ya.ru https://metrica.yandex \
+     https://metrica.yandex.by https://metrica.yandex.com https://metrica.yandex.com.tr \
+     https://metrica.yandex.kz \
+     https://metr.yandex.ru https://metr.yandex.by https://metr.yandex.com \
+     https://metr.yandex.com.tr https://metr.yandex.kz \
+     https://analytics.yandex.ru https://analytics.yandex.by https://analytics.yandex.com \
+     https://analytics.yandex.com.tr https://analytics.yandex.kz";
+
+/// Какие фреймы разрешено создавать самой странице.
+///
+/// `blob:` здесь обязателен: Вебвизор и карты кликов/скроллинга собирают
+/// запись в `blob:`-фрейме. Без него счётчик отправляет данные, но запись
+/// визитов не собирается — а заметно это только по пустому Вебвизору.
+const ANALYTICS_FRAMES: &str =
+    "blob: https://mc.yandex.ru https://mc.webvisor.com https://mc.webvisor.org";
 
 /// Заголовки, одинаковые для всех ответов.
 pub const STATIC_HEADERS: &[(&str, &str)] = &[
@@ -61,7 +103,10 @@ pub const STATIC_HEADERS: &[(&str, &str)] = &[
     // загрузил пользователь (`/media/…`), и картинка с HTML внутри — это XSS
     // на своём домене.
     ("x-content-type-options", "nosniff"),
-    ("x-frame-options", "SAMEORIGIN"),
+    // `x-frame-options` здесь нет намеренно — см. METRIKA_FRAME_ANCESTORS:
+    // список разрешённых источников выражается только через `frame-ancestors`,
+    // а два заголовка сразу противоречили бы друг другу (и по спецификации CSP 3
+    // `frame-ancestors` перекрывает XFO, так что толку от него всё равно нет).
     ("referrer-policy", "strict-origin-when-cross-origin"),
     (
         // Список короткий намеренно: браузер ругается в консоль на каждую
@@ -89,6 +134,11 @@ pub const STATIC_HEADERS: &[(&str, &str)] = &[
 /// не тот вектор, ради которого стоит ломать вёрстку. `img-src` разрешает
 /// любой `https:`: обложки статей и картинки в тексте могут быть с чужого
 /// домена, и запрет тихо ломал бы будущие статьи.
+///
+/// `frame-ancestors` — единственное место, где мы разрешаем встраивать себя в
+/// чужой фрейм: `'self'` плюс адреса Метрики (см. [`METRIKA_FRAME_ANCESTORS`]).
+/// Раньше там стояло только `'self'`, и визуальный конструктор целей Метрики
+/// не открывал страницу вообще.
 pub fn document_csp(nonce: Option<&str>) -> String {
     let script = match nonce.filter(|n| is_valid_nonce(n)) {
         Some(nonce) => format!("'self' 'nonce-{nonce}' {ANALYTICS_SCRIPTS}"),
@@ -102,12 +152,13 @@ pub fn document_csp(nonce: Option<&str>) -> String {
          img-src 'self' data: https:; \
          font-src 'self'; \
          connect-src 'self' {ANALYTICS_CONNECT}; \
-         frame-src https://mc.yandex.ru; \
+         frame-src {ANALYTICS_FRAMES}; \
+         child-src {ANALYTICS_FRAMES}; \
          manifest-src 'self'; \
          base-uri 'none'; \
          object-src 'none'; \
          form-action 'self'; \
-         frame-ancestors 'self'"
+         frame-ancestors 'self' {METRIKA_FRAME_ANCESTORS}"
     )
 }
 
@@ -154,12 +205,19 @@ pub async fn headers(request: Request, next: Next) -> Response {
 mod tests {
     use super::*;
 
-    /// Директива `script-src` из политики: проверять `'unsafe-inline'` по всей
+    /// Директива политики по имени. Искать подстроку по всей строке нельзя:
+    /// одни и те же адреса стоят в разных директивах, и проверка «где-нибудь
+    /// есть» проходила бы даже там, где права нет.
+    fn directive<'a>(csp: &'a str, name: &str) -> &'a str {
+        csp.split("; ")
+            .find(|d| d.starts_with(name))
+            .unwrap_or_else(|| panic!("в политике нет {name}"))
+    }
+
+    /// Директива `script-src`: проверять `'unsafe-inline'` по всей
     /// строке нельзя — он законно стоит в `style-src`.
     fn script_src(csp: &str) -> &str {
-        csp.split("; ")
-            .find(|directive| directive.starts_with("script-src"))
-            .expect("в политике нет script-src")
+        directive(csp, "script-src")
     }
 
     #[test]
@@ -201,9 +259,59 @@ mod tests {
             "wss://mc.yandex.ru",
             "https://www.googletagmanager.com",
             "https://www.google-analytics.com",
+            "https://yastatic.net",
+            "https://mc.webvisor.com",
+            "wss://mc.webvisor.org",
         ] {
             assert!(csp.contains(host), "в CSP нет {host}");
         }
+    }
+
+    #[test]
+    fn metrika_may_frame_the_page() {
+        // Иначе визуальный конструктор целей и Вебвизор в панели Метрики
+        // показывают «Ошибка при загрузке страницы».
+        let csp = document_csp(Some("abc"));
+        let ancestors = directive(&csp, "frame-ancestors");
+        assert!(ancestors.contains("'self'"), "{ancestors}");
+        for host in [
+            "https://metrika.yandex.ru",
+            "https://metrica.yandex.ru",
+            "https://metr.yandex.ru",
+            "https://analytics.yandex.ru",
+        ] {
+            assert!(
+                ancestors.contains(host),
+                "в frame-ancestors нет {host}: {ancestors}"
+            );
+        }
+    }
+
+    #[test]
+    fn blob_frames_are_allowed_for_webvisor() {
+        // Вебвизор и карты кликов собирают запись в blob:-фрейме. Без `blob:`
+        // счётчик данные отправляет, а запись визитов не идёт.
+        let csp = document_csp(Some("abc"));
+        for name in ["frame-src", "child-src"] {
+            let value = directive(&csp, name);
+            assert!(value.contains("blob:"), "{name} без blob: — {value}");
+            assert!(
+                value.contains("https://mc.yandex.ru"),
+                "{name} без Метрики — {value}"
+            );
+        }
+    }
+
+    #[test]
+    fn x_frame_options_is_absent() {
+        // Он умеет только DENY и SAMEORIGIN, то есть снова запретил бы Метрике
+        // встраивать страницу, которую мы разрешили в frame-ancestors.
+        assert!(
+            !STATIC_HEADERS
+                .iter()
+                .any(|(name, _)| *name == "x-frame-options"),
+            "X-Frame-Options противоречит frame-ancestors"
+        );
     }
 
     #[test]

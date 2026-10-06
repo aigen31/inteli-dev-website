@@ -1755,7 +1755,6 @@ async fn ssr_pages_have_unique_titles_and_canonical() {
 
         for name in [
             "x-content-type-options",
-            "x-frame-options",
             "referrer-policy",
             "permissions-policy",
             "cross-origin-opener-policy",
@@ -1768,6 +1767,21 @@ async fn ssr_pages_have_unique_titles_and_canonical() {
                 .unwrap();
             assert!(!value.is_empty(), "{path}: пустой {name}");
         }
+
+        // X-Frame-Options убран намеренно: он умеет только DENY и SAMEORIGIN,
+        // поэтому запретил бы Метрике открыть страницу в её конструкторе целей.
+        assert!(
+            !headers.contains_key("x-frame-options"),
+            "{path}: X-Frame-Options спорит с frame-ancestors"
+        );
+        assert!(
+            csp.contains("frame-ancestors 'self' https://metrika.yandex.ru"),
+            "{path}: Метрика не откроет страницу — {csp}"
+        );
+        assert!(
+            csp.contains("child-src blob:"),
+            "{path}: Вебвизор не запишет визит — {csp}"
+        );
 
         // Дубль этого заголовка краулер видел как `nosniff, nosniff`.
         assert_eq!(
