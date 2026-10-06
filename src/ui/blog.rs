@@ -9,6 +9,7 @@ use leptos::prelude::*;
 use leptos_router::hooks::use_params_map;
 
 use crate::services::article::{Article, ArticleHead, PublishedArticles};
+use crate::services::goals;
 use crate::ui::shared::card_heading;
 use crate::ui::NotFound;
 
@@ -169,7 +170,9 @@ pub fn BlogPost() -> impl IntoView {
     let body = article.html();
 
     view! {
-        <article class="section post-section">
+        // `data-goal-read` — цель «дочитал» (см. `services::goals`): сработает,
+        // когда над нижней границей экрана пройдёт 90 % высоты статьи.
+        <article class="section post-section" data-goal-read=goals::ARTICLE_READ_90>
             <nav class="breadcrumbs" aria-label="Хлебные крошки">
                 <a href="/blog">"Блог"</a>
                 <span aria-hidden="true">{"→"}</span>

@@ -11,6 +11,7 @@ use leptos::prelude::*;
 
 use crate::limits::Limits;
 use crate::services::chat::PRESETS;
+use crate::services::goals;
 
 #[component]
 pub fn Chat() -> impl IntoView {
@@ -29,7 +30,9 @@ pub fn Chat() -> impl IntoView {
             </div>
             <p class="subtitle">Отвечу на вопросы об услугах, ценах и сроках.</p>
 
-            <div class="chat-container" id="chat-app">
+            // `data-goal` — цель «диалог начат» (см. `services::goals`).
+            // initChat() отправляет её один раз, после первого ответа сервера.
+            <div class="chat-container" id="chat-app" data-goal=goals::CHAT_STARTED>
                 <div class="preset-buttons" role="group" aria-label="Частые вопросы">
                     {presets.into_iter().map(|(label, kind, index)| view! {
                         <button

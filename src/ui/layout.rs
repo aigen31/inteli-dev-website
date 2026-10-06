@@ -4,6 +4,7 @@ use leptos::prelude::*;
 
 use crate::memory::content::SiteContent;
 use crate::services::github;
+use crate::services::goals;
 use crate::ui::beget::BegetLogo;
 use crate::ui::icon::BrandIcon;
 use crate::ui::shared::StatusBadge;
@@ -86,9 +87,13 @@ pub fn Layout(children: Children) -> impl IntoView {
                 <div class="footer-col">
                     <p>{tagline}</p>
                     <p class="footer-contacts">
-                        <a href=format!("https://t.me/{}", telegram.trim_start_matches('@'))>{telegram.clone()}</a>
+                        // Те же цели, что и на странице контактов
+                        // (см. `services::goals`): подвал есть на каждой
+                        // странице, и переход в мессенджер оттуда — такой же
+                        // интерес к контакту, как с `/contact`.
+                        <a href=format!("https://t.me/{}", telegram.trim_start_matches('@')) data-goal=goals::TG_CLICK>{telegram.clone()}</a>
                         <span aria-hidden="true">{"·"}</span>
-                        <a href=format!("mailto:{}", email)>{email.clone()}</a>
+                        <a href=format!("mailto:{}", email) data-goal=goals::EMAIL_CLICK>{email.clone()}</a>
                     </p>
                 </div>
 

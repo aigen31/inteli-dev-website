@@ -150,6 +150,15 @@ pub fn shell(_options: LeptosOptions) -> impl IntoView {
     let metrika = metrika_view(nonce.clone());
     let google_tag = google_tag_view(nonce);
 
+    // Номера счётчиков для `assets/main.js`: по ним он отправляет цели
+    // (`ym(…, 'reachGoal', …)` и `gtag('event', …)`). Это атрибуты `body`, а не
+    // инлайновая переменная: инлайновый скрипт потребовал бы ещё одного nonce,
+    // а номер счётчика пришлось бы держать в двух местах. Пустое значение —
+    // счётчика нет, и цели в разработке не уходят в живую статистику.
+    let counters = seo::counters();
+    let metrika_id = counters.metrika().map(|m| m.id().to_string());
+    let google_tag_id = counters.google_tag().map(|g| g.id().to_string());
+
     // Версия в адресе ресурса — условие годового кэша (см. `api::assets`).
     let style_css = assets::versioned("/assets/style.css");
     let main_js = assets::versioned("/assets/main.js");
@@ -213,7 +222,7 @@ pub fn shell(_options: LeptosOptions) -> impl IntoView {
                     <style>".section, .hero { opacity: 1; transform: none; }"</style>
                 </noscript>
             </head>
-            <body>
+            <body data-metrika-id=metrika_id data-ga-id=google_tag_id>
                 <App/>
             </body>
         </html>

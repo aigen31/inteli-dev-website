@@ -1828,6 +1828,92 @@ async fn analytics_scripts_carry_the_csp_nonce() {
     }
 }
 
+/// Имена целей, привязанные к разметке: `data-goal="…"` и `data-goal-read="…"`.
+fn goal_attributes(html: &str) -> Vec<String> {
+    let mut found = Vec::new();
+
+    // `data-goal="` не встречается внутри `data-goal-read="`: перед кавычкой
+    // стоит знак равенства, которого у длинного имени нет.
+    for attr in ["data-goal=\"", "data-goal-read=\""] {
+        let mut rest = html;
+        while let Some(pos) = rest.find(attr) {
+            let start = pos + attr.len();
+            match rest[start..].find('"') {
+                Some(end) => found.push(rest[start..start + end].to_string()),
+                None => break,
+            }
+            rest = &rest[start..];
+        }
+    }
+
+    found
+}
+
+/// Каждая цель из `services::goals` обязана быть привязана к элементу в
+/// разметке — иначе она заводится в Метрике, месяцами показывает ноль, и
+/// находится это случайно.
+///
+/// Тест сверяет не список, написанный здесь руками, а `goals::ALL`: новая
+/// константа без разметки валит тест, а не тихо живёт в отчёте.
+#[tokio::test]
+async fn every_goal_is_wired_to_an_element() {
+    use inteli_dev::services::goals;
+
+    let _guard = seo_lock();
+    let _articles = articles_lock();
+    let state = test_state().await;
+    inteli_dev::services::seo::set_site_url(test_public_url());
+    inteli_dev::services::seo::set_counters(None, None);
+
+    // Цели живут на разных страницах: заявка — на контактах, диалог — в чате и
+    // в терминале на главной, дочитывание — в статье.
+    let article = create_article(&state, "Статья с целью дочитывания", "published").await;
+    let slug = article["slug"].as_str().unwrap();
+
+    let mut wired = std::collections::BTreeSet::new();
+    for path in ["/", "/chat", "/contact", &format!("/blog/{slug}")] {
+        let (status, _, html) = get_page(&state, path).await;
+        assert_eq!(status, StatusCode::OK, "{path}");
+        wired.extend(goal_attributes(&html));
+    }
+
+    let expected: std::collections::BTreeSet<String> =
+        goals::ALL.iter().map(|g| g.to_string()).collect();
+    assert_eq!(
+        wired, expected,
+        "разметка и services::goals расходятся: привязано {wired:?}"
+    );
+}
+
+/// Номера счётчиков доезжают до скрипта: цели отправляются из `assets/main.js`,
+/// который берёт их из атрибутов `body`. Без них цель, заведённая в Метрике,
+/// не получит ни одного срабатывания — при том что счётчик визитов работает.
+#[tokio::test]
+async fn counter_ids_reach_the_client_script() {
+    let _guard = seo_lock();
+    let state = test_state().await;
+    inteli_dev::services::seo::set_site_url(test_public_url());
+    inteli_dev::services::seo::set_counters(Some("113215363"), Some("G-YNP4E8TF80"));
+
+    let (_, _, html) = get_page(&state, "/contact").await;
+    assert!(
+        html.contains("data-metrika-id=\"113215363\""),
+        "скрипт не узнает номер счётчика Метрики"
+    );
+    assert!(
+        html.contains("data-ga-id=\"G-YNP4E8TF80\""),
+        "скрипт не узнает идентификатор Google-тега"
+    );
+
+    // Счётчиков нет — нет и атрибутов: пустая строка вместо номера это не
+    // «счётчик выключен», а счётчик с пустым номером.
+    inteli_dev::services::seo::set_counters(None, None);
+    let (_, _, html) = get_page(&state, "/contact").await;
+    for needle in ["data-metrika-id", "data-ga-id"] {
+        assert!(!html.contains(needle), "в разметке остался {needle}");
+    }
+}
+
 /// Статья отдаёт свои заголовок, описание и обложку — и остаётся индексируемой.
 #[tokio::test]
 async fn ssr_article_page_has_its_own_meta() {

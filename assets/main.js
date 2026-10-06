@@ -1,8 +1,102 @@
 // inteli.dev.ru — ванильный JS: интерактивность без фреймворков (P2: лёгкость).
-// Обработчики: чат (POST /api/chat), форма заявки (POST /api/lead), fade-in.
+// Обработчики: чат (POST /api/chat), форма заявки (POST /api/lead), fade-in,
+// цели аналитики (data-goal).
 
 (function () {
   'use strict';
+
+  // ---------- Цели аналитики ----------
+  //
+  // Цель привязывается к разметке атрибутом, а не кодом: `data-goal="имя"` —
+  // на ссылке, кнопке или форме, `data-goal-read="имя"` — на блоке, который
+  // считается прочитанным. Имена целей собраны в `src/services/goals.rs`; те же
+  // строки должны быть заведены целями типа «JavaScript-событие» в Метрике и
+  // событиями в GA4.
+  //
+  // Номера счётчиков приходят из разметки (`<body data-metrika-id="…">`,
+  // `data-ga-id`). Пустой атрибут — счётчик выключен: в разработке цели не
+  // уходят в живую статистику и не мешают отладке.
+  function trackGoal(goal) {
+    if (!goal || !document.body) return;
+
+    var metrika = document.body.getAttribute('data-metrika-id');
+    var ga = document.body.getAttribute('data-ga-id');
+
+    try {
+      if (metrika && typeof window.ym === 'function') {
+        window.ym(metrika, 'reachGoal', goal);
+      }
+      if (ga && typeof window.gtag === 'function') {
+        window.gtag('event', goal);
+      }
+    } catch (e) {
+      // Аналитика не имеет права ломать интерфейс: человек пришёл за заявкой,
+      // а не за метрикой. Ошибка счётчика — это пустой график, а не потерянный
+      // лид.
+    }
+  }
+
+  // ---------- Цели: клик по ссылке или кнопке ----------
+  //
+  // Слушатель один на документ: ссылок с целями сколько угодно на любой
+  // странице, и вешать обработчик на каждую — значит однажды забыть про новую.
+  function initGoalClicks() {
+    document.addEventListener('click', function (e) {
+      var el = e.target && e.target.closest
+        ? e.target.closest('a[data-goal], button[data-goal]')
+        : null;
+      if (el) trackGoal(el.getAttribute('data-goal'));
+    });
+  }
+
+  // ---------- Цели: дочитывание ----------
+  //
+  // Срабатывает, когда над нижней границей экрана прошло 90 % высоты блока.
+  // Считаем по блоку, а не по странице: «90 % страницы» у статьи с обложкой,
+  // подвалом и комментариями наступает позже, чем человек дочитал текст.
+  function initGoalRead() {
+    var blocks = document.querySelectorAll('[data-goal-read]');
+    if (!blocks.length) return;
+
+    var pending = Array.prototype.slice.call(blocks);
+    var scheduled = false;
+
+    function check() {
+      scheduled = false;
+      var left = [];
+
+      pending.forEach(function (el) {
+        var rect = el.getBoundingClientRect();
+        if (rect.height <= 0) return; // блок ещё не отрисован
+        if ((window.innerHeight - rect.top) / rect.height < 0.9) {
+          left.push(el);
+          return;
+        }
+        trackGoal(el.getAttribute('data-goal-read'));
+      });
+
+      pending = left;
+      if (!pending.length) {
+        window.removeEventListener('scroll', onScroll);
+        window.removeEventListener('resize', onScroll);
+      }
+    }
+
+    // Скролл приходит десятками событий в секунду, а измерение блока заставляет
+    // браузер пересчитать раскладку — считаем не чаще кадра.
+    function onScroll() {
+      if (scheduled) return;
+      scheduled = true;
+      requestAnimationFrame(check);
+    }
+
+    window.addEventListener('scroll', onScroll, { passive: true });
+    window.addEventListener('resize', onScroll, { passive: true });
+
+    // Короткая статья умещается в экран целиком, и скроллить нечего: без этой
+    // проверки цель не сработала бы никогда.
+    check();
+  }
 
   // ---------- Fade-in секций при скролле (IntersectionObserver) ----------
   // Секции скрыты в CSS (`.section, .hero { opacity: 0 }`), поэтому ошибка
@@ -142,6 +236,18 @@
     var MIN_TYPING_MS = 500; // индикатор не должен «мигать» на быстрых ответах
     var reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
+    // Цель «диалог начат» — один раз за загрузку страницы и только после ответа
+    // сервера: запрос, который не дошёл, не должен выглядеть в статистике как
+    // состоявшийся разговор.
+    var startedGoal = app.getAttribute('data-goal');
+    var startedReported = false;
+
+    function markChatStarted() {
+      if (startedReported || !startedGoal) return;
+      startedReported = true;
+      trackGoal(startedGoal);
+    }
+
     function addMessage(text, who) {
       var div = document.createElement('div');
       div.className = 'chat-message ' + (who === 'user' ? 'user-message' : 'bot-message');
@@ -235,6 +341,7 @@
           return;
         }
         addMessage(data.answer, 'bot');
+        markChatStarted();
         addSuggestions(data.suggested_next);
       } catch (err) {
         await holdTyping(startedAt);
@@ -289,6 +396,9 @@
     var form = document.getElementById('lead-form');
     if (!form) return;
     var status = document.getElementById('lead-form-status');
+    // Цель срабатывает на успешный ответ сервера, а не на нажатие кнопки:
+    // заявка, которую не приняли (валидация, лимит, сеть), — не лид.
+    var successGoal = form.getAttribute('data-goal');
 
     form.addEventListener('submit', async function (e) {
       e.preventDefault();
@@ -317,6 +427,7 @@
           status.textContent = json.message || 'Заявка отправлена!';
           status.className = 'form-status success';
           form.reset();
+          trackGoal(successGoal);
         } else {
           status.textContent = json.error || 'Ошибка отправки.';
           status.className = 'form-status error';
@@ -1269,6 +1380,19 @@
     var output = document.getElementById('hero-terminal-output');
     var input = document.getElementById('hero-terminal-input');
     var inputRow = document.getElementById('hero-terminal-input-row');
+
+    // Та же цель, что у чата на /chat (см. `services::goals`): терминал на
+    // главной — второй вход в диалог. Срабатывает один раз и только после
+    // ответа сервера.
+    var startedGoal = terminal.getAttribute('data-goal');
+    var startedReported = false;
+
+    function markChatStarted() {
+      if (startedReported || !startedGoal) return;
+      startedReported = true;
+      trackGoal(startedGoal);
+    }
+
     var reduceMotion = !!(window.matchMedia &&
       window.matchMedia('(prefers-reduced-motion: reduce)').matches);
 
@@ -1434,6 +1558,7 @@
 
         var data = await res.json();
         loading(); // убрать лоадер
+        markChatStarted();
 
         appendLine('terminal-user', '$ > ' + message);
 
@@ -1624,6 +1749,8 @@
   initMobileNav();
   initStatusBadge();
   initCharCounters();
+  initGoalClicks();
+  initGoalRead();
   initHeroTerminal();
   initHeroCanvas();
   initCardEffects();

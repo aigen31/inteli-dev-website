@@ -7,6 +7,7 @@ use leptos::prelude::*;
 
 use crate::limits::Limits;
 use crate::memory::content::SiteContent;
+use crate::services::goals;
 use crate::ui::blog::LatestArticles;
 use crate::ui::github::GitHubStatsSection;
 use crate::ui::shared::{PrimaryButton, ProjectCard, SecondaryButton, ServiceCard, StatusBadge};
@@ -24,7 +25,10 @@ pub fn HeroTerminal() -> impl IntoView {
         .collect::<Vec<_>>();
 
     view! {
-        <div class="terminal-window" id="hero-terminal">
+        // `data-goal` — та же цель, что у чата на /chat: человек задал вопрос
+        // (см. `services::goals`). Терминал отправляет её один раз, после
+        // первого ответа сервера.
+        <div class="terminal-window" id="hero-terminal" data-goal=goals::CHAT_STARTED>
             <div class="terminal-bar">
                 <span class="dot dot-red"></span>
                 <span class="dot dot-yellow"></span>

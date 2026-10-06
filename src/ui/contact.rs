@@ -6,6 +6,7 @@ use leptos::prelude::*;
 
 use crate::limits::Limits;
 use crate::memory::content::SiteContent;
+use crate::services::goals;
 use crate::utils::validator::EMAIL_MAX_CHARS;
 
 #[component]
@@ -22,7 +23,11 @@ pub fn Contact() -> impl IntoView {
             <p class="subtitle">{"Опишите проект — отвечу в течение 24 часов."}</p>
 
             <div class="contact-grid">
-                <form id="lead-form" class="form" method="post" action="/api/lead">
+                // `data-goal` — цель аналитики (см. `services::goals`):
+                // срабатывает успешная отправка, а не нажатие кнопки, поэтому
+                // в статистике нет заявок, которые не дошли до сервера.
+                <form id="lead-form" class="form" method="post" action="/api/lead"
+                    data-goal=goals::LEAD_SUBMITTED>
                     <div class="form-field">
                         <label for="name">Имя</label>
                         <input id="name" name="name" type="text" required
@@ -58,9 +63,9 @@ pub fn Contact() -> impl IntoView {
                 <aside class="contacts-aside">
                     <h2>Напрямую</h2>
                     <ul class="contacts-list">
-                        <li><a href=format!("https://t.me/{}", contacts.telegram.trim_start_matches('@'))>{contacts.telegram.clone()}</a></li>
-                        <li><a href=format!("mailto:{}", contacts.email)>{contacts.email.clone()}</a></li>
-                        <li><a href=format!("https://{}", contacts.vk)>{contacts.vk.clone()}</a></li>
+                        <li><a href=format!("https://t.me/{}", contacts.telegram.trim_start_matches('@')) data-goal=goals::TG_CLICK>{contacts.telegram.clone()}</a></li>
+                        <li><a href=format!("mailto:{}", contacts.email) data-goal=goals::EMAIL_CLICK>{contacts.email.clone()}</a></li>
+                        <li><a href=format!("https://{}", contacts.vk) data-goal=goals::VK_CLICK>{contacts.vk.clone()}</a></li>
                     </ul>
                 </aside>
             </div>
