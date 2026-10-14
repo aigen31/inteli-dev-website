@@ -29,7 +29,7 @@ pub fn chatbot_system_prompt(profile: &AuthorProfile) -> String {
 3. Не обсуждай темы вне разработки и AI-интеграции.
 4. О ценах — ориентировочный диапазон; точная стоимость зависит от проекта.
 5. Не знаешь ответа — скажи честно и предложи оставить заявку.
-6. Каждый ответ заканчивай: "Хотите обсудить ваш проект? Оставьте заявку — отвечу в течение 24 часов.""#,
+6. Каждый ответ заканчивай: "Хотите обсудить ваш проект? Оставьте заявку — отвечу при наличии свободного окна.""#,
         name = profile.name,
         years = profile.experience_years,
         projects = profile.projects_completed,
@@ -130,7 +130,7 @@ pub fn fallback_answer(profile: &AuthorProfile) -> String {
          Свяжитесь со мной напрямую:\n\
          • Telegram: {tg}\n\
          • Email: {email}\n\n\
-         Или оставьте заявку через форму на сайте — отвечу в течение 24 часов.",
+         Или оставьте заявку через форму на сайте — отвечу при наличии свободного окна.",
         tg = profile.contacts.telegram,
         email = profile.contacts.email,
     )
@@ -154,6 +154,35 @@ mod tests {
     fn analysis_prompt_contains_url() {
         let prompt = analysis_prompt("example.com");
         assert!(prompt.contains("example.com"));
+    }
+
+    /// Ни один промпт не обещает ответ «в течение 24 часов».
+    ///
+    /// Срок — это обязательство перед каждым, кто написал: он превращает
+    /// «посмотрю, если тема моя» в «отвечу всем и вовремя». Рамка
+    /// («отвечу при наличии свободного окна») снимает обязательство, не принижая
+    /// автора заявки, поэтому проверка сторожит именно возврат срока.
+    #[test]
+    fn prompts_do_not_promise_a_reply_deadline() {
+        let profile = fallback_content().profile;
+        for prompt in [
+            chatbot_system_prompt(&profile),
+            analysis_prompt("example.com"),
+            fallback_answer(&profile),
+        ] {
+            let lowered = prompt.to_lowercase();
+            for deadline in ["24 час", "в течение 24", "в течение дня"] {
+                assert!(
+                    !lowered.contains(deadline),
+                    "промпт снова обещает срок «{deadline}»: {prompt}"
+                );
+            }
+        }
+
+        assert!(
+            fallback_answer(&profile).contains("при наличии свободного окна"),
+            "в fallback-ответе нет мягкой рамки"
+        );
     }
 
     fn result(uri: &str, content: &str, score: f64) -> MemoryResult {

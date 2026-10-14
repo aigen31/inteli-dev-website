@@ -1,13 +1,37 @@
 //! Layout: header (навигация) + main + footer.
+//!
+//! Здесь же живёт плавающая кнопка чата: она нужна на всех страницах, а Layout —
+//! единственное место, которое эти страницы оборачивает.
 
 use leptos::prelude::*;
+use leptos_router::location::RequestUrl;
 
+use crate::api::assets;
+use crate::limits::Limits;
 use crate::memory::content::SiteContent;
 use crate::services::github;
 use crate::services::goals;
 use crate::ui::beget::BegetLogo;
-use crate::ui::icon::BrandIcon;
+use crate::ui::icon::{BrandIcon, LucideIcon};
 use crate::ui::shared::StatusBadge;
+
+/// Ссылка на профиль Habr.
+///
+/// Адрес — константа, а не поле контента: у Habr нет профиля, который сайт мог
+/// бы перечитать при старте (в отличие от GitHub, чей логин приходит из API), а
+/// сам профиль — витрина статей, не часть данных сайта.
+const HABR_URL: &str = "https://habr.com/ru/users/intelidev/";
+
+/// Путь текущего запроса.
+///
+/// `None` вне leptos_axum (юнит-тест, чужой потребитель) — тогда виджет чата
+/// показывается: страница-исключение одна, и пропадать из-за отсутствия
+/// контекста он не должен.
+fn request_path() -> Option<String> {
+    let url = use_context::<RequestUrl>()?;
+    let parsed = url.parse().ok()?;
+    Some(parsed.path().to_string())
+}
 
 #[component]
 pub fn Layout(children: Children) -> impl IntoView {
@@ -24,6 +48,19 @@ pub fn Layout(children: Children) -> impl IntoView {
         let label = format!("Профиль {} на GitHub", p.login);
         (p.url, label, p.login)
     });
+
+    // Плавающий чат: кнопка в правом нижнем углу и компактная панель к ней.
+    // Есть на каждой странице, кроме `/chat`: там чат занимает всю страницу, и
+    // вторая кнопка «Спросить» над ним дублировала бы поле ввода.
+    let chat_widget = request_path().as_deref() != Some("/chat");
+    // Кнопки в компактной панели — то же подмножество, что в терминале на
+    // главной: список общий с /chat, поэтому подпись и индекс кнопки не могут
+    // разойтись с тем, как их обрабатывает сервер.
+    let presets_fab = crate::services::chat::hero_presets()
+        .map(|p| (p.label.to_string(), p.kind.to_string(), p.index))
+        .collect::<Vec<_>>();
+    // Лимит поля тот же, что у терминала и /chat: серверная валидация одна.
+    let max_chars = Limits::get().chat_message_max_chars;
 
     view! {
         <a href="#main" class="skip-link">Перейти к содержимому</a>
@@ -60,21 +97,9 @@ pub fn Layout(children: Children) -> impl IntoView {
                         <a href="/contact">Контакты</a>
                     </div>
 
-                    // Ссылка на профиль GitHub. `rel="me"` — стандартный способ
-                    // подтвердить, что профиль принадлежит владельцу сайта.
-                    {github_link.map(|(url, label, login)| view! {
-                        <a
-                            class="navbar-social-link"
-                            href=url
-                            target="_blank"
-                            rel="me noopener noreferrer"
-                            title=format!("GitHub — {login}")
-                            aria-label=label
-                        >
-                            <BrandIcon name="mark-github"/>
-                        </a>
-                    })}
-
+                    // Внешние профили уехали в подвал: в шапке они спорили за
+                    // место с навигацией, а статус занятости остаётся крайним
+                    // справа — он главный сигнал шапки.
                     <StatusBadge/>
                 </div>
             </nav>
@@ -95,6 +120,47 @@ pub fn Layout(children: Children) -> impl IntoView {
                         <span aria-hidden="true">{"·"}</span>
                         <a href=format!("mailto:{}", email) data-goal=goals::EMAIL_CLICK>{email.clone()}</a>
                     </p>
+
+                    // Внешние профили. `rel="me"` — стандартный способ
+                    // подтвердить, что профиль принадлежит владельцу сайта.
+                    // Кнопки того же веса, что были в шапке: круглая форма,
+                    // подпись — в `aria-label`.
+                    <div class="footer-social">
+                        {github_link.map(|(url, label, login)| view! {
+                            <a
+                                class="social-link"
+                                href=url
+                                target="_blank"
+                                rel="me noopener noreferrer"
+                                title=format!("GitHub — {login}")
+                                aria-label=label
+                            >
+                                <BrandIcon name="mark-github"/>
+                            </a>
+                        })}
+
+                        // Знак Habr — отдельный файл (`assets/habr.svg`), а не
+                        // инлайн-SVG: официальная фигура весит ~16 КБ, и в
+                        // разметке каждой страницы она удваивала бы вес
+                        // документа.
+                        <a
+                            class="social-link"
+                            href=HABR_URL
+                            target="_blank"
+                            rel="me noopener noreferrer"
+                            title="Профиль на Habr"
+                            aria-label="Профиль на Habr"
+                        >
+                            <img
+                                class="social-icon"
+                                src=assets::versioned(assets::HABR_ICON_PATH)
+                                alt=""
+                                width="20"
+                                height="20"
+                                decoding="async"
+                            />
+                        </a>
+                    </div>
                 </div>
 
                 <div class="footer-col footer-col-beget">
@@ -111,6 +177,76 @@ pub fn Layout(children: Children) -> impl IntoView {
                 </div>
             </div>
         </footer>
+
+        // Плавающий чат: кнопка в правом нижнем углу и компактная панель к ней.
+        // Панель лежит в разметке всегда и выключена атрибутом `hidden`: так она
+        // стоит ноль на первой отрисовке и не создаётся в JS. Видимость кнопки
+        // (терминал прокручен / чат уже открывали) и вся переписка — в
+        // `initFloatingChat` (`assets/main.js`).
+        {chat_widget.then(|| view! {
+            <div class="chat-fab" id="chat-fab" hidden>
+                <section
+                    class="chat-fab-panel"
+                    id="chat-fab-panel"
+                    hidden
+                    aria-label="Чат с AI-ассистентом"
+                    data-goal=goals::CHAT_STARTED
+                >
+                    <header class="chat-fab-head">
+                        <span class="chat-fab-title">{"AI-ассистент"}</span>
+                        <button
+                            type="button"
+                            class="chat-fab-close"
+                            id="chat-fab-close"
+                            aria-label="Свернуть чат"
+                        >
+                            <span aria-hidden="true">{"×"}</span>
+                        </button>
+                    </header>
+
+                    <div class="chat-fab-body">
+                        <p class="chat-fab-intro" id="chat-fab-intro">
+                            "Спросите о задачах, услугах и сроках — отвечу прямо здесь."
+                        </p>
+                        <div class="chat-fab-presets" id="chat-fab-presets" role="group" aria-label="Частые вопросы">
+                            {presets_fab.into_iter().map(|(label, kind, index)| view! {
+                                <button
+                                    type="button"
+                                    class="preset-button chat-fab-preset"
+                                    data-kind=kind
+                                    data-index=index.to_string()
+                                >{label}</button>
+                            }).collect::<Vec<_>>()}
+                        </div>
+                        <div class="chat-fab-messages" id="chat-fab-messages" role="log" aria-live="polite"></div>
+                    </div>
+
+                    <div class="chat-fab-input-row">
+                        <input
+                            id="chat-fab-input"
+                            type="text"
+                            placeholder="Ваш вопрос..."
+                            autocomplete="off"
+                            maxlength=max_chars
+                            aria-label="Ваш вопрос"
+                        />
+                        <button id="chat-fab-send" type="button" class="btn btn-primary">"Отправить"</button>
+                    </div>
+                </section>
+
+                <button
+                    type="button"
+                    class="chat-fab-toggle"
+                    id="chat-fab-toggle"
+                    aria-expanded="false"
+                    aria-controls="chat-fab-panel"
+                    aria-label="Открыть чат"
+                >
+                    <span class="chat-fab-toggle-icon" aria-hidden="true"><LucideIcon name="message-circle"/></span>
+                    <span class="chat-fab-toggle-label">"Спросить"</span>
+                </button>
+            </div>
+        })}
     }
 }
 

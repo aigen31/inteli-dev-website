@@ -29,9 +29,13 @@ use crate::memory::content::Availability;
 use crate::settings::{self, SiteSettings};
 
 /// Максимальная длина свободного текста (`/slot`, `/when`).
-const TEXT_FIELD_MAX_CHARS: usize = 120;
-/// Максимальное число проектов в работе.
-const MAX_PROJECTS: i64 = 99;
+///
+/// Публичная, потому что то же ограничение показывает форма админки
+/// (`ui::admin` → `maxlength`): границы ввода не должны расходиться с тем, что
+/// принимает сервер.
+pub const TEXT_FIELD_MAX_CHARS: usize = 120;
+/// Максимальное число проектов в работе. Та же причина: `max` в форме админки.
+pub const MAX_PROJECTS: i64 = 99;
 /// Заголовок, который Telegram присылает вместе с апдейтом.
 pub const SECRET_HEADER: &str = "X-Telegram-Bot-Api-Secret-Token";
 

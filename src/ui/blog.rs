@@ -168,6 +168,10 @@ pub fn BlogPost() -> impl IntoView {
     // HTML собрал наш рендерер: сырой HTML экранирован, ссылки с опасными
     // схемами вырезаны (см. `utils::markdown`).
     let body = article.html();
+    // Ссылка на внешнюю публикацию: она идёт перед текстом, а не в подвале —
+    // читатель, который уже видел статью на Хабре, должен узнать об этом до
+    // чтения, а не после. Показывается, только когда адрес заполнен в админке.
+    let habr_url = article.habr_url.clone();
 
     view! {
         // `data-goal-read` — цель «дочитал» (см. `services::goals`): сработает,
@@ -193,13 +197,27 @@ pub fn BlogPost() -> impl IntoView {
                 <img class="post-cover" src=src alt=article.title.clone() loading="lazy"/>
             })}
 
+            {habr_url.map(|url| view! {
+                <p class="post-crosspost">
+                    <a
+                        class="post-crosspost-link"
+                        href=url
+                        target="_blank"
+                        rel="noopener noreferrer"
+                    >
+                        <span>"Читать на Хабр"</span>
+                        <span class="post-crosspost-arrow" aria-hidden="true">{"↗"}</span>
+                    </a>
+                </p>
+            })}
+
             <div class="prose" inner_html=body></div>
 
             <footer class="post-footer">
                 <p>
                     "Есть задача по этой теме? "
                     <a href="/contact">"Напишите мне"</a>
-                    " — отвечу в течение дня."
+                    " — отвечу при наличии свободного окна."
                 </p>
                 <a class="btn btn-secondary" href="/blog">"← Все статьи"</a>
             </footer>

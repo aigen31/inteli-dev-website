@@ -1,0 +1,1880 @@
+/* ==========================================================================
+   inteli.dev.ru — design tokens & styles (dark violet theme, по мотиву обложки)
+   Единый источник правды по дизайну: RULES/ui-rules.md + обложка-референс.
+   ========================================================================== */
+
+/* ---------- 1. Design tokens (CSS Custom Properties) ---------- */
+:root {
+  /* Palette — тёмный индиго/фиолетовый с обложки */
+  --color-bg: #2b2c7a;
+  --color-bg-2: #3a3390;
+  --color-surface: #16133a;
+  --color-surface-2: #1b1845;
+  --color-code-bg: #191536;
+  --color-code-bar: rgba(255, 255, 255, 0.04);
+  --color-border: rgba(255, 255, 255, 0.12);
+  --color-border-strong: rgba(255, 255, 255, 0.22);
+
+  --color-text: #f4f4ff;
+  --color-text-secondary: #c6c5f2;
+  --color-text-tertiary: rgba(255, 255, 255, 0.66);
+
+  --color-primary: #8b7ff5;
+  --color-primary-hover: #9d92fa;
+  --color-primary-soft: rgba(139, 127, 245, 0.18);
+
+  --color-status-available: #4cd964;
+  --color-status-busy: #ffbd44;
+  --color-status-full: #ff5f56;
+
+  --color-error: #ff7b7b;
+  --color-success: #4cd964;
+
+  /* код-терминал: синтаксис */
+  --code-kw: #8b7ff5;
+  --code-fn: #8fd0ff;
+  --code-str: #5bd75b;
+  --code-var: #f4f4ff;
+  --code-op: #9a9ad6;
+  --code-prompt: #4cd964;
+  --code-out: #8b8ad0;
+  --code-arg: #d7b7ff;
+
+  /* Typography */
+  --font-heading: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-body: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  --text-h1: 3rem;        /* 48px */
+  --text-h2: 2.25rem;     /* 36px */
+  --text-h3: 1.5rem;      /* 24px */
+  --text-body: 1rem;      /* 16px */
+  --text-small: 0.875rem; /* 14px */
+  --text-caption: 0.75rem;/* 12px */
+
+  /* Spacing (4px base) */
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 16px;
+  --space-lg: 24px;
+  --space-xl: 32px;
+  --space-2xl: 48px;
+  --space-3xl: 96px;
+
+  /* Shadows */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.25), 0 1px 3px rgba(0, 0, 0, 0.2);
+  --shadow-md: 0 6px 16px rgba(0, 0, 0, 0.3);
+  --shadow-lg: 0 16px 40px rgba(0, 0, 0, 0.4);
+  --shadow-glow: 0 0 40px rgba(139, 127, 245, 0.25);
+
+  /* Radii */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 20px;
+  --radius-full: 9999px;
+
+  /* Layout */
+  --container-max: 1120px;
+  --nav-height: 64px;
+  /* Шапка — плавающая «пилюля» с position: fixed. Её низ считается так:
+     отступ сверху + собственная высота. Дальше от этой величины считаются
+     все отступы контента от липкой шапки (--nav-offset), чтобы контент не
+     уезжал под неё на мобильном, где шапка выше. */
+  --nav-inset: var(--space-md);
+  --nav-offset: calc(var(--nav-inset) + var(--nav-height));
+  --transition-fast: 180ms ease;
+}
+
+/* ---------- 2. Reset ---------- */
+*, *::before, *::after { box-sizing: border-box; }
+/* Горизонтальный скролл режем через `clip`, а не `hidden`: по спецификации
+   `overflow-x: hidden` заставляет `overflow-y` вычисляться в `auto`, из-за чего
+   и <html>, и <body> становятся скролл-контейнерами — на главной появлялись
+   ДВА вертикальных скроллбара. `clip` не создаёт скролл-контейнер, поэтому
+   вертикальный скролл остаётся один — у документа. `hidden` оставлен первой
+   строкой как фолбэк для браузеров без поддержки `clip`. */
+html { scroll-behavior: smooth; overflow-x: hidden; overflow-x: clip; }
+body {
+  margin: 0;
+  font-family: var(--font-body);
+  font-size: var(--text-body);
+  line-height: 1.6;
+  color: var(--color-text);
+  overflow-x: hidden; /* фолбэк */
+  overflow-x: clip;   /* предотвращает горизонтальный скролл от blob'ов, не создавая второй вертикальный */
+  /* Фон заливает всю страницу (без fixed, иначе низ длиговой страницы белый).
+     Адаптация под стиль deepseek.com/harness — тёмный фон + radial-gradient «свечения». */
+  background-color: #0a0a14;
+  -webkit-font-smoothing: antialiased;
+}
+h1, h2, h3, h4 { font-family: var(--font-heading); line-height: 1.2; margin: 0 0 var(--space-md); font-weight: 700; }
+h1 { font-size: var(--text-h1); }
+h2 { font-size: var(--text-h2); }
+h3 { font-size: var(--text-h3); font-weight: 600; }
+p { margin: 0 0 var(--space-md); }
+a { color: var(--color-primary); text-decoration: none; }
+a:hover { text-decoration: underline; }
+img, svg { max-width: 100%; display: block; }
+ul { margin: 0; padding: 0; list-style: none; }
+
+::selection { background: rgba(139, 127, 245, 0.4); color: #fff; }
+
+/* ---------- 3. A11y: skip link & focus ---------- */
+.skip-link {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  background: var(--color-primary);
+  color: #fff;
+  padding: var(--space-sm) var(--space-md);
+  border-radius: 0 0 var(--radius-md) 0;
+  z-index: 1000;
+}
+.skip-link:focus { left: 0; }
+
+:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+/* ---------- 4. Buttons (не более 2 primary CTA на экране) ---------- */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-sm);
+  padding: 0.75rem 1.5rem;
+  border-radius: var(--radius-md);
+  font-weight: 600;
+  font-size: var(--text-body);
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: background-color var(--transition-fast), border-color var(--transition-fast);
+  text-decoration: none;
+  /* Spotlight под курсором. */
+  position: relative;
+  overflow: hidden;
+}
+.btn:hover { text-decoration: none; }
+
+/* Radial spotlight — позиционируется относительно курсора через CSS-переменные. */
+.btn::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--transition-fast);
+  background: radial-gradient(
+    280px circle at var(--mx, 50%) var(--my, 50%),
+    rgba(255, 255, 255, 0.18),
+    transparent 60%
+  );
+}
+
+.btn:hover::before {
+  opacity: 1;
+}
+
+.btn-primary {
+  background: var(--color-primary);
+  color: #fff;
+  border-color: var(--color-primary);
+}
+.btn-primary:hover {
+  background: var(--color-primary-hover);
+  border-color: var(--color-primary-hover);
+}
+
+.btn-secondary {
+  background: rgba(255, 255, 255, 0.06);
+  color: #fff;
+  border-color: var(--color-border-strong);
+}
+.btn-secondary:hover {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: var(--color-primary);
+}
+
+/* ---------- 5. Navbar — floating glass pill with blur (fixed for reliability) ---------- */
+.navbar {
+  position: fixed;
+  top: var(--nav-inset);
+  left: 50%;
+  transform: translateX(-50%);
+  width: calc(var(--container-max) + var(--space-2xl));
+  max-width: calc(100vw - var(--space-xl));
+  z-index: 100;
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-md);
+  /* Простой blur для стеклянного эффекта. */
+  background: rgba(24, 21, 58, 0.72);
+  backdrop-filter: blur(12px) saturate(1.4);
+  -webkit-backdrop-filter: blur(12px) saturate(1.4);
+  border-bottom: none;
+  padding: 0 var(--space-lg);
+}
+.navbar-inner {
+  max-width: var(--container-max);
+  margin: 0 auto;
+  height: var(--nav-height);
+  display: flex;
+  align-items: center;
+  gap: var(--space-lg);
+  padding: 0 var(--space-md);
+}
+.navbar-brand {
+  font-weight: 700;
+  font-size: 1.15rem;
+  color: var(--color-text);
+}
+.navbar-brand:hover { text-decoration: none; }
+
+/* Меню. На десктопе — строка, прижатая вправо; на мобильном превращается
+   в выпадающую панель под «пилюлей» (см. media query ниже). */
+.navbar-menu {
+  display: flex;
+  align-items: center;
+  gap: var(--space-lg);
+  margin-left: auto;
+}
+.navbar-links {
+  display: flex;
+  gap: var(--space-lg);
+}
+.navbar-links a {
+  color: var(--color-text-secondary);
+  font-size: var(--text-small);
+  font-weight: 500;
+}
+.navbar-links a:hover { color: #fff; text-decoration: none; }
+
+/* Ссылка на профиль GitHub в шапке. Круглая «кнопка» того же веса, что и
+   бургер: иконка-логотип без рамки в строке навигации теряется. */
+.navbar-social-link {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 999px;
+  border: 1px solid var(--color-border);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--color-text-secondary);
+  font-size: 1.05rem;
+  transition: color var(--transition-fast), border-color var(--transition-fast),
+    background var(--transition-fast);
+}
+.navbar-social-link:hover {
+  color: #fff;
+  border-color: var(--color-border-strong);
+  background: rgba(255, 255, 255, 0.1);
+  text-decoration: none;
+}
+.navbar-social-link svg { display: block; }
+
+/* Бургер — скрыт на десктопе, показывается только на мобильном. */
+.navbar-toggle {
+  display: none;
+  flex: 0 0 auto;
+  margin-left: auto;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--color-text);
+  cursor: pointer;
+  transition: background var(--transition-fast), border-color var(--transition-fast);
+}
+.navbar-toggle:hover {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: var(--color-primary);
+}
+.navbar-toggle:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+.navbar-toggle-box {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  width: 18px;
+  height: 12px;
+}
+.navbar-toggle-bar {
+  display: block;
+  width: 100%;
+  height: 2px;
+  border-radius: 2px;
+  background: currentColor;
+  transition: transform var(--transition-fast), opacity var(--transition-fast);
+}
+/* Открытое состояние: две верхние/нижние полосы складываются в крестик. */
+.navbar.is-menu-open .navbar-toggle-bar:nth-child(1) { transform: translateY(5px) rotate(45deg); }
+.navbar.is-menu-open .navbar-toggle-bar:nth-child(2) { opacity: 0; }
+.navbar.is-menu-open .navbar-toggle-bar:nth-child(3) { transform: translateY(-5px) rotate(-45deg); }
+
+/* ---------- 6. Status badge ---------- */
+/* Бейдж — кнопка: на тач-устройстве hover недоступен, поэтому подробности
+   раскрываются тапом (initStatusBadge), а не только наведением. */
+.status-badge {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+  padding: var(--space-xs) var(--space-md);
+  border-radius: var(--radius-full);
+  font-family: inherit;
+  font-size: var(--text-small);
+  font-weight: 600;
+  line-height: 1.4;
+  text-align: left;
+  color: var(--color-text);
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid var(--color-border);
+  white-space: nowrap;
+  cursor: help;
+}
+.status-dot {
+  width: 8px;
+  height: 8px;
+  flex: none;
+  margin-right: var(--space-xs);
+  border-radius: 50%;
+  background: var(--color-status-available);
+  animation: pulse 2s infinite;
+}
+.status-subject { color: var(--color-text-secondary); font-weight: 500; }
+.status-state { color: var(--color-text); }
+.status-busy .status-dot { background: var(--color-status-busy); }
+.status-full .status-dot { background: var(--color-status-full); animation: none; }
+
+/* Подсказка: расшифровка состояния + факты. Абсолютное позиционирование —
+   прижата к самому бейджу, поэтому не зависит от backdrop-filter шапки. */
+.status-popover {
+  position: absolute;
+  top: calc(100% + var(--space-sm));
+  left: 0;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+  min-width: 210px;
+  max-width: min(320px, calc(100vw - var(--space-xl)));
+  padding: var(--space-md);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: rgba(24, 21, 58, 0.98);
+  box-shadow: var(--shadow-lg);
+  font-size: var(--text-caption);
+  font-weight: 500;
+  white-space: normal;
+  text-align: left;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-4px);
+  transition: opacity 150ms ease, transform 150ms ease, visibility 150ms;
+  pointer-events: none;
+}
+/* Подсказка у правого края шапки раскрывается влево: иначе 320-пиксельная
+   карточка вылезает за viewport и её срезает `overflow-x: clip` на body. */
+@media (min-width: 768px) {
+  .navbar .status-popover { left: auto; right: 0; }
+}
+/* `:hover` включаем только там, где он есть: на тач-устройстве браузер
+   «залипает» на последнем hover после тапа, и подсказка мигала бы. */
+@media (hover: hover) {
+  .status-badge:hover .status-popover {
+    opacity: 1;
+    visibility: visible;
+    transform: none;
+  }
+}
+.status-badge:focus-visible .status-popover,
+.status-badge.is-open .status-popover {
+  opacity: 1;
+  visibility: visible;
+  transform: none;
+}
+.status-popover-summary { color: var(--color-text); font-weight: 600; }
+.status-popover-line { color: var(--color-text-secondary); }
+@keyframes pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(76, 217, 100, 0.5); }
+  50% { box-shadow: 0 0 0 6px rgba(76, 217, 100, 0); }
+}
+
+/* ---------- 7. Hero (по мотиву обложки: код-окно + контент) ---------- */
+.hero {
+  position: relative;
+  overflow: hidden; /* строго ограничивает canvas и blobs внутри hero — gradient overlay не вылезает на следующую секцию */
+  z-index: 0; /* stacking context для детей с позиционированием */
+  /* Верхний отступ считается от низа липкой шапки (--nav-offset), иначе
+     первый блок hero уезжает под «пилюлю». */
+  padding: calc(var(--nav-offset) + var(--space-md)) var(--space-lg) 280px;
+  scroll-margin-top: var(--nav-offset);
+}
+/* Интерактивная геометрическая сетка — фон под контентом hero. Растянута немного вниз для зоны затухания. */
+.hero-canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: -80px; /* extra 80px ниже hero для gradient fade overlay */
+  width: 100%;
+  display: block;
+  z-index: 2; /* поверх свечений */
+  pointer-events: none;
+}
+.hero-grid {
+  max-width: var(--container-max);
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: 1fr 1.1fr;
+  gap: var(--space-2xl);
+  align-items: center;
+  position: relative;
+  z-index: 1;
+}
+
+/* ---------- Свечения по мотиву deepseek.com/harness/en/ ---------- */
+/* Три radial-gradient «блоба» внутри hero + продолжения на следующие секции. */
+@keyframes blob-drift-left {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  33% { transform: translate(40px, -25px) scale(1.06); }
+  66% { transform: translate(-25px, 15px) scale(0.95); }
+}
+@keyframes blob-drift-bottom {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  33% { transform: translate(-35px, 15px) scale(1.02); }
+  66% { transform: translate(20px, -10px) scale(0.98); }
+}
+@keyframes blob-drift-right {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  33% { transform: translate(-30px, 20px) scale(0.96); }
+  66% { transform: translate(20px, -35px) scale(1.05); }
+}
+
+.hero-blob {
+  position: absolute;
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 0;
+}
+/* Верхний левый — глубокий фиолетово-синий, крупный. */
+.hero-blob-1 {
+  top: -10%;
+  left: -6%;
+  width: 520px;
+  height: 520px;
+  opacity: 0.40;
+  background: radial-gradient(circle, rgba(70, 45, 220, 0.8) 0%, transparent 70%);
+  animation: blob-drift-left 14s ease-in-out infinite;
+}
+/* Центральный — средний синий, широкий. */
+.hero-blob-2 {
+  bottom: 0;
+  left: 30%;
+  width: 700px;
+  height: 320px;
+  opacity: 0.44;
+  background: radial-gradient(ellipse, rgba(60, 55, 210, 0.7) 0%, rgba(50, 30, 180, 0.4) 40%, transparent 70%);
+  animation: blob-drift-bottom 18s ease-in-out infinite;
+}
+/* Правый верхний — яркий светло-фиолетовый, поменьше. */
+.hero-blob-3 {
+  top: -6%;
+  right: -4%;
+  width: 480px;
+  height: 480px;
+  opacity: 0.22;
+  background: radial-gradient(circle, rgba(150, 90, 255, 0.7) 0%, rgba(100, 60, 230, 0.35) 30%, transparent 70%);
+  animation: blob-drift-right 16s ease-in-out infinite;
+}
+
+/* Свечения-продолжения hero'а убраны: общий `.section::before` с top:-200px
+   затемнял заголовок «Услуги». Световые пятна вернулись — но точечно, через
+   класс .section-glow, который кладёт их ПОД контент (см. раздел 8.1). */
+
+/* ---------- Hero content ---------- */
+.hero-content { max-width: 560px; }
+.hero-content h1 { margin-bottom: var(--space-sm); }
+.hero-eyebrow {
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: 2.5rem;
+  line-height: 1;
+  color: var(--color-text-secondary);
+  letter-spacing: var(--space-xs);
+  margin-bottom: var(--space-md);
+}
+.subtitle {
+  color: var(--color-text-secondary);
+  font-size: var(--text-h3);
+  margin-bottom: var(--space-lg);
+  font-weight: 400;
+}
+
+.cta-buttons {
+  display: flex;
+  gap: var(--space-md);
+  justify-content: flex-start;
+  flex-wrap: wrap;
+  margin-top: var(--space-lg);
+}
+
+/* Технологии/навыки pills (как на обложке) */
+.tech-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: var(--space-xl);
+}
+.tech-pill {
+  padding: 6px 18px;
+  border-radius: var(--radius-full);
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  color: var(--color-text-secondary);
+  font-size: var(--text-small);
+  font-weight: 500;
+}
+
+/* ---------- 7a. Код-окно (терминал) ---------- */
+.code-window {
+  background: var(--color-code-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-lg), var(--shadow-glow);
+  overflow: hidden;
+  font-family: var(--font-mono);
+}
+.code-window-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: 12px 18px;
+  background: var(--color-code-bar);
+  border-bottom: 1px solid var(--color-border);
+}
+.dot { width: 12px; height: 12px; border-radius: 50%; }
+.dot-red { background: #ff5f56; }
+.dot-yellow { background: #ffbd44; }
+.dot-green { background: #27c93f; }
+.code-window-title {
+  margin-left: var(--space-sm);
+  color: var(--color-text-tertiary);
+  font-size: var(--text-caption);
+  font-family: var(--font-mono);
+}
+.code-window-body {
+  margin: 0;
+  padding: var(--space-lg) 22px;
+  font-size: 0.9rem;
+  line-height: 1.8;
+  overflow-x: auto;
+  color: var(--color-text);
+}
+.code-window-body .ln { display: block; }
+.code-prompt { color: var(--code-prompt); }
+.code-cmd { color: var(--color-text); }
+.code-arg { color: var(--code-arg); }
+.code-out { color: var(--code-out); }
+.code-kw { color: var(--code-kw); }
+.code-fn { color: var(--code-fn); }
+.code-var { color: var(--code-var); }
+.code-str { color: var(--code-str); }
+.code-op { color: var(--code-op); }
+
+/* ---------- 7b. AI-терминал (интерактивный CLI в hero) ---------- */
+.terminal-window {
+  background: var(--color-code-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-lg), var(--shadow-glow);
+  overflow: hidden;
+  font-family: var(--font-mono);
+  display: flex;
+  flex-direction: column;
+  max-height: 340px;
+  position: relative;
+}
+
+.terminal-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: 12px 18px;
+  background: var(--color-code-bar);
+  border-bottom: 1px solid var(--color-border);
+}
+.terminal-title {
+  margin-left: var(--space-sm);
+  color: var(--color-text-tertiary);
+  font-size: var(--text-caption);
+  font-family: var(--font-mono);
+}
+
+.terminal-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--space-md) 22px;
+  font-size: 0.85rem;
+  line-height: 1.6;
+  max-height: 180px;
+  min-height: 100px;
+}
+
+/* Стилизованная прокрутка для terminal-body */
+.terminal-body::-webkit-scrollbar { width: 4px; }
+.terminal-body::-webkit-scrollbar-track { background: transparent; }
+.terminal-body::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: 2px;
+}
+
+.terminal-line {
+  margin-bottom: 6px;
+  word-break: break-word;
+}
+
+/* Приветственное сообщение */
+.terminal-welcome {
+  color: var(--code-fn);
+  font-style: italic;
+}
+
+/* Сообщение пользователя */
+.terminal-user {
+  color: var(--code-prompt);
+}
+
+/* Ответ бота — основной стиль */
+.terminal-bot-response {
+  color: var(--color-text-secondary);
+  line-height: 1.5;
+  white-space: pre-wrap; /* ответы ИИ приходят с \n — печатаем построчно */
+}
+
+/* Ошибка */
+.terminal-error {
+  color: var(--code-str);
+  font-weight: 600;
+}
+
+/* Подсказки */
+.terminal-tips {
+  color: var(--color-text-tertiary);
+  font-size: 0.8rem;
+  margin-top: var(--space-xs);
+  padding-left: var(--space-md);
+  border-left: 2px solid var(--color-primary-soft);
+}
+
+/* Строка ввода */
+.terminal-input-line {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-sm) 22px var(--space-md);
+  border-top: 1px solid var(--color-border);
+}
+
+.terminal-prompt {
+  color: var(--code-prompt);
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.terminal-input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--color-text);
+  font-family: var(--font-mono);
+  font-size: 0.9rem;
+  caret-color: var(--code-prompt);
+}
+
+.terminal-input::placeholder {
+  color: var(--color-text-tertiary);
+}
+
+.terminal-input:disabled {
+  opacity: 0.5;
+}
+
+/* Состояние загрузки на строке ввода */
+.terminal-input-line.is-busy {
+  opacity: 0.7;
+}
+
+/* Анимация мигающего курсора при печати */
+.terminal-cursor {
+  display: inline-block;
+  animation: terminal-blink 1s step-end infinite;
+  color: var(--code-prompt);
+  font-weight: 700;
+}
+
+@keyframes terminal-blink {
+  0%, 50% { opacity: 1; }
+  51%, 100% { opacity: 0; }
+}
+
+/* Анимация точек загрузки */
+.loading-dots {
+  display: inline-block;
+  min-width: 4ch;
+  text-align: left;
+  white-space: nowrap;
+}
+
+/* Preset-кнопки в терминале */
+.terminal-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-xs);
+  padding: 0 22px var(--space-md);
+}
+
+/* Подсказка о лимитах внутри терминала: тот же моно-шрифт и отбивка,
+   что у остальных строк окна. */
+.terminal-hint {
+  margin: 0;
+  padding: 0 22px var(--space-sm);
+  font-family: var(--font-mono);
+  font-size: var(--text-caption);
+  color: var(--color-text-tertiary);
+}
+
+.terminal-preset-btn {
+  padding: 4px 12px;
+  border-radius: var(--radius-full);
+  background: rgba(139, 127, 245, 0.12);
+  border: 1px solid rgba(139, 127, 245, 0.25);
+  color: var(--color-text-secondary);
+  font-size: var(--text-caption);
+  font-family: var(--font-mono);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.terminal-preset-btn:hover {
+  background: rgba(139, 127, 245, 0.25);
+  border-color: var(--color-primary);
+  color: #fff;
+  transform: translateY(-1px);
+}
+
+/* ---------- 7c. Маскот: ведьма сидит на терминале ---------- */
+/* Кадры — пиксель-арт 96×128 (assets/mascot/*.png): по кадру на эмоцию.
+   Показываем их в натуральную величину: у пиксель-арта дробный масштаб даёт
+   пиксели разной ширины. Контейнер абсолютный — на размер колонки он не
+   влияет; на телефоне его скрывает отдельное правило в конце файла. */
+.terminal-slot { position: relative; }
+
+.terminal-mascot {
+  position: absolute;
+  /* Ведьма сидит на верхней грани окна: линия «сиденья» в кадре — 98px от
+     верха, значит низ спрайта уходит на 128 − 98 = 30px внутрь терминала, и
+     ноги с подолом свешиваются на его шапку. */
+  bottom: calc(100% - 30px);
+  right: -6px;
+  width: 96px;
+  height: 128px;
+  /* Размытие пикселей при масштабировании браузером — то, что убивает
+     пиксель-арт, поэтому выключаем сглаживание явно. */
+  image-rendering: pixelated;
+  /* Тёмная мантия и шляпа сливаются с тёмно-синим hero: свечение в цвет
+     primary отрывает силуэт от фона (drop-shadow уважает альфу). */
+  filter: drop-shadow(0 0 10px rgba(139, 127, 245, 0.45));
+  /* Маскот перекрывает угол окна: клики и выделение текста он пропускает. */
+  pointer-events: none;
+  z-index: 2;
+}
+
+/* Кадры лежат стопкой в контейнере: виден ровно один — тот, чья эмоция
+   совпала с `data-emotion` на контейнере. Переключается только прозрачность,
+   поэтому раскладка не пересчитывается и тонкая рамка терминала не дрожит. */
+.mascot-frame {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  transition: opacity var(--transition-fast);
+}
+
+.terminal-mascot[data-emotion="base"] .mascot-frame[data-emotion="base"],
+.terminal-mascot[data-emotion="read"] .mascot-frame[data-emotion="read"],
+.terminal-mascot[data-emotion="thinking"] .mascot-frame[data-emotion="thinking"],
+.terminal-mascot[data-emotion="smirk"] .mascot-frame[data-emotion="smirk"],
+.terminal-mascot[data-emotion="dissatisfied"] .mascot-frame[data-emotion="dissatisfied"] {
+  opacity: 1;
+}
+
+/* Кому анимация мешает — тому не нужен и кроссфейд между эмоциями. */
+@media (prefers-reduced-motion: reduce) {
+  .mascot-frame { transition: none; }
+}
+
+/* ---------- 8. Sections ---------- */
+.main { min-height: calc(100vh - var(--nav-offset)); }
+/* Якорные переходы (skip-link → #main) не должны прятать заголовок под шапкой. */
+.main { scroll-margin-top: var(--nav-offset); }
+
+.section {
+  max-width: var(--container-max);
+  margin: 0 auto;
+  padding: 120px var(--space-lg) var(--space-2xl);
+  /* При переходе по якорю внутри секции оставляем запас под липкую шапку. */
+  scroll-margin-top: calc(var(--nav-offset) + var(--space-md));
+}
+.section-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-md);
+  margin-bottom: var(--space-lg);
+}
+.section-link { font-size: var(--text-small); font-weight: 600; color: var(--color-text-secondary); }
+.section-link:hover { color: #fff; }
+.cta-section { text-align: center; }
+
+/* ---------- 8.1 Световые пятна в нижних секциях главной ----------
+   Фон hero — три blob'а; ниже он раньше «выдыхался» в сплошной #0a0a14.
+   Добавляем мягкие засветлённые пятна через ::before/::after: они лежат
+   под контентом (z-index: -1 внутри изолированного стекинг-контекста) и
+   поэтому не затемняют заголовки — прошлая попытка с top:-200px затемняла
+   «Услуги» именно потому, что пятно шло поверх текста. */
+.section-glow { position: relative; isolation: isolate; }
+.section-glow > * { position: relative; z-index: 1; }
+
+.section-glow::before,
+.section-glow::after {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+/* Услуги — тёплое фиолетовое пятно справа + холодное синее слева. */
+.section-services::before {
+  top: -80px;
+  right: -180px;
+  width: 640px;
+  height: 540px;
+  opacity: 0.75;
+  background: radial-gradient(circle, rgba(155, 95, 255, 0.42) 0%, rgba(110, 70, 230, 0.20) 45%, transparent 72%);
+  animation: section-drift-a 24s ease-in-out infinite;
+}
+.section-services::after {
+  bottom: -120px;
+  left: -200px;
+  width: 540px;
+  height: 460px;
+  opacity: 0.7;
+  background: radial-gradient(circle, rgba(60, 120, 255, 0.34) 0%, rgba(50, 70, 210, 0.15) 50%, transparent 74%);
+  animation: section-drift-b 30s ease-in-out infinite;
+}
+
+/* Результаты — меняем тон: мягкая маджента справа + бирюза слева. */
+.section-results::before {
+  top: 0;
+  left: -220px;
+  width: 600px;
+  height: 600px;
+  opacity: 0.65;
+  background: radial-gradient(circle, rgba(70, 200, 210, 0.30) 0%, rgba(60, 120, 220, 0.15) 48%, transparent 72%);
+  animation: section-drift-b 26s ease-in-out infinite;
+}
+.section-results::after {
+  bottom: -140px;
+  right: -200px;
+  width: 580px;
+  height: 500px;
+  opacity: 0.7;
+  background: radial-gradient(circle, rgba(235, 105, 205, 0.32) 0%, rgba(150, 80, 230, 0.16) 50%, transparent 74%);
+  animation: section-drift-a 32s ease-in-out infinite;
+}
+
+/* CTA — широкое свечение снизу по центру (как «подсветка» финального призыва). */
+.section-cta::before {
+  left: 50%;
+  bottom: -220px;
+  width: 940px;
+  height: 480px;
+  margin-left: -470px; /* вместо translateX(-50%), чтобы не конфликтовать с анимацией */
+  opacity: 0.8;
+  background: radial-gradient(ellipse, rgba(139, 127, 245, 0.42) 0%, rgba(90, 70, 220, 0.20) 45%, transparent 72%);
+  animation: section-drift-cta 28s ease-in-out infinite;
+}
+.section-cta::after {
+  left: 50%;
+  top: -60px;
+  width: 660px;
+  height: 280px;
+  margin-left: -330px;
+  opacity: 0.6;
+  background: radial-gradient(ellipse, rgba(185, 155, 255, 0.26) 0%, transparent 70%);
+}
+
+@keyframes section-drift-a {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+  50%      { transform: translate3d(-36px, 26px, 0) scale(1.06); }
+}
+@keyframes section-drift-b {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+  50%      { transform: translate3d(30px, -22px, 0) scale(0.95); }
+}
+@keyframes section-drift-cta {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+  50%      { transform: translate3d(0, -24px, 0) scale(1.08); }
+}
+
+/* ---------- 8.2 Блок «Открытый код» (статистика GitHub) ----------
+   Между «Результатами» и финальным CTA: числа с GitHub — внешне проверяемый
+   аргумент, поэтому он стоит последним перед призывом. Секция рендерится
+   только когда снимок статистики уже получен (см. src/ui/github.rs), иначе
+   в разметке не остаётся даже заголовка. */
+.section-github::before {
+  top: -60px;
+  right: -160px;
+  width: 560px;
+  height: 480px;
+  opacity: 0.55;
+  background: radial-gradient(circle, rgba(80, 220, 160, 0.22) 0%, rgba(60, 160, 220, 0.14) 48%, transparent 72%);
+  animation: section-drift-a 28s ease-in-out infinite;
+}
+.section-github::after {
+  bottom: -120px;
+  left: -180px;
+  width: 520px;
+  height: 440px;
+  opacity: 0.6;
+  background: radial-gradient(circle, rgba(139, 127, 245, 0.30) 0%, rgba(90, 70, 220, 0.14) 50%, transparent 74%);
+  animation: section-drift-b 34s ease-in-out infinite;
+}
+
+.github-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xl);
+  padding: var(--space-xl);
+  background: linear-gradient(180deg, var(--color-surface-2), var(--color-surface));
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-md);
+}
+
+.github-profile {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-md);
+  align-self: flex-start;
+  color: var(--color-text);
+}
+.github-profile:hover { text-decoration: none; }
+.github-avatar {
+  width: 56px;
+  height: 56px;
+  flex: 0 0 auto;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--color-border-strong);
+  background: var(--color-code-bg);
+  object-fit: cover;
+}
+.github-profile-text { display: flex; flex-direction: column; min-width: 0; }
+.github-profile-name { font-weight: 700; font-size: var(--text-h3); line-height: 1.3; }
+.github-profile-handle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+  color: var(--color-text-tertiary);
+  font-family: var(--font-mono);
+  font-size: var(--text-small);
+  transition: color var(--transition-fast);
+}
+.github-profile:hover .github-profile-handle { color: var(--color-primary); }
+
+.github-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: var(--space-md);
+}
+.github-stat {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+  padding: var(--space-md);
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+}
+.github-stat-value {
+  font-family: var(--font-heading);
+  font-size: 2rem;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--color-text);
+  text-shadow: 0 0 24px rgba(139, 127, 245, 0.35);
+}
+.github-stat-label { font-size: var(--text-small); color: var(--color-text-secondary); }
+
+.github-langs { display: flex; flex-direction: column; gap: var(--space-md); }
+.github-lang-bar {
+  display: flex;
+  height: 8px;
+  border-radius: var(--radius-full);
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.06);
+}
+.github-lang-seg { display: block; height: 100%; }
+.github-lang-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm) var(--space-lg);
+}
+.github-lang-item {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-sm);
+  font-size: var(--text-small);
+}
+.github-lang-dot {
+  width: 10px;
+  height: 10px;
+  flex: 0 0 auto;
+  border-radius: var(--radius-full);
+}
+.github-lang-count {
+  color: var(--color-text-tertiary);
+  font-family: var(--font-mono);
+  font-size: var(--text-caption);
+}
+
+/* ---------- 9. Cards ---------- */
+.cards-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: var(--space-lg);
+  margin-bottom: var(--space-lg);
+}
+/* /projects: ровно 2 колонки в строке на десктопе (ниже 768px — 1 колонка). */
+.cards-grid-2 { grid-template-columns: repeat(2, 1fr); }
+
+.card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl);
+  padding: var(--space-lg);
+  transition: transform var(--transition-fast), box-shadow var(--transition-fast),
+              border-color var(--transition-fast);
+  /* Для 3D-трансформации — перспектива на родительском контейнере задаётся в JS. */
+  will-change: transform;
+  /* Свечение под курсором. */
+  position: relative;
+  overflow: hidden;
+}
+
+/* Radial spotlight — позиционируется относительно курсора через CSS-переменные. */
+.card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--transition-fast);
+  background: radial-gradient(
+    400px circle at var(--mx, 50%) var(--my, 50%),
+    rgba(139, 127, 245, 0.18),
+    transparent 60%
+  );
+}
+
+.card:hover::before {
+  opacity: 1;
+}
+
+.card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-lg);
+  border-color: var(--color-border-strong);
+}
+.card-icon { font-size: 2rem; margin-bottom: var(--space-sm); }
+/* Lucide SVG-иконки — стилизация под тонкие 3D-линии. */
+.card-icon svg,
+.status-badge svg[aria-hidden] {
+  width: 2rem;
+  height: 2rem;
+  stroke-width: 1;
+  color: var(--color-primary);
+  opacity: 0.9;
+}
+/* Иконка внутри статус-бейджа — компактнее, чтобы не спорить с текстом. */
+.status-badge svg[aria-hidden] {
+  width: 1rem;
+  height: 1rem;
+  flex: none;
+}
+/* Вес задан явно: уровень заголовка карточки зависит от страницы (h2 на
+   /services и /projects, h3 внутри секций главной), а выглядеть они должны
+   одинаково — иначе h2 получал бы вес 700 из общего правила. */
+.card-title { font-size: var(--text-h3); font-weight: 600; margin-bottom: var(--space-sm); color: #fff; }
+.card-text { color: var(--color-text-secondary); font-size: var(--text-small); }
+.card-price { display: inline-block; margin-top: var(--space-sm); font-weight: 700; color: var(--color-primary); }
+
+.badge {
+  display: inline-block;
+  padding: 3px 12px;
+  border-radius: var(--radius-full);
+  background: var(--color-primary-soft);
+  color: var(--color-primary);
+  font-size: var(--text-caption);
+  font-weight: 600;
+}
+
+.project-metrics {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-md);
+  margin: var(--space-md) 0;
+}
+.metric { display: flex; flex-direction: column; gap: 2px; }
+.metric-label { font-size: var(--text-caption); color: var(--color-text-tertiary); text-transform: uppercase; }
+.metric-value { font-weight: 700; }
+.metric-before { color: var(--color-text-tertiary); }
+.metric-after { color: var(--color-success); }
+.project-result { font-size: var(--text-small); color: var(--color-text-secondary); font-weight: 600; }
+
+/* ---------- 10. Forms ---------- */
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+  max-width: 520px;
+}
+.form-field { display: flex; flex-direction: column; gap: var(--space-xs); }
+.form-field label { font-size: var(--text-small); font-weight: 600; color: var(--color-text-secondary); }
+.form-field input,
+.form-field textarea {
+  font-family: inherit;
+  font-size: var(--text-body);
+  color: var(--color-text);
+  padding: 0.625rem 0.875rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.05);
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+.form-field input:focus,
+.form-field textarea:focus {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px var(--color-primary-soft);
+}
+.form-field input::placeholder,
+.form-field textarea::placeholder { color: var(--color-text-tertiary); }
+.form-status { min-height: 1.5em; font-size: var(--text-small); }
+.form-status.error { color: var(--color-error); }
+.form-status.success { color: var(--color-success); }
+
+/* ---------- 11.1 Подсказки и счётчики символов ----------
+   Показываем лимит заранее, чтобы пользователь не упирался в обрезку вслепую.
+   Числа приходят из конфига (Limits), поэтому текст и maxlength всегда парны. */
+.field-hint {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-sm);
+  margin: var(--space-xs) 0 0;
+  font-size: var(--text-caption);
+  color: var(--color-text-tertiary);
+}
+.char-count {
+  flex: 0 0 auto;
+  font-family: var(--font-mono);
+  font-size: var(--text-caption);
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-tertiary);
+}
+.char-count.is-near-limit { color: var(--color-status-busy); }
+.char-count.is-at-limit { color: var(--color-status-full); }
+/* В форме заявки счётчик стоит под полем, а не сбоку от подсказки. */
+.form-field .char-count { align-self: flex-end; min-height: 1em; }
+.terminal-line-warn { color: var(--color-status-busy); }
+
+.contact-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-2xl);
+  align-items: start;
+}
+.contacts-aside .contacts-list { display: flex; flex-direction: column; gap: var(--space-sm); }
+.contacts-aside a { color: var(--color-text-secondary); }
+.contacts-aside a:hover { color: #fff; }
+
+/* ---------- 11. Chat ---------- */
+.chat-section { max-width: 760px; }
+.chat-container { display: flex; flex-direction: column; gap: var(--space-md); }
+
+.preset-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+}
+.preset-button {
+  padding: 0.5rem 1rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  font-size: var(--text-small);
+  font-family: inherit;
+  transition: border-color var(--transition-fast), background-color var(--transition-fast),
+              color var(--transition-fast);
+}
+.preset-button:hover {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: var(--color-primary);
+  color: #fff;
+}
+
+.messages-area {
+  min-height: 200px;
+  max-height: 420px;
+  overflow-y: auto;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-md);
+  background: rgba(0, 0, 0, 0.16);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+.chat-message { max-width: 85%; padding: 0.625rem 0.875rem; border-radius: var(--radius-md); white-space: pre-wrap; }
+.user-message {
+  align-self: flex-end;
+  background: var(--color-primary-soft);
+  color: #fff;
+  border-bottom-right-radius: 0;
+}
+.bot-message {
+  align-self: flex-start;
+  background: var(--color-surface-2);
+  color: var(--color-text);
+  border-bottom-left-radius: 0;
+}
+.chat-suggestions { display: flex; flex-wrap: wrap; gap: var(--space-sm); }
+
+/* ---------- Индикатор ожидания ответа ИИ ---------- */
+/* Пузырь появляется сразу после отправки и живёт до прихода ответа:
+   три «дышащие» точки + пробегающий по пузырю блеск. */
+.chat-typing {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-sm);
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  box-shadow: var(--shadow-sm);
+}
+.chat-typing::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    100deg,
+    transparent 20%,
+    rgba(139, 127, 245, 0.22) 50%,
+    transparent 80%
+  );
+  transform: translateX(-120%);
+  animation: typing-shimmer 1.9s ease-in-out infinite;
+  pointer-events: none;
+}
+.typing-dots { position: relative; z-index: 1; display: inline-flex; align-items: center; gap: 5px; }
+.typing-dots i {
+  display: block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--color-primary);
+  animation: typing-bounce 1.3s ease-in-out infinite;
+}
+.typing-dots i:nth-child(2) { animation-delay: 0.16s; }
+.typing-dots i:nth-child(3) { animation-delay: 0.32s; }
+.typing-static {
+  position: relative;
+  z-index: 1;
+  font-size: var(--text-small);
+  color: var(--color-text-secondary);
+}
+
+@keyframes typing-bounce {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.40; }
+  30%            { transform: translateY(-4px); opacity: 1; }
+}
+@keyframes typing-shimmer {
+  0%   { transform: translateX(-120%); }
+  60%  { transform: translateX(120%); }
+  100% { transform: translateX(120%); }
+}
+
+/* Пока ждём ответ — приглушаем поле ввода и кнопку, чтобы не отправляли дважды. */
+.chat-container.is-waiting #chat-input,
+.chat-container.is-waiting #chat-send { opacity: 0.6; cursor: progress; }
+.chat-container.is-waiting .preset-button { opacity: 0.5; pointer-events: none; }
+.chat-container.is-waiting #chat-send {
+  background: linear-gradient(135deg, var(--color-primary), #6f5cf0);
+  animation: send-pulse 1.6s ease-in-out infinite;
+}
+@keyframes send-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(139, 127, 245, 0); }
+  50%      { box-shadow: 0 0 0 6px rgba(139, 127, 245, 0.16); }
+}
+
+/* Текст только для скринридеров. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.chat-input-row { display: flex; gap: var(--space-sm); }
+/* Кнопка не должна сжиматься: иначе на узких экранах input «съедает» её
+   ширину и текст «Отправить» вылезает за пределы кнопки. */
+.chat-input-row .btn { flex: 0 0 auto; white-space: nowrap; }
+.chat-input-row input {
+  flex: 1;
+  min-width: 0;
+  font-family: inherit;
+  font-size: var(--text-body);
+  color: var(--color-text);
+  padding: 0.625rem 0.875rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.05);
+}
+.chat-input-row input::placeholder { color: var(--color-text-tertiary); }
+.chat-input-row input:focus { outline: none; border-color: var(--color-primary); box-shadow: 0 0 0 3px var(--color-primary-soft); }
+
+.floating-cta {
+  align-self: center;
+  font-weight: 600;
+  font-size: var(--text-small);
+  color: var(--color-primary);
+  padding: var(--space-sm) var(--space-md);
+  border-radius: var(--radius-full);
+  border: 1px solid var(--color-border-strong);
+}
+.floating-cta:hover { background: var(--color-primary-soft); text-decoration: none; }
+
+/* ---------- 12. Footer ---------- */
+.footer {
+  border-top: 1px solid var(--color-border);
+  padding: var(--space-xl) var(--space-lg);
+  color: var(--color-text-secondary);
+  font-size: var(--text-small);
+}
+.footer-inner {
+  max-width: var(--container-max);
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-lg);
+}
+.footer-col { display: flex; flex-direction: column; gap: var(--space-sm); }
+.footer-col p { margin: 0; }
+.footer-contacts { display: flex; gap: var(--space-sm); align-items: center; margin: 0; }
+.footer a { color: var(--color-text-secondary); }
+.footer a:hover { color: #fff; }
+
+/* Правая колонка — «работает на Beget»: логотип ведёт на партнёрскую ссылку. */
+.footer-col-beget { align-items: flex-start; gap: var(--space-xs); }
+.footer-beget-label { font-size: var(--text-caption); color: var(--color-text-tertiary); }
+.footer-beget-logo {
+  display: inline-block;
+  color: var(--color-text-secondary);
+  opacity: 0.85;
+  transition: opacity var(--transition-fast), color var(--transition-fast);
+}
+.footer-beget-logo:hover { color: #fff; opacity: 1; }
+.footer-beget-logo svg { display: block; width: 97px; height: 44px; }
+
+/* ---------- 13. Admin panel ---------- */
+.admin-section { max-width: 1200px; }
+.admin-login { max-width: 420px; margin-bottom: var(--space-lg); }
+.admin-login label { display: block; font-size: var(--text-small); font-weight: 600; margin-bottom: var(--space-xs); }
+.admin-login-row { display: flex; gap: var(--space-sm); }
+.admin-login-row input {
+  flex: 1;
+  font-family: inherit;
+  font-size: var(--text-body);
+  color: var(--color-text);
+  padding: 0.625rem 0.875rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.05);
+}
+.admin-login-row input:focus { outline: none; border-color: var(--color-primary); box-shadow: 0 0 0 3px var(--color-primary-soft); }
+
+.kpi-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: var(--space-md);
+  margin: var(--space-lg) 0 var(--space-xl);
+}
+.kpi-card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-md) var(--space-lg);
+}
+.kpi-value { font-size: 2rem; font-weight: 700; color: #fff; }
+.kpi-label { font-size: var(--text-small); color: var(--color-text-secondary); }
+
+.table-wrap { overflow-x: auto; margin-bottom: var(--space-xl); }
+.admin-table { width: 100%; border-collapse: collapse; font-size: var(--text-small); color: var(--color-text); }
+.admin-table th, .admin-table td {
+  text-align: left;
+  padding: var(--space-sm) var(--space-md);
+  border-bottom: 1px solid var(--color-border);
+  vertical-align: top;
+}
+.admin-table th { background: rgba(255, 255, 255, 0.04); font-weight: 600; white-space: nowrap; }
+.lead-status {
+  font-family: inherit;
+  font-size: var(--text-caption);
+  color: var(--color-text);
+  padding: 3px var(--space-sm);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+/* ---------- 13.1 Блог ---------- */
+.blog-header { margin-bottom: var(--space-xl); }
+.blog-header h1 { margin-bottom: var(--space-xs); }
+
+.post-list { display: grid; gap: var(--space-lg); }
+
+.post-card {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  gap: var(--space-lg);
+  padding: var(--space-lg);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  transition: border-color 200ms ease, transform 200ms ease;
+}
+.post-card:hover { border-color: var(--color-border-strong); transform: translateY(-2px); }
+.post-card-cover { display: block; border-radius: var(--radius-md); overflow: hidden; }
+.post-card-cover img { width: 100%; height: 100%; object-fit: cover; aspect-ratio: 16 / 10; }
+/* Как и у `.card-title`: уровень зависит от страницы, вид — нет. */
+.post-card-title { font-size: var(--text-h3); font-weight: 600; margin-bottom: var(--space-xs); }
+.post-card-title a { color: #fff; }
+.post-card-title a:hover { color: var(--color-primary); }
+.post-card-summary { color: var(--color-text-secondary); margin-bottom: var(--space-sm); }
+
+.post-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-sm);
+  font-size: var(--text-small);
+  color: var(--color-text-tertiary);
+  margin-bottom: var(--space-sm);
+}
+
+.tag-list { display: flex; flex-wrap: wrap; gap: var(--space-xs); list-style: none; padding: 0; margin: 0; }
+.tag {
+  font-size: var(--text-caption);
+  padding: 2px var(--space-sm);
+  border-radius: 999px;
+  border: 1px solid var(--color-border);
+  background: var(--color-primary-soft);
+  color: var(--color-text-secondary);
+}
+
+.empty-state { color: var(--color-text-tertiary); padding: var(--space-xl) 0; }
+
+.section-more { font-size: var(--text-small); font-weight: 600; color: var(--color-text-secondary); }
+.section-more:hover { color: #fff; }
+.blog-teaser .section-head { margin-bottom: var(--space-lg); }
+
+/* Страница статьи */
+.post-section { max-width: 780px; }
+.breadcrumbs {
+  display: flex;
+  gap: var(--space-sm);
+  align-items: center;
+  font-size: var(--text-small);
+  color: var(--color-text-tertiary);
+  margin-bottom: var(--space-lg);
+}
+.breadcrumbs a { color: var(--color-text-secondary); }
+.post-header { margin-bottom: var(--space-lg); }
+.post-cover { width: 100%; border-radius: var(--radius-lg); margin-bottom: var(--space-lg); }
+.post-footer {
+  margin-top: var(--space-2xl);
+  padding-top: var(--space-lg);
+  border-top: 1px solid var(--color-border);
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-md);
+  align-items: center;
+  justify-content: space-between;
+}
+
+/* Текст статьи: типографика для HTML, собранного из markdown.
+   Рендерер отдаёт «голые» теги без классов, поэтому стилизуем по элементу. */
+.prose { color: var(--color-text-secondary); line-height: 1.75; }
+.prose > * + * { margin-top: var(--space-md); }
+.prose h1, .prose h2, .prose h3, .prose h4 { color: #fff; line-height: 1.25; margin-top: var(--space-xl); }
+.prose h1 { font-size: var(--text-h2); }
+.prose h2 { font-size: var(--text-h3); }
+.prose h3 { font-size: 1.25rem; }
+.prose a { color: var(--color-primary); text-decoration: underline; text-underline-offset: 3px; }
+.prose a:hover { color: var(--color-primary-hover); }
+.prose strong { color: #fff; }
+.prose ul, .prose ol { padding-left: 1.4em; }
+.prose li + li { margin-top: var(--space-xs); }
+.prose code {
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+  background: var(--color-code-bg);
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border);
+}
+.prose pre {
+  background: var(--color-code-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-md);
+  overflow-x: auto;
+}
+.prose pre code { background: none; border: none; padding: 0; }
+.prose blockquote {
+  border-left: 3px solid var(--color-primary);
+  padding-left: var(--space-md);
+  color: var(--color-text-tertiary);
+  font-style: italic;
+}
+.prose img { max-width: 100%; border-radius: var(--radius-md); }
+.prose table { width: 100%; border-collapse: collapse; font-size: var(--text-small); }
+.prose th, .prose td { border: 1px solid var(--color-border); padding: var(--space-sm) var(--space-md); text-align: left; }
+.prose th { background: rgba(255, 255, 255, 0.04); }
+.prose hr { border: none; border-top: 1px solid var(--color-border); }
+
+/* ---------- 13.2 Админка: статьи и кросспостинг ---------- */
+.admin-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-md);
+  margin-bottom: var(--space-md);
+}
+.admin-filters { display: flex; flex-wrap: wrap; gap: var(--space-xs); }
+.filter-btn {
+  font-family: inherit;
+  font-size: var(--text-small);
+  padding: 4px var(--space-md);
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+}
+.filter-btn:hover { color: #fff; border-color: var(--color-border-strong); }
+.filter-btn.is-active { background: var(--color-primary-soft); border-color: var(--color-primary); color: #fff; }
+
+.admin-hint { font-size: var(--text-small); color: var(--color-text-tertiary); margin-bottom: var(--space-sm); }
+.admin-actions { white-space: nowrap; }
+
+.mini-btn {
+  font-family: inherit;
+  font-size: var(--text-caption);
+  padding: 3px var(--space-sm);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  text-decoration: none;
+  display: inline-block;
+  line-height: 1.5;
+}
+.mini-btn:hover { color: #fff; border-color: var(--color-border-strong); background: rgba(255, 255, 255, 0.1); }
+.mini-btn-danger:hover { color: var(--color-error); border-color: var(--color-error); }
+
+.status-chip {
+  font-size: var(--text-caption);
+  padding: 2px var(--space-sm);
+  border-radius: 999px;
+  border: 1px solid var(--color-border);
+  white-space: nowrap;
+}
+.status-published, .status-delivered { border-color: var(--color-success); color: var(--color-success); }
+.status-draft { color: var(--color-text-secondary); }
+.status-archived, .status-failed { border-color: var(--color-error); color: var(--color-error); }
+.status-pending { border-color: var(--color-status-busy); color: var(--color-status-busy); }
+
+.admin-editor {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-lg);
+  margin-bottom: var(--space-xl);
+  background: var(--color-surface);
+}
+.admin-editor h3 { margin-bottom: var(--space-md); }
+.admin-editor-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--space-lg);
+}
+.admin-editor-form label {
+  display: block;
+  font-size: var(--text-small);
+  font-weight: 600;
+  margin: var(--space-md) 0 var(--space-xs);
+}
+.admin-editor-form input,
+.admin-editor-form textarea,
+.admin-editor-form select {
+  width: 100%;
+  font-family: inherit;
+  font-size: var(--text-small);
+  color: var(--color-text);
+  background: var(--color-code-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-sm) var(--space-md);
+}
+.admin-editor-form textarea { resize: vertical; }
+.admin-editor-body { font-family: var(--font-mono); line-height: 1.6; }
+.admin-editor-actions { display: flex; flex-wrap: wrap; gap: var(--space-sm); margin-top: var(--space-md); }
+.admin-editor-preview { display: flex; flex-direction: column; min-width: 0; }
+.admin-editor-preview-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-md);
+  padding-bottom: var(--space-sm);
+  border-bottom: 1px solid var(--color-border);
+}
+.admin-preview-body {
+  max-height: 70vh;
+  overflow-y: auto;
+  padding-top: var(--space-md);
+  font-size: var(--text-small);
+}
+
+/* ---------- 13.1. Загрузка изображений в статью ---------- */
+/* Зона приёма файла: обёртка вокруг поля, поэтому рамка подсветки не съедает
+   место у самого поля. Оверлей — только подсказка, события мыши он пропускает
+   сквозь себя, иначе drop достался бы ему, а не текстарии. */
+.dropzone { position: relative; border-radius: var(--radius-sm); transition: box-shadow 120ms ease; }
+.dropzone-overlay {
+  position: absolute;
+  inset: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-md);
+  text-align: center;
+  font-size: var(--text-small);
+  font-weight: 600;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.72);
+  border: 2px dashed var(--color-primary);
+  border-radius: var(--radius-sm);
+  pointer-events: none;
+}
+.dropzone.is-dragover .dropzone-overlay { display: flex; }
+.dropzone.is-dragover { box-shadow: 0 0 0 3px var(--color-primary-soft); }
+.dropzone-slim .dropzone-overlay { font-size: var(--text-caption); padding: var(--space-sm); }
+
+.cover-preview {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  margin-top: var(--space-sm);
+}
+/* `display: flex` перебивает служебный `[hidden] { display: none }`, поэтому
+   скрытое превью без этой строки остаётся на экране пустой рамкой с кнопкой. */
+.cover-preview[hidden] { display: none; }
+.cover-preview img {
+  max-width: 180px;
+  max-height: 110px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border);
+}
+.btn:disabled { opacity: 0.55; cursor: progress; }
+
+/* ---------- 14. Reveal animation (progressive enhancement) ---------- */
+/* Скрытие здесь — это сокрытие контента: если класс `is-visible` не появится,
+   секция не видна вообще. Поэтому в initReveal() (assets/main.js) порог взят
+   по первому пикселю, а не по доле пересечения: доля недостижима для секции
+   выше десяти экранов, и длинная статья однажды уже пропала так целиком.
+   Страховка трёхуровневая: <noscript> в shell() для выключенного JS, эта
+   анимация-подстраховка на случай, когда main.js не выполнился вообще, и
+   try/catch внутри самого initReveal(). Живой JS снимает анимацию сам —
+   `animation` перебивает и transition, и класс `is-visible`. */
+@keyframes reveal-guard {
+  to { opacity: 1; transform: none; }
+}
+.section, .hero {
+  opacity: 0;
+  transform: translateY(8px);
+  transition: opacity 400ms ease, transform 400ms ease;
+  animation: reveal-guard 400ms ease 5s forwards;
+}
+.section.is-visible, .hero.is-visible { opacity: 1; transform: none; }
+
+/* ---------- 15. Responsive ---------- */
+@media (max-width: 767px) {
+  :root {
+    --text-h1: 2rem;   /* 32px */
+    --text-h2: 1.75rem;
+    --text-h3: 1.25rem;
+  }
+  /* --- Мобильная шапка: лого слева + бургер справа, одна строка.
+         Пункты меню и бейдж статуса переезжают в выпадающую панель,
+         поэтому шапка больше не разъезжается на 3 строки и не
+         перекрывает контент. --- */
+  .navbar { padding: 0 var(--space-md); }
+  .navbar-inner { height: var(--nav-height); padding: 0; gap: var(--space-md); }
+  .navbar-toggle { display: inline-flex; }
+  .navbar-menu {
+    display: none;
+    position: absolute;
+    top: calc(100% + var(--space-sm));
+    left: 0;
+    right: 0;
+    margin-left: 0;
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--space-md);
+    padding: var(--space-md);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    background: rgba(24, 21, 58, 0.96);
+    backdrop-filter: blur(12px) saturate(1.4);
+    -webkit-backdrop-filter: blur(12px) saturate(1.4);
+    box-shadow: var(--shadow-lg);
+  }
+  .navbar.is-menu-open .navbar-menu { display: flex; }
+  .navbar-links { flex-direction: column; gap: 0; margin-left: 0; }
+  .navbar-links a {
+    display: block;
+    padding: var(--space-sm);
+    font-size: var(--text-body);
+    border-radius: var(--radius-sm);
+  }
+  .navbar-links a:hover { background: rgba(255, 255, 255, 0.06); }
+  .navbar-menu .status-badge { align-self: flex-start; }
+  /* Иконка GitHub в выпадающей панели — по левому краю, как и бейдж. */
+  .navbar-menu .navbar-social-link { align-self: flex-start; }
+
+  /* Отступ от липкой шапки до контента: --nav-offset — это её низ. */
+  .hero { padding: calc(var(--nav-offset) + var(--space-lg)) var(--space-md) var(--space-2xl); }
+  .section { padding-top: calc(var(--nav-offset) + var(--space-2xl)); }
+
+  .status-badge { font-size: var(--text-caption); padding: 2px var(--space-sm); }
+  .hero-grid { grid-template-columns: 1fr; gap: var(--space-xl); }
+  .hero-content { max-width: 100%; }
+  .hero-eyebrow { font-size: 2rem; }
+  .code-window-body { font-size: 0.8rem; }
+  .terminal-window { max-height: 280px; }
+  .terminal-body { max-height: 140px; padding: var(--space-sm) 16px; }
+  .terminal-presets { gap: 4px; }
+  .terminal-preset-btn { font-size: var(--text-caption); padding: 3px 10px; }
+  /* Маскот на телефоне не показываем. Сверху над терминалом остаётся 24px
+     (низ липкой шапки → первый блок hero), а спрайту нужно 97px: он либо
+     прячется за «пилюлей» шапки, либо требует сдвинуть весь hero на ~90px
+     вниз — а это уводит кнопку «Задать вопрос» за границу экрана. Терять
+     лид ради картинки нельзя: на мобильном терминал остаётся чистым. */
+  .terminal-mascot { display: none; }
+  .cta-buttons { flex-direction: column; }
+  .cta-buttons .btn { width: 100%; }
+  .cards-grid, .cards-grid-2 { grid-template-columns: 1fr; }
+  .contact-grid { grid-template-columns: 1fr; }
+  .project-metrics { grid-template-columns: 1fr; }
+  /* Блок «Открытый код»: 4 плитки в 2 колонки, подписи мельче. */
+  .github-panel { padding: var(--space-lg); gap: var(--space-lg); }
+  /* «Открытый код» + «github.com/aigen31 →» в одну строку на 390px не
+     помещаются: заголовок рвался на «Открытый / код». Складываем шапку
+     секции в столбец — заголовок снова в одну строку. */
+  .section-github .section-head {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-xs);
+  }
+  .github-stats { grid-template-columns: repeat(2, 1fr); gap: var(--space-sm); }
+  .github-stat { padding: var(--space-md) var(--space-sm); }
+  .github-stat-value { font-size: 1.5rem; }
+  .github-stat-label { font-size: var(--text-caption); }
+  .github-avatar { width: 44px; height: 44px; }
+  .github-profile-name { font-size: var(--text-body); }
+  /* Световые пятна на мобильном — тише, чтобы не спорить с текстом. */
+  .section-glow::before,
+  .section-glow::after { opacity: 0.32; }
+
+  /* Блог: карточка становится одноколоночной, обложка — сверху. */
+  .post-card { grid-template-columns: 1fr; }
+  .post-card-cover { display: none; }
+  .post-card-title { font-size: 1.25rem; }
+  .post-footer { flex-direction: column; align-items: flex-start; }
+
+  /* Админка: редактор статьи — форма над предпросмотром. */
+  .admin-editor { padding: var(--space-md); }
+  .admin-editor-grid { grid-template-columns: 1fr; }
+  .admin-toolbar { flex-direction: column; align-items: stretch; }
+  .admin-preview-body { max-height: 50vh; }
+}
+
+/* === Планшет (768–1023px) ===
+   По ui-rules здесь ещё «full links visible», без бургера. Но при 768px
+   строка не влезает в «пилюлю» и бейдж статуса обрезается — поэтому
+   ужимаем отступы и кегль, сохраняя все ссылки в строке. */
+@media (min-width: 768px) and (max-width: 1023px) {
+  .navbar { padding: 0 var(--space-md); }
+  .navbar-inner { padding: 0; gap: var(--space-md); }
+  .navbar-menu { gap: var(--space-md); }
+  .navbar-links { gap: var(--space-md); }
+  .navbar-links a { font-size: var(--text-caption); }
+  .status-badge { font-size: var(--text-caption); padding: 2px var(--space-sm); }
+}
+
+/* ---------- 16. Reduced motion ---------- */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+  .section, .hero { opacity: 1; transform: none; }
+  html { scroll-behavior: auto; }
+}

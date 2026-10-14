@@ -75,7 +75,12 @@ CREATE TABLE IF NOT EXISTS articles (
     -- Готовность к кросспостингу: источник и внешний ключ идемпотентности.
     source TEXT NOT NULL DEFAULT 'admin' CHECK(source IN ('admin', 'n8n', 'import')),
     external_id TEXT,
-    canonical_url TEXT
+    canonical_url TEXT,
+    -- Ссылка «Читать на Хабр»: адрес этой же статьи на внешней площадке.
+    -- Отдельно от canonical_url: канонический адрес — технический сигнал
+    -- поисковику (он может указывать на любой источник), а это ссылка для
+    -- читателя, и показывается она, только когда её заполнили.
+    habr_url TEXT
 );
 
 -- Один и тот же внешний материал нельзя заимпортировать дважды: повторный
@@ -155,8 +160,31 @@ pub async fn init_pool(path: &str) -> AppResult<SqlitePool> {
     // CREATE TABLE IF NOT EXISTS не меняет уже созданные таблицы, поэтому
     // расширение CHECK-ограничения требует отдельной миграции.
     migrate_chats_question_type(&pool).await?;
+    migrate_articles_habr_url(&pool).await?;
 
     Ok(pool)
+}
+
+/// Добавляет `articles.habr_url` в БД, созданные до появления ссылки на Хабр.
+///
+/// `CREATE TABLE IF NOT EXISTS` существующую таблицу не трогает, а `ALTER TABLE
+/// ADD COLUMN` в SQLite не умеет `IF NOT EXISTS` — поэтому сначала смотрим
+/// `PRAGMA table_info`. Проверка идемпотентна: повторный запуск ничего не делает.
+async fn migrate_articles_habr_url(pool: &SqlitePool) -> AppResult<()> {
+    let columns: Vec<String> = sqlx::query_scalar("SELECT name FROM pragma_table_info('articles')")
+        .fetch_all(pool)
+        .await?;
+
+    if columns.iter().any(|name| name == "habr_url") {
+        return Ok(());
+    }
+
+    tracing::info!("миграция articles: добавляем колонку habr_url («Читать на Хабр»)");
+    sqlx::query("ALTER TABLE articles ADD COLUMN habr_url TEXT")
+        .execute(pool)
+        .await?;
+
+    Ok(())
 }
 
 /// Расширяет CHECK-ограничение `chats.question_type` значением `availability`.

@@ -728,7 +728,7 @@ pub fn page_meta(path: &str, site_url: &str, article: Option<&Article>) -> PageM
         ),
         "/contact" => PageMeta::new(
             format!("Контакты и заявка — {name}"),
-            "Telegram, email и форма заявки. Опишите проект: задача, сроки, бюджет — отвечу в течение 24 часов.".to_string(),
+            "Telegram, email и форма заявки. Опишите проект: задача, сроки, бюджет — отвечу при наличии свободного окна.".to_string(),
             absolute(base, "/contact"),
             OgType::Website,
             Some(default_og_image(base)),
@@ -901,6 +901,7 @@ mod tests {
             source: "admin".to_string(),
             external_id: None,
             canonical_url: None,
+            habr_url: None,
         }
     }
 

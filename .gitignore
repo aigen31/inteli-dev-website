@@ -14,6 +14,9 @@ config.toml
 
 # Build artifacts
 /target/
+# Отдельный каталог для проверок в контейнере (CARGO_TARGET_DIR), чтобы не
+# пересобирать зависимости заново и не мешать локальному /target.
+/target-check/
 node_modules/
 
 # Editor / OS noise

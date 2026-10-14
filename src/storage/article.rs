@@ -38,6 +38,8 @@ pub struct ArticleRow {
     pub source: String,
     pub external_id: Option<String>,
     pub canonical_url: Option<String>,
+    /// Адрес той же статьи на внешней площадке («Читать на Хабр»).
+    pub habr_url: Option<String>,
 }
 
 /// Данные для создания статьи. `id` и таймстемпы проставляет хранилище.
@@ -55,6 +57,7 @@ pub struct NewArticle {
     pub source: String,
     pub external_id: Option<String>,
     pub canonical_url: Option<String>,
+    pub habr_url: Option<String>,
 }
 
 /// Полная замена редактируемых полей статьи.
@@ -70,6 +73,7 @@ pub struct ArticlePatch {
     pub status: String,
     pub published_at: Option<String>,
     pub canonical_url: Option<String>,
+    pub habr_url: Option<String>,
 }
 
 /// Событие outbox в том виде, в каком оно лежит в БД.
@@ -107,8 +111,8 @@ where
     let result = sqlx::query(
         r#"INSERT INTO articles
            (slug, title, summary, body_markdown, cover_image_url, tags, status, published_at,
-            created_at, updated_at, source, external_id, canonical_url)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"#,
+            created_at, updated_at, source, external_id, canonical_url, habr_url)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"#,
     )
     .bind(&new.slug)
     .bind(&new.title)
@@ -123,6 +127,7 @@ where
     .bind(&new.source)
     .bind(&new.external_id)
     .bind(&new.canonical_url)
+    .bind(&new.habr_url)
     .execute(&mut *tx)
     .await
     .map_err(map_unique_violation)?;
@@ -154,7 +159,8 @@ where
     let result = sqlx::query(
         r#"UPDATE articles SET
              slug = ?, title = ?, summary = ?, body_markdown = ?, cover_image_url = ?,
-             tags = ?, status = ?, published_at = ?, updated_at = ?, canonical_url = ?
+             tags = ?, status = ?, published_at = ?, updated_at = ?, canonical_url = ?,
+             habr_url = ?
            WHERE id = ?"#,
     )
     .bind(&patch.slug)
@@ -167,6 +173,7 @@ where
     .bind(&patch.published_at)
     .bind(&now)
     .bind(&patch.canonical_url)
+    .bind(&patch.habr_url)
     .bind(id)
     .execute(&mut *tx)
     .await
@@ -200,7 +207,7 @@ where
 
     let row = sqlx::query_as::<_, ArticleRow>(
         "SELECT id, slug, title, summary, body_markdown, cover_image_url, tags, status,
-                published_at, created_at, updated_at, source, external_id, canonical_url
+                published_at, created_at, updated_at, source, external_id, canonical_url, habr_url
          FROM articles WHERE id = ?",
     )
     .bind(id)
@@ -233,7 +240,7 @@ where
 {
     sqlx::query_as::<_, ArticleRow>(
         "SELECT id, slug, title, summary, body_markdown, cover_image_url, tags, status,
-                published_at, created_at, updated_at, source, external_id, canonical_url
+                published_at, created_at, updated_at, source, external_id, canonical_url, habr_url
          FROM articles WHERE id = ?",
     )
     .bind(id)
@@ -251,7 +258,7 @@ pub async fn get(pool: &SqlitePool, id: i64) -> AppResult<ArticleRow> {
 pub async fn find(pool: &SqlitePool, id: i64) -> AppResult<Option<ArticleRow>> {
     sqlx::query_as::<_, ArticleRow>(
         "SELECT id, slug, title, summary, body_markdown, cover_image_url, tags, status,
-                published_at, created_at, updated_at, source, external_id, canonical_url
+                published_at, created_at, updated_at, source, external_id, canonical_url, habr_url
          FROM articles WHERE id = ?",
     )
     .bind(id)
@@ -264,7 +271,7 @@ pub async fn find(pool: &SqlitePool, id: i64) -> AppResult<Option<ArticleRow>> {
 pub async fn find_by_slug(pool: &SqlitePool, slug: &str) -> AppResult<Option<ArticleRow>> {
     sqlx::query_as::<_, ArticleRow>(
         "SELECT id, slug, title, summary, body_markdown, cover_image_url, tags, status,
-                published_at, created_at, updated_at, source, external_id, canonical_url
+                published_at, created_at, updated_at, source, external_id, canonical_url, habr_url
          FROM articles WHERE slug = ?",
     )
     .bind(slug)
@@ -281,7 +288,7 @@ pub async fn find_by_external(
 ) -> AppResult<Option<ArticleRow>> {
     sqlx::query_as::<_, ArticleRow>(
         "SELECT id, slug, title, summary, body_markdown, cover_image_url, tags, status,
-                published_at, created_at, updated_at, source, external_id, canonical_url
+                published_at, created_at, updated_at, source, external_id, canonical_url, habr_url
          FROM articles WHERE source = ? AND external_id = ?",
     )
     .bind(source)
@@ -303,13 +310,13 @@ pub async fn list(
     let sql = match status {
         Some(_) => {
             "SELECT id, slug, title, summary, body_markdown, cover_image_url, tags, status,
-                     published_at, created_at, updated_at, source, external_id, canonical_url
+                     published_at, created_at, updated_at, source, external_id, canonical_url, habr_url
               FROM articles WHERE status = ?
               ORDER BY updated_at DESC, id DESC LIMIT ? OFFSET ?"
         }
         None => {
             "SELECT id, slug, title, summary, body_markdown, cover_image_url, tags, status,
-                     published_at, created_at, updated_at, source, external_id, canonical_url
+                     published_at, created_at, updated_at, source, external_id, canonical_url, habr_url
               FROM articles ORDER BY updated_at DESC, id DESC LIMIT ? OFFSET ?"
         }
     };
@@ -335,7 +342,7 @@ pub async fn list(
 pub async fn list_published_full(pool: &SqlitePool) -> AppResult<Vec<ArticleRow>> {
     sqlx::query_as::<_, ArticleRow>(
         "SELECT id, slug, title, summary, body_markdown, cover_image_url, tags, status,
-                published_at, created_at, updated_at, source, external_id, canonical_url
+                published_at, created_at, updated_at, source, external_id, canonical_url, habr_url
          FROM articles WHERE status = 'published' AND published_at IS NOT NULL
          ORDER BY published_at DESC, id DESC",
     )
@@ -510,6 +517,7 @@ mod tests {
             source: "admin".into(),
             external_id: None,
             canonical_url: None,
+            habr_url: None,
         }
     }
 
@@ -524,6 +532,7 @@ mod tests {
             status: status.into(),
             published_at: None,
             canonical_url: None,
+            habr_url: None,
         }
     }
 

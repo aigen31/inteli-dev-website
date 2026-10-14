@@ -112,6 +112,8 @@ pub struct Article {
     pub source: String,
     pub external_id: Option<String>,
     pub canonical_url: Option<String>,
+    /// Ссылка «Читать на Хабр» — адрес статьи на внешней площадке.
+    pub habr_url: Option<String>,
 }
 
 /// Статья без тела — для списков, RSS и админ-таблицы.
@@ -204,6 +206,9 @@ pub struct ArticleInput {
     pub status: Option<ArticleStatus>,
     #[serde(default)]
     pub canonical_url: Option<String>,
+    /// Ссылка на ту же статью на Хабр — показывается в начале текста.
+    #[serde(default)]
+    pub habr_url: Option<String>,
 }
 
 /// Проверенный и нормализованный ввод — то, что уходит в хранилище.
@@ -217,6 +222,7 @@ struct Validated {
     tags: Vec<String>,
     status: ArticleStatus,
     canonical: Option<String>,
+    habr: Option<String>,
 }
 
 /// Снимок опубликованных статей в памяти процесса.
@@ -374,6 +380,7 @@ impl ArticleService {
                 source: "admin".to_string(),
                 external_id: None,
                 canonical_url: validated.canonical,
+                habr_url: validated.habr,
             },
             event_type.map(|event_type| {
                 (event_type, move |row: &repo::ArticleRow| {
@@ -433,6 +440,7 @@ impl ArticleService {
                 status: validated.status.as_str().to_string(),
                 published_at,
                 canonical_url: validated.canonical,
+                habr_url: validated.habr,
             },
             event_type.map(|event_type| {
                 (event_type, move |row: &repo::ArticleRow| {
@@ -465,6 +473,7 @@ impl ArticleService {
                 tags: existing.tags,
                 status: Some(status),
                 canonical_url: existing.canonical_url,
+                habr_url: existing.habr_url,
             },
         )
         .await
@@ -557,6 +566,7 @@ impl ArticleService {
         let tags = normalize_tags(input.tags)?;
         let cover = normalize_url(input.cover_image_url, "обложка")?;
         let canonical = normalize_url(input.canonical_url, "канонический адрес")?;
+        let habr = normalize_external_url(input.habr_url, "ссылка на Хабр")?;
 
         // Явно заданный slug уважаем как есть (нормализовав), иначе выводим из
         // заголовка — так админке не нужно придумывать транслит вручную.
@@ -591,6 +601,7 @@ impl ArticleService {
             tags,
             status: input.status.unwrap_or(default_status),
             canonical,
+            habr,
         })
     }
 
@@ -652,6 +663,9 @@ fn event_payload(public_url: &str, row: &repo::ArticleRow) -> String {
             "updated_at": row.updated_at,
             "reading_time_minutes": markdown::reading_time_minutes(&row.body_markdown),
             "canonical_url": row.canonical_url,
+            // Ссылка на внешнюю публикацию — читателю события (n8n) она нужна,
+            // чтобы не кросспостить материал обратно на ту же площадку.
+            "habr_url": row.habr_url,
         }
     });
     // Сериализация `serde_json::Value` в строку не может упасть.
@@ -701,6 +715,7 @@ fn row_to_article(row: &repo::ArticleRow) -> AppResult<Article> {
         source: row.source.clone(),
         external_id: row.external_id.clone(),
         canonical_url: row.canonical_url.clone(),
+        habr_url: row.habr_url.clone(),
     })
 }
 
@@ -765,6 +780,22 @@ fn normalize_url(value: Option<String>, field: &str) -> AppResult<Option<String>
     }
 
     Ok(Some(value))
+}
+
+/// Проверяет ссылку «Читать на Хабр».
+///
+/// Отличие от [`normalize_url`] одно: локальный путь здесь не имеет смысла.
+/// Ссылка ведёт на внешнюю площадку, поэтому `/blog/…` в этом поле — ошибка
+/// ввода, а не намерение, и лучше сказать об этом сразу, чем показать читателю
+/// ссылку на себя же.
+fn normalize_external_url(value: Option<String>, field: &str) -> AppResult<Option<String>> {
+    match normalize_url(value, field)? {
+        Some(url) if url.starts_with("https://") || url.starts_with("http://") => Ok(Some(url)),
+        Some(_) => Err(AppError::Validation(format!(
+            "{field}: нужен полный адрес http(s):// — ссылка ведёт на внешнюю площадку"
+        ))),
+        None => Ok(None),
+    }
 }
 
 /// Ограничивает `limit` разумными рамками.

@@ -492,6 +492,132 @@ async fn admin_with_token_returns_stats() {
 }
 
 // ---------------------------------------------------------------------------
+// Админка: настройки бейджа «Приём заявок»
+// ---------------------------------------------------------------------------
+
+/// Число проектов и ближайший слот правятся из админки — теми же правилами,
+/// что у Telegram-бота.
+///
+/// Проверяем и ответ, и то, что значение доехало до публичного статуса: форма
+/// админки и бейдж в шапке читают одно состояние, и «сохранилось, но нигде не
+/// видно» — ровно тот баг, который здесь ловится.
+#[tokio::test]
+async fn admin_can_change_the_availability_badge() {
+    // Контент инициализирует `test_state`, а замок публикует значения по
+    // умолчанию из него — до первой публикации брать их неоткуда.
+    let state = test_state().await;
+    let _guard = availability_lock();
+
+    let (unauthorized, _) = request(
+        &state,
+        "PATCH",
+        "/api/admin/settings",
+        Some(serde_json::json!({ "status": "busy" })),
+        None,
+    )
+    .await;
+    assert_eq!(unauthorized, StatusCode::UNAUTHORIZED);
+
+    let (status, body) = request(
+        &state,
+        "PATCH",
+        "/api/admin/settings",
+        Some(serde_json::json!({
+            "status": "busy",
+            "current_projects": 3,
+            "next_free_slot": "с 1 декабря",
+        })),
+        Some(ADMIN_TOKEN),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["status"], "busy");
+    assert_eq!(body["label"], "Приём заявок: ограничен");
+    assert_eq!(body["current_projects"], 3);
+    assert_eq!(body["next_free_slot"], "с 1 декабря");
+    // Строки подсказки — готовые, с падежом: админка их не склеивает сама.
+    assert_eq!(body["facts"][0], "В работе 3 проекта");
+    assert_eq!(body["facts"][1], "Ближайший слот: с 1 декабря");
+    assert!(
+        body["aria_label"]
+            .as_str()
+            .unwrap()
+            .contains("Приём заявок: ограничен"),
+        "aria-label бейджа: {}",
+        body["aria_label"]
+    );
+
+    // GET отдаёт то же самое — форма админки не живёт своей копией состояния.
+    let (status, got) = request(
+        &state,
+        "GET",
+        "/api/admin/settings",
+        None,
+        Some(ADMIN_TOKEN),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(got["current_projects"], 3);
+    assert_eq!(got["next_free_slot"], "с 1 декабря");
+
+    // Публичный статус и бейдж в разметке читают то же состояние.
+    let (_, public) = request(&state, "GET", "/api/status", None, None).await;
+    assert_eq!(public["current_projects"], 3);
+    assert_eq!(public["label"], "Приём заявок: ограничен");
+
+    let (_, _, html) = get_page(&state, "/").await;
+    assert!(
+        html.contains("В работе 3 проекта"),
+        "подсказка бейджа не обновилась после правки из админки"
+    );
+}
+
+/// Значения за границами отклоняются с понятной причиной и не меняют состояние.
+#[tokio::test]
+async fn admin_settings_reject_out_of_range_values() {
+    let state = test_state().await;
+    let _guard = availability_lock();
+
+    let cases = [
+        (serde_json::json!({ "current_projects": 1000 }), "проектов"),
+        (serde_json::json!({ "current_projects": -1 }), "проектов"),
+        (serde_json::json!({ "next_free_slot": "   " }), "Слот"),
+        (serde_json::json!({ "status": "vacation" }), "статус"),
+        (serde_json::json!({}), "не передано"),
+    ];
+
+    for (body, expected) in cases {
+        let (status, answer) = request(
+            &state,
+            "PATCH",
+            "/api/admin/settings",
+            Some(body.clone()),
+            Some(ADMIN_TOKEN),
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{body}: {answer}");
+
+        let reason = answer["error"].as_str().unwrap_or_default();
+        assert!(
+            reason.to_lowercase().contains(&expected.to_lowercase()),
+            "{body}: причина отказа непонятна — «{reason}»"
+        );
+    }
+
+    // Ни одна отклонённая правка не должна была изменить состояние.
+    let (_, got) = request(
+        &state,
+        "GET",
+        "/api/admin/settings",
+        None,
+        Some(ADMIN_TOKEN),
+    )
+    .await;
+    assert_eq!(got["status"], "available");
+    assert_eq!(got["current_projects"], 2);
+}
+
+// ---------------------------------------------------------------------------
 // Бот настроек сайта
 // ---------------------------------------------------------------------------
 
@@ -1638,6 +1764,295 @@ fn ssr_router(state: &AppState) -> axum::Router {
         .with_state(state.clone())
 }
 
+/// Открывающий тег, внутри которого встречается `needle`.
+///
+/// Порядок атрибутов задаёт Leptos (а не разметка), поэтому тег ищется по
+/// устойчивому признаку — значению `id` или `aria-label`.
+fn tag_with<'a>(html: &'a str, needle: &str) -> &'a str {
+    let at = html
+        .find(needle)
+        .unwrap_or_else(|| panic!("в разметке нет «{needle}»"));
+    let start = html[..at].rfind('<').expect("начало тега");
+    let end = html[at..].find('>').expect("конец тега") + at;
+    &html[start..=end]
+}
+
+/// Ссылка на профиль Habr стоит в шапке рядом с GitHub.
+///
+/// Знак Habr — отдельный файл: официальная фигура весит ~16 КБ, и в разметке
+/// каждой страницы она удваивала бы вес документа. Тест держит обе части:
+/// ссылку в шапке и сам ресурс с годовым кэшем.
+#[tokio::test]
+async fn footer_links_to_the_habr_profile_next_to_github() {
+    let _guard = seo_lock();
+    let state = test_state().await;
+
+    // Профили переехали из шапки в подвал: в шапке они спорили за место с
+    // навигацией. Проверяем и переезд, и сами ссылки — обе части иначе легко
+    // разъедутся при следующей правке вёрстки.
+    for path in ["/", "/contact", "/blog"] {
+        let (status, _, html) = get_page(&state, path).await;
+        assert_eq!(status, StatusCode::OK, "{path}");
+
+        let header = between(&html, "<header", "</header>").expect("шапка");
+        assert!(
+            !header.contains("Профиль на Habr") && !header.contains("social-link"),
+            "{path}: социальные кнопки всё ещё в шапке"
+        );
+
+        let footer = between(&html, "<footer", "</footer>").expect("подвал");
+        assert!(
+            footer.contains("Профиль на Habr"),
+            "{path}: в подвале нет ссылки на Habr"
+        );
+    }
+
+    let (_, _, html) = get_page(&state, "/").await;
+    let habr = tag_with(&html, "aria-label=\"Профиль на Habr\"");
+    assert!(
+        habr.contains("href=\"https://habr.com/ru/users/intelidev/\""),
+        "ссылка на Habr ведёт не туда: {habr}"
+    );
+    assert!(habr.contains("rel=\"me"), "профиль не подтверждён rel=me: {habr}");
+    assert!(
+        habr.contains("target=\"_blank\""),
+        "внешняя ссылка должна открываться в новой вкладке: {habr}"
+    );
+    // Знак — дочерний `<img>`: адрес ресурса не атрибут ссылки, а её
+    // содержимое, поэтому ищем тег картинки, а не тег ссылки.
+    let icon = tag_with(&html, "class=\"social-icon\"");
+    assert!(
+        icon.contains(&format!(
+            "/assets/habr.svg?v={}",
+            inteli_dev::api::assets::version()
+        )),
+        "знак Habr подключается без версии — файл закэшируется на час: {icon}"
+    );
+    assert!(
+        icon.contains("alt=\"\""),
+        "знак декоративный: имя ссылки задаёт aria-label, а не картинка: {icon}"
+    );
+
+    // Обе кнопки — один блок: GitHub рендерится, только когда логин задан в
+    // конфиге, поэтому проверяем место блока, а не наличие второй ссылки.
+    let footer = between(&html, "<footer", "</footer>").expect("подвал");
+    assert!(
+        footer.contains("footer-social"),
+        "кнопки профилей потеряли общий блок: {footer:.200}"
+    );
+
+    let version = inteli_dev::api::assets::version();
+    let (status, headers, body) = get_page(&state, &format!("/assets/habr.svg?v={version}")).await;
+    assert_eq!(status, StatusCode::OK, "знак Habr не отдался");
+    assert_eq!(headers[header::CONTENT_TYPE], "image/svg+xml");
+    assert!(
+        headers[header::CACHE_CONTROL]
+            .to_str()
+            .unwrap()
+            .contains("immutable"),
+        "версионированный знак должен кэшироваться надолго"
+    );
+    assert!(body.contains("<svg"), "по адресу знака не SVG: {body:.60}");
+}
+
+/// Знак «</>» убран из hero, а мягкая рамка ответа заменила обещание «24 часа».
+///
+/// Обе проверки текстовые и намеренно широкие: это формулировки, которые легко
+/// вернуть копипастой из старой разметки, и заметить это должен тест, а не
+/// владелец в чужом письме.
+#[tokio::test]
+async fn hero_has_no_code_eyebrow_and_no_reply_deadline() {
+    let _guard = seo_lock();
+    let state = test_state().await;
+
+    for path in ["/", "/chat", "/contact", "/blog"] {
+        let (status, _, html) = get_page(&state, path).await;
+        assert_eq!(status, StatusCode::OK, "{path}");
+
+        assert!(
+            !html.contains("hero-eyebrow"),
+            "{path}: знак «</>» вернулся в hero"
+        );
+        let lowered = html.to_lowercase();
+        for deadline in ["24 час", "в течение 24", "24 часа"] {
+            assert!(
+                !lowered.contains(deadline),
+                "{path}: обещание ответить за {deadline} вернулось в текст страницы"
+            );
+        }
+    }
+
+    // Рамка ответа на месте: срок снят, а не просто вычеркнут.
+    let (_, _, home) = get_page(&state, "/").await;
+    assert!(
+        home.contains("при наличии свободного окна"),
+        "на главной пропала формулировка о том, когда будет ответ"
+    );
+}
+
+/// Плавающий чат: кнопка в правом нижнем углу и закрытая панель к ней.
+///
+/// Панель приходит в разметке с `hidden`: без JavaScript её открывать нечем, а
+/// собранная из JS панель не существовала бы вовсе, если скрипт не доехал.
+#[tokio::test]
+async fn every_page_except_chat_carries_the_floating_chat() {
+    let _guard = seo_lock();
+    let _articles = articles_lock();
+    let state = test_state().await;
+
+    let article = create_article(&state, "Статья с плавающим чатом", "published").await;
+    let slug = article["slug"].as_str().unwrap();
+
+    // Кнопка нужна на каждой странице: из блога и с карточки услуги человек
+    // должен уметь спросить, не возвращаясь на главную.
+    for path in [
+        "/",
+        "/services",
+        "/projects",
+        "/blog",
+        &format!("/blog/{slug}"),
+        "/contact",
+    ] {
+        let (status, _, html) = get_page(&state, path).await;
+        assert_eq!(status, StatusCode::OK, "{path}");
+        assert!(
+            html.contains("id=\"chat-fab\""),
+            "{path}: нет плавающей кнопки чата"
+        );
+    }
+
+    let (_, _, html) = get_page(&state, "/").await;
+
+    let wrapper = tag_with(&html, "id=\"chat-fab\"");
+    assert!(
+        wrapper.contains("hidden"),
+        "контейнер плавающего чата виден до решения скрипта: {wrapper}"
+    );
+
+    let toggle = tag_with(&html, "id=\"chat-fab-toggle\"");
+    assert!(toggle.contains("aria-controls=\"chat-fab-panel\""), "{toggle}");
+    assert!(toggle.contains("aria-expanded=\"false\""), "{toggle}");
+    assert!(
+        toggle.contains("aria-label=\"Открыть чат\""),
+        "у круглой кнопки нет доступного имени: {toggle}"
+    );
+    assert!(
+        between(&html, "id=\"chat-fab-toggle\"", "</button>")
+            .unwrap_or_default()
+            .contains("<svg"),
+        "у кнопки плавающего чата нет иконки — кнопка читается как безымянный круг"
+    );
+
+    let panel = tag_with(&html, "id=\"chat-fab-panel\"");
+    assert!(panel.contains("hidden"), "панель должна быть закрыта: {panel}");
+
+    // Компактный чат — обычными пузырями, а не вторым терминалом.
+    assert!(html.contains("id=\"chat-fab-messages\""), "нет ленты сообщений");
+    assert!(html.contains("id=\"chat-fab-input\""), "нет поля ввода");
+    assert!(
+        html.contains("chat-fab-preset"),
+        "в компактной панели нет кнопок-подсказок"
+    );
+
+    // Исключение одно — сама страница чата: там диалог занимает весь экран, и
+    // вторая кнопка «Спросить» дублировала бы поле ввода под ней.
+    let (_, _, chat) = get_page(&state, "/chat").await;
+    assert!(
+        !chat.contains("id=\"chat-fab\""),
+        "на /chat плавающая кнопка дублирует сам чат"
+    );
+}
+
+/// Ссылка «Читать на Хабр» — в начале текста и только когда адрес заполнен.
+#[tokio::test]
+async fn habr_link_leads_the_body_of_a_crossposted_article() {
+    let _guard = articles_lock();
+    let state = test_state().await;
+
+    let (status, article) = request(
+        &state,
+        "POST",
+        "/api/admin/articles",
+        Some(serde_json::json!({
+            "title": "Кросспост на Хабр",
+            "summary": "Кратко",
+            "body_markdown": "# Заголовок\n\nТекст статьи.",
+            "tags": ["rust"],
+            "status": "published",
+            "habr_url": "https://habr.com/ru/articles/123456/",
+        })),
+        Some(ADMIN_TOKEN),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{article}");
+    assert_eq!(article["habr_url"], "https://habr.com/ru/articles/123456/");
+
+    let slug = article["slug"].as_str().unwrap();
+    let (status, _, html) = get_page(&state, &format!("/blog/{slug}")).await;
+    assert_eq!(status, StatusCode::OK);
+
+    let link = tag_with(&html, "href=\"https://habr.com/ru/articles/123456/\"");
+    assert!(
+        link.contains("class=\"post-crosspost-link\""),
+        "ссылка на внешнюю публикацию потеряла свой класс: {link}"
+    );
+    assert!(link.contains("rel=\"noopener"), "внешняя ссылка без noopener: {link}");
+    assert!(
+        link.contains("target=\"_blank\""),
+        "внешняя ссылка должна открываться в новой вкладке: {link}"
+    );
+
+    // Ссылка стоит до текста статьи, а не в подвале: её видно до чтения.
+    let link_at = html.find("Читать на Хабр").unwrap();
+    let body_at = html.find("Текст статьи.").unwrap();
+    assert!(
+        link_at < body_at,
+        "ссылка на Хабр стоит после текста: {link_at} против {body_at}"
+    );
+
+    // Статья без внешней публикации блока не показывает.
+    let (_, plain) = request(
+        &state,
+        "POST",
+        "/api/admin/articles",
+        Some(serde_json::json!({
+            "title": "Обычная статья",
+            "summary": "Кратко",
+            "body_markdown": "Текст без кросспоста.",
+            "tags": [],
+            "status": "published",
+        })),
+        Some(ADMIN_TOKEN),
+    )
+    .await;
+    let plain_slug = plain["slug"].as_str().unwrap();
+    let (_, _, html) = get_page(&state, &format!("/blog/{plain_slug}")).await;
+    assert!(
+        !html.contains("Читать на Хабр"),
+        "блок «Читать на Хабр» показывается без ссылки"
+    );
+
+    // Локальный путь в этом поле — ошибка ввода: ссылка ведёт на внешнюю
+    // площадку, и «/blog/…» покажет читателю ссылку на себя же.
+    let (status, answer) = request(
+        &state,
+        "POST",
+        "/api/admin/articles",
+        Some(serde_json::json!({
+            "title": "Кривая ссылка",
+            "body_markdown": "Текст.",
+            "habr_url": "/blog/self",
+        })),
+        Some(ADMIN_TOKEN),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "{answer}");
+    assert!(
+        answer["error"].as_str().unwrap_or_default().contains("http"),
+        "причина отказа непонятна: {answer}"
+    );
+}
+
 /// GET страницы: статус, заголовки ответа и HTML.
 async fn get_page(
     state: &AppState,
@@ -2036,4 +2451,135 @@ async fn embedded_assets_are_versioned_and_cached() {
     assert_eq!(headers[header::CONTENT_TYPE], "image/png");
 }
 
+/// Маскот: пять кадров-эмоций — настоящий пиксель-арт, а не картинка «под пиксели».
+///
+/// Тест сторожит три вещи, которые легко разъедутся при замене файлов:
+/// размеры в разметке совпадают с размерами PNG (иначе браузер резервирует не
+/// тот прямоугольник и терминал прыгает при загрузке), кадры подключены ровно
+/// один раз — в hero-секции, и чужой эмоции на сайте нет: неизвестное имя
+/// отдаёт 404, а не чужую картинку.
+#[tokio::test]
+async fn mascot_emotions_are_sized_pngs_and_live_only_in_the_hero() {
+    use inteli_dev::api::assets::{MASCOT_FRAMES, MASCOT_HEIGHT, MASCOT_WIDTH};
 
+    let _guard = seo_lock();
+    let state = test_state().await;
+    let version = inteli_dev::api::assets::version();
+
+    let (_, _, html) = get_page(&state, "/").await;
+    assert_eq!(
+        html.matches("terminal-mascot").count(),
+        1,
+        "маскот должен быть подключён один раз — в hero-секции"
+    );
+    assert_eq!(
+        html.matches("mascot-frame").count(),
+        MASCOT_FRAMES.len(),
+        "в разметке должен быть ровно один тег на каждую эмоцию"
+    );
+    assert!(
+        html.contains("data-emotion=\"base\""),
+        "маскот обязан начинать с базовой эмоции — иначе на первой отрисовке \
+         видна случайная реакция"
+    );
+
+    for frame in MASCOT_FRAMES {
+        let path = inteli_dev::api::assets::mascot_path(frame.emotion);
+
+        // PNG с версией в адресе кэшируется надолго, без версии — на час.
+        let (status, headers, _) = get_page(&state, &format!("{path}?v={version}")).await;
+        assert_eq!(status, StatusCode::OK, "кадр {path} не отдался");
+        assert_eq!(headers[header::CONTENT_TYPE], "image/png");
+        assert!(
+            headers[header::CACHE_CONTROL]
+                .to_str()
+                .unwrap()
+                .contains("immutable"),
+            "версионированный кадр {path} должен кэшироваться надолго"
+        );
+
+        let (_, headers, _) = get_page(&state, &path).await;
+        assert!(headers[header::CACHE_CONTROL]
+            .to_str()
+            .unwrap()
+            .contains("max-age=3600"));
+
+        // IHDR встроенного PNG: 8 байт сигнатуры, 4 длины, 4 типа, ширина, высота.
+        let png = frame.image;
+        assert_eq!(&png[..8], b"\x89PNG\r\n\x1a\n", "кадр обязан быть PNG");
+        let width = u32::from_be_bytes(png[16..20].try_into().unwrap());
+        let height = u32::from_be_bytes(png[20..24].try_into().unwrap());
+        assert_eq!(
+            (width, height),
+            (MASCOT_WIDTH, MASCOT_HEIGHT),
+            "кадр {path} не совпал с холстом маскота: все кадры обязаны быть \
+             одного размера, иначе при смене эмоции ведьма прыгает"
+        );
+
+        // Порядок атрибутов задаёт Leptos, а не разметка: `class` уезжает в
+        // конец тега, поэтому границы ищем по адресу кадра, а не по классу.
+        let at = html
+            .find(&format!("src=\"{path}?v={version}\""))
+            .unwrap_or_else(|| panic!("в разметке нет кадра {path}"));
+        let start = html[..at].rfind("<img").expect("тег img маскота");
+        let end = html[at..].find('>').expect("закрытие тега img") + at;
+        let tag = &html[start..=end];
+        assert!(
+            tag.contains(&format!("data-emotion=\"{}\"", frame.emotion)),
+            "кадр {path} в разметке не помечен своей эмоцией: {tag}"
+        );
+        assert!(
+            tag.contains(&format!("width=\"{width}\" height=\"{height}\"")),
+            "размеры кадра {path} в разметке не совпали с PNG {width}×{height}: {tag}"
+        );
+        assert!(
+            tag.contains("alt=\"\""),
+            "кадр декоративный — у него пустой alt: {tag}"
+        );
+    }
+
+    // Контейнер прячет всю стопку от скринридера целиком.
+    let at = html.find("terminal-mascot").expect("маскот в разметке");
+    let start = html[..at].rfind("<div").expect("контейнер маскота");
+    let end = html[at..].find('>').expect("закрытие тега div") + at;
+    assert!(
+        html[start..=end].contains("aria-hidden=\"true\""),
+        "маскот декоративный: кадры прячутся от скринридера на контейнере"
+    );
+
+    // Маскот сидит внутри терминала, на черте строки ввода: это его место в
+    // композиции, а не деталь оформления. Если он окажется снаружи окна, он
+    // снова начнёт висеть над ним или в пустоте между колонками hero.
+    let input_row_at = html
+        .find("id=\"hero-terminal-input-row\"")
+        .expect("строка ввода терминала");
+    let content_at = html.find("hero-content").expect("колонка описания");
+    assert!(
+        input_row_at < at && at < content_at,
+        "маскот обязан быть внутри строки ввода терминала: \
+         строка ввода на {input_row_at}, маскот на {at}, описание на {content_at}"
+    );
+
+    // И именно на границе «лента сообщений — поле ввода»: кадр стоит после
+    // области сообщений, но до подсказки о лимитах, то есть между ними.
+    let output_at = html
+        .find("id=\"hero-terminal-output\"")
+        .expect("лента сообщений");
+    let hint_at = html.find("id=\"hero-terminal-hint\"").expect("подсказка");
+    assert!(
+        output_at < at && at < hint_at,
+        "маскот должен стоять между лентой сообщений и подсказкой: \
+         лента на {output_at}, маскот на {at}, подсказка на {hint_at}"
+    );
+
+    // Неизвестная эмоция — 404: имя приходит из разметки, и опечатка должна
+    // быть видна сразу, а не превращаться в чужую картинку на главной.
+    for unknown in ["/assets/mascot/smug.png", "/assets/mascot/base"] {
+        let (status, _, _) = get_page(&state, unknown).await;
+        assert_eq!(status, StatusCode::NOT_FOUND, "{unknown} должен отдавать 404");
+    }
+
+    // На других страницах маскота нет — он часть hero главной, не шаблона.
+    let (_, _, chat) = get_page(&state, "/chat").await;
+    assert!(!chat.contains("terminal-mascot"));
+}

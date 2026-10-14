@@ -185,10 +185,9 @@ pub fn fallback_content() -> SiteContent {
                 "Приватные AI-системы".to_string(),
                 "Локальный инференс (Qwen 3.6/3.8)".to_string(),
                 "MCP-серверы и AI Skills".to_string(),
-                "Голосовые ассистенты".to_string(),
-                "Fullstack PHP + JS".to_string(),
+                "Разработка под ключ".to_string(),
                 "Docker & DevOps".to_string(),
-                "ComfyUI Mass Production".to_string(),
+                "Генерация изображений".to_string(),
             ],
             contacts: Contacts {
                 email: "contact@inteli-dev.ru".to_string(),

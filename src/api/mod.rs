@@ -61,6 +61,11 @@ pub fn routes(seo: &SeoConfig) -> Router<AppState> {
         .route("/api/admin/leads", get(handlers::admin_leads))
         .route("/api/admin/chats", get(handlers::admin_chats))
         .route("/api/admin/leads/:id", patch(handlers::admin_update_lead))
+        // Настройки сайта: статус «Приём заявок», число проектов и слот.
+        .route(
+            "/api/admin/settings",
+            get(handlers::admin_settings).patch(handlers::admin_update_settings),
+        )
         // Статьи блога (админка).
         .route(
             "/api/admin/articles",
@@ -96,6 +101,8 @@ pub fn routes(seo: &SeoConfig) -> Router<AppState> {
         // Static assets (embedded)
         .route("/assets/style.css", get(handlers::style_css))
         .route("/assets/main.js", get(handlers::main_js))
+        .route("/assets/habr.svg", get(handlers::habr_icon))
+        .route("/assets/mascot/:file", get(handlers::mascot_image))
         .route("/media/:name", get(handlers::media_file))
         .route("/robots.txt", get(handlers::robots))
         .route("/manifest.json", get(handlers::manifest))

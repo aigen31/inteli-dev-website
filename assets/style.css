@@ -12,6 +12,12 @@
   --color-surface-2: #1b1845;
   --color-code-bg: #191536;
   --color-code-bar: rgba(255, 255, 255, 0.04);
+  /* Подвал AI-терминала: подложка чуть светлее ленты сообщений и более
+     заметная кромка между ними. Разница намеренно маленькая: 4–5% белого —
+     этого хватает, чтобы горизонт читался как поверхность, и мало, чтобы
+     подвал выглядел отдельной панелью. */
+  --color-terminal-footer: rgba(255, 255, 255, 0.045);
+  --color-terminal-ledge: rgba(255, 255, 255, 0.18);
   --color-border: rgba(255, 255, 255, 0.12);
   --color-border-strong: rgba(255, 255, 255, 0.22);
 
@@ -83,6 +89,10 @@
      уезжал под неё на мобильном, где шапка выше. */
   --nav-inset: var(--space-md);
   --nav-offset: calc(var(--nav-inset) + var(--nav-height));
+  /* Воздух между шапкой и первым экраном hero (терминал и CTA). Отдельная
+     переменная, потому что это композиционный зазор, а не отступ секции: его
+     подбирают глазами и меняют в одном месте. */
+  --hero-top-gap: var(--space-2xl);
   --transition-fast: 180ms ease;
 }
 
@@ -232,8 +242,8 @@ ul { margin: 0; padding: 0; list-style: none; }
 }
 .navbar-brand:hover { text-decoration: none; }
 
-/* Меню. На десктопе — строка, прижатая вправо; на мобильном превращается
-   в выпадающую панель под «пилюлей» (см. media query ниже). */
+/* Меню. На десктопе — строка по центру «пилюли» (см. сетку ниже), на мобильном
+   превращается в выпадающую панель под «пилюлей» (см. media query ниже). */
 .navbar-menu {
   display: flex;
   align-items: center;
@@ -251,30 +261,23 @@ ul { margin: 0; padding: 0; list-style: none; }
 }
 .navbar-links a:hover { color: #fff; text-decoration: none; }
 
-/* Ссылка на профиль GitHub в шапке. Круглая «кнопка» того же веса, что и
-   бургер: иконка-логотип без рамки в строке навигации теряется. */
-.navbar-social-link {
-  display: inline-flex;
-  flex: 0 0 auto;
-  align-items: center;
-  justify-content: center;
-  width: 36px;
-  height: 36px;
-  border-radius: 999px;
-  border: 1px solid var(--color-border);
-  background: rgba(255, 255, 255, 0.04);
-  color: var(--color-text-secondary);
-  font-size: 1.05rem;
-  transition: color var(--transition-fast), border-color var(--transition-fast),
-    background var(--transition-fast);
+/* Десктоп: три ячейки — имя слева, ссылки по центру «пилюли», статус справа.
+   Сетка вместо `margin-left: auto` именно потому, что центр нужен
+   арифметический: боковые колонки — равные `1fr`, поэтому средняя стоит ровно
+   посередине независимо от ширины имени и бейджа. Обёртка меню при этом не
+   создаёт бокс (`display: contents`) — её ссылки и бейдж становятся прямыми
+   ячейками сетки. На мобильном обёртка снова становится выпадающей панелью
+   (см. media query ниже), поэтому `display: contents` живёт только здесь. */
+@media (min-width: 768px) {
+  .navbar-inner {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+  }
+  .navbar-menu { display: contents; }
+  .navbar-brand { grid-column: 1; justify-self: start; }
+  .navbar-links { grid-column: 2; justify-self: center; }
+  .navbar .status-badge { grid-column: 3; justify-self: end; }
 }
-.navbar-social-link:hover {
-  color: #fff;
-  border-color: var(--color-border-strong);
-  background: rgba(255, 255, 255, 0.1);
-  text-decoration: none;
-}
-.navbar-social-link svg { display: block; }
 
 /* Бургер — скрыт на десктопе, показывается только на мобильном. */
 .navbar-toggle {
@@ -416,8 +419,10 @@ ul { margin: 0; padding: 0; list-style: none; }
   overflow: hidden; /* строго ограничивает canvas и blobs внутри hero — gradient overlay не вылезает на следующую секцию */
   z-index: 0; /* stacking context для детей с позиционированием */
   /* Верхний отступ считается от низа липкой шапки (--nav-offset), иначе
-     первый блок hero уезжает под «пилюлю». */
-  padding: calc(var(--nav-offset) + var(--space-md)) var(--space-lg) 280px;
+     первый блок hero уезжает под «пилюлю». Сверх этого — воздух
+     `--hero-top-gap`: между шапкой и первым экраном (терминал и CTA) должен
+     быть видимый зазор, иначе они читаются как продолжение шапки. */
+  padding: calc(var(--nav-offset) + var(--hero-top-gap)) var(--space-lg) 280px;
   scroll-margin-top: var(--nav-offset);
 }
 /* Интерактивная геометрическая сетка — фон под контентом hero. Растянута немного вниз для зоны затухания. */
@@ -440,7 +445,10 @@ ul { margin: 0; padding: 0; list-style: none; }
   gap: var(--space-2xl);
   align-items: center;
   position: relative;
-  z-index: 1;
+  /* Выше canvas (у него z-index 2). Сетка на canvas — фон, но она рисовалась
+     поверх контента hero и просвечивала сквозь терминал: он выглядел
+     полупрозрачным, хотя у него непрозрачный фон. Контент всегда выше фона. */
+  z-index: 3;
 }
 
 /* ---------- Свечения по мотиву deepseek.com/harness/en/ ---------- */
@@ -505,15 +513,6 @@ ul { margin: 0; padding: 0; list-style: none; }
 /* ---------- Hero content ---------- */
 .hero-content { max-width: 560px; }
 .hero-content h1 { margin-bottom: var(--space-sm); }
-.hero-eyebrow {
-  display: inline-block;
-  font-family: var(--font-mono);
-  font-size: 2.5rem;
-  line-height: 1;
-  color: var(--color-text-secondary);
-  letter-spacing: var(--space-xs);
-  margin-bottom: var(--space-md);
-}
 .subtitle {
   color: var(--color-text-secondary);
   font-size: var(--text-h3);
@@ -602,8 +601,19 @@ ul { margin: 0; padding: 0; list-style: none; }
   font-family: var(--font-mono);
   display: flex;
   flex-direction: column;
-  max-height: 340px;
+  /* Высоту окна не ограничиваем: единственная прокручиваемая область — лента
+     сообщений (`.terminal-body`, максимум 180px). Всё, что ниже неё — строка
+     ввода, подсказка и кнопки, — должно быть видно целиком. Пока окно стояло
+     на `max-height: 340px`, эти три ряда в сумме не помещались, и нижний ряд с
+     кнопками срезался `overflow: hidden`. */
   position: relative;
+  /* Ширина кадра маскота (см. §7d). Переменная живёт на окне, а не на самом
+     маскоте: от неё считается ещё и правое поле ленты сообщений — текст не
+     должен уезжать под ведьму.
+     --mascot-k — тот же размер в долях от холста: им масштабируется тень,
+     чтобы на 96px она не выглядела такой же длинной, как на 144px. */
+  --mascot-w: 144px;
+  --mascot-k: 1;
 }
 
 .terminal-bar {
@@ -625,10 +635,17 @@ ul { margin: 0; padding: 0; list-style: none; }
   flex: 1;
   overflow-y: auto;
   padding: var(--space-md) 22px;
+  /* Правое поле — под маскота: он сидит ниже, на черте строки ввода, и его
+     тело поднимается в ленту сообщений. Без запаса последние строки ответа
+     уходили бы под ведьму. */
+  padding-right: calc(var(--mascot-w) * 0.9 + var(--space-md));
   font-size: 0.85rem;
   line-height: 1.6;
   max-height: 180px;
-  min-height: 100px;
+  /* Лента держит полную высоту и в пустом состоянии: иначе окно подрастает на
+     первом же ответе и hero прыгает, а маскот успевает упереться шляпой в
+     верхнюю грань окна (выше черты ему нужно 0,8 своей высоты). */
+  min-height: 180px;
 }
 
 /* Стилизованная прокрутка для terminal-body */
@@ -677,13 +694,16 @@ ul { margin: 0; padding: 0; list-style: none; }
   border-left: 2px solid var(--color-primary-soft);
 }
 
-/* Строка ввода */
+/* Строка ввода.
+   Горизонтальной черты сверху здесь больше нет: она переехала на подвал целиком
+   (`.terminal-footer`, §7c) — черта принадлежит границе «лента — подвал», а не
+   одной строке ввода. Строка остаётся опорой для маскота (`position: relative`
+   ниже, в §7d). */
 .terminal-input-line {
   display: flex;
   align-items: center;
   gap: var(--space-sm);
   padding: var(--space-sm) 22px var(--space-md);
-  border-top: 1px solid var(--color-border);
 }
 
 .terminal-prompt {
@@ -772,6 +792,155 @@ ul { margin: 0; padding: 0; list-style: none; }
   border-color: var(--color-primary);
   color: #fff;
   transform: translateY(-1px);
+}
+
+/* ---------- 7c. Подвал терминала: поверхность, на которой сидит маскот ---------- */
+/* Лента сообщений остаётся на фоне окна, а подвал — строка ввода, подсказка о
+   лимитах и кнопки — лежит на своей, чуть более светлой подложке. Зачем:
+   1. глубина. Без неё окно — плоская тёмная плашка, а маскот висит в ней
+      картинкой; с ней у окна появляется «пол» и «стена»;
+   2. посадка. Маскот сидит на верхней кромке подвала, и кромка должна быть
+      видна как кромка: подложка светлее ленты, граница — заметнее обычной
+      рамки (--color-terminal-ledge против --color-border).
+   Контраст держим маленьким (4–5% белого): подвал не должен читаться как
+   отдельная панель или как активное состояние строки ввода. */
+.terminal-footer {
+  position: relative;
+  background: var(--color-terminal-footer);
+  border-top: 1px solid var(--color-terminal-ledge);
+}
+
+/* ---------- 7d. Маскот: ведьма Кики сидит на кромке подвала ---------- */
+/* Кадры — пиксель-арт 144×192 (assets/mascot/*.png), по кадру на эмоцию.
+   Ведьма сидит внутри терминала на верхней кромке подвала — это граница между
+   лентой сообщений («описанием») и полем «Задайте вопрос...» (`border-top` у
+   `.terminal-footer`, §7c). Поэтому маскот и живёт в разметке строки ввода:
+   лента сообщений растёт и прокручивается, а кромка остаётся на месте, и
+   фигура не уезжает вместе с текстом.
+   Клики сквозь маскот проходят (`pointer-events: none`), для скринридера он
+   декоративный (aria-hidden на контейнере, пустой alt у кадров). */
+.terminal-input-line {
+  /* Опора для маскота: его `top: 0` — это и есть кромка подвала. */
+  position: relative;
+}
+
+.terminal-mascot {
+  position: absolute;
+  top: 0;
+  right: 12px;
+  width: var(--mascot-w);
+  height: calc(var(--mascot-w) * 4 / 3);
+  /* Точка опоры в кадре — 80% высоты: там у base силуэт падает с 126px до
+     46px, выше идёт платье, ниже — только ноги. Сдвигаем кадр так, чтобы на
+     кромке оказалась именно эта линия: тогда ноги свешиваются на подвал.
+     У остальных кадров поза другая, и их поправляет --seat-nudge на самом
+     кадре (ниже). */
+  transform: translateY(-80%);
+  pointer-events: none;
+  z-index: 2;
+}
+
+/* Кадры лежат стопкой в контейнере: виден ровно один — тот, чья эмоция
+   совпала с `data-emotion` на контейнере. Переключается только прозрачность,
+   поэтому раскладка не пересчитывается и черта под ведьмой не дрожит. */
+.mascot-frame {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  /* Размытие пикселей при масштабировании браузером — то, что убивает
+     пиксель-арт, поэтому выключаем сглаживание явно. */
+  image-rendering: pixelated;
+  /* Посадка кадра на кромку. Опора контейнера (-80%) верна для base; у кадров
+     с поднятыми коленями та же линия проходит выше их опоры, и без поправки
+     кромка идёт по бёдрам, а не под ними — фигура читается висящей. Поправка
+     замерена по кадру: строка, где заканчивается самая широкая часть корпуса
+     (там тело и лежит на кромке), минус 80% высоты. Значения — в блоке ниже. */
+  transform: translateY(var(--seat-nudge, 0%));
+  /* Тень вместо прежнего светлого ореола.
+     Свет — сверху и чуть спереди (в hero он идёт от верхнего свечения), поэтому
+     тень уходит ВНИЗ и ВПРАВО, в одну сторону со взглядом, а не расходится
+     вокруг фигуры: ровный ореол читается как левитация, а смещённая тень — как
+     опора. Два слоя, потому что одной размытой тенью нельзя изобразить и
+     касание, и отброшенную тень:
+       1) контактная — 2×3px, размытие 3px, плотная (0.6): узкая тёмная полоса
+          там, где тело лежит на кромке. Именно она «сажает» фигуру;
+       2) отброшенная — 10×16px, размытие 18px, полупрозрачная (0.45): длинная
+          мягкая тень на подложке подвала и на ленте.
+     Плотность подобрана по рендеру, а не по формуле: при 0.85 контактный слой
+     превращался в чёрную обводку вокруг сапог (тень обнимала силуэт вместо
+     того, чтобы уходить в сторону), при 0.4–0.45 тень исчезала на тёмной ленте
+     и оставалась только на подвале. 0.6/0.45 — граница, где тень читается на
+     обеих поверхностях и ещё не спорит с фигурой.
+     Цвет — почти чёрный с фиолетовым подтоном (#060414), а не серый: на
+     фиолетовой подложке серый выцветает в грязь.
+     Где тень скрыта:
+       - под самой фигурой — drop-shadow рисуется позади картинки, поэтому своё
+         тело всегда перекрывает свою тень (это и даёт касание, а не пятно);
+       - справа и сверху — обрезается `overflow: hidden` окна терминала, наружу
+         на hero тень не выходит;
+       - над шляпой — смещение только вниз, вверх тень не поднимается, поэтому
+         текст в ленте над фигурой остаётся чистым.
+     Где тень видна: на кромке под кромкой (контактный слой), на подложке
+     подвала справа от ног (отброшенный слой) и на ленте справа от корпуса.
+     Множитель --mascot-k держит пропорции тени при уменьшении кадра. */
+  filter:
+    drop-shadow(
+      calc(2px * var(--mascot-k, 1)) calc(3px * var(--mascot-k, 1))
+      calc(3px * var(--mascot-k, 1)) rgba(6, 4, 20, 0.6)
+    )
+    drop-shadow(
+      calc(10px * var(--mascot-k, 1)) calc(16px * var(--mascot-k, 1))
+      calc(18px * var(--mascot-k, 1)) rgba(6, 4, 20, 0.45)
+    );
+  opacity: 0;
+  transition: opacity var(--transition-fast);
+}
+
+/* Поправки посадки по кадрам (см. `--seat-nudge` выше). Знак: плюс — кадр
+   опускается, кромка проходит выше по телу; минус — поднимается. Замер по
+   строке, где корпус перестаёт быть широким:
+     base         150/192 → +1.5%   (низ платья и ладони лежат на кромке)
+     dissatisfied 150/192 → +1.5%   (та же поза, руки скрещены)
+     smirk        152/192 → +1%     (руки разведены, опора та же)
+     thinking     161/192 → -4%     (колени подняты: без поправки кромка шла
+                                     по бёдрам)
+     read         165/192 → -6%     (нога поднята под книгу)
+   Кадры с поднятыми коленями после поправки свешивают на подвал меньше ног —
+   это следствие позы, а не сдвига: у read ноги собраны под книгу. */
+.mascot-frame[data-emotion="base"] { --seat-nudge: 1.5%; }
+.mascot-frame[data-emotion="dissatisfied"] { --seat-nudge: 1.5%; }
+.mascot-frame[data-emotion="smirk"] { --seat-nudge: 1%; }
+.mascot-frame[data-emotion="thinking"] { --seat-nudge: -4%; }
+.mascot-frame[data-emotion="read"] { --seat-nudge: -6%; }
+
+.terminal-mascot[data-emotion="base"] .mascot-frame[data-emotion="base"],
+.terminal-mascot[data-emotion="read"] .mascot-frame[data-emotion="read"],
+.terminal-mascot[data-emotion="thinking"] .mascot-frame[data-emotion="thinking"],
+.terminal-mascot[data-emotion="smirk"] .mascot-frame[data-emotion="smirk"],
+.terminal-mascot[data-emotion="dissatisfied"] .mascot-frame[data-emotion="dissatisfied"] {
+  opacity: 1;
+}
+
+/* Кому анимация мешает — тому не нужен и кроссфейд между эмоциями. */
+@media (prefers-reduced-motion: reduce) {
+  .mascot-frame { transition: none; }
+}
+
+/* Кадр сужается вместе с окном терминала: на 1024–1199px это 120×160, ниже
+   1024px — 96×128, на телефоне снова 120×160 (там окно во всю ширину, и
+   экономить нечего). Пропорции 3:4 те же, поэтому кадр не обрезается, а
+   переменная живёт на окне: от неё считается и правое поле ленты сообщений. */
+@media (max-width: 1199px) {
+  .terminal-window { --mascot-w: 120px; --mascot-k: 0.83; }
+}
+
+@media (max-width: 1023px) {
+  .terminal-window { --mascot-w: 96px; --mascot-k: 0.67; }
+}
+
+@media (max-width: 767px) {
+  .terminal-window { --mascot-w: 120px; --mascot-k: 0.83; }
 }
 
 /* ---------- 8. Sections ---------- */
@@ -1335,6 +1504,135 @@ ul { margin: 0; padding: 0; list-style: none; }
 }
 .floating-cta:hover { background: var(--color-primary-soft); text-decoration: none; }
 
+/* ---------- 11.1 Плавающий чат: кнопка в правом нижнем углу ---------- */
+/* Терминал в hero — единственный вход в диалог на главной, и при прокрутке он
+   уезжает вверх. Кнопка возвращает вход: появляется ниже hero и открывает
+   компактную панель с обычными пузырями сообщений (не терминалом — второй
+   терминал на странице спорил бы с hero). Если чат уже открывали, кнопка
+   показывается сразу, без прокрутки; логика — `initFloatingChat` в main.js. */
+.chat-fab {
+  position: fixed;
+  right: var(--space-lg);
+  bottom: var(--space-lg);
+  /* Ниже шапки (100) и ниже всплывающей подсказки статуса: панель — не модальное
+     окно, поверх навигации ей быть незачем. */
+  z-index: 45;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--space-md);
+}
+.chat-fab[hidden] { display: none; }
+
+.chat-fab-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: 0.7rem 1.15rem;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-full);
+  background: linear-gradient(135deg, var(--color-primary), #6f5cf0);
+  color: #fff;
+  font-family: inherit;
+  font-size: var(--text-small);
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: var(--shadow-md);
+  transition: transform var(--transition-fast), box-shadow var(--transition-fast);
+}
+.chat-fab-toggle:hover { transform: translateY(-2px); box-shadow: var(--shadow-lg); }
+.chat-fab-toggle-icon { display: inline-flex; font-size: 1.1rem; }
+/* Открытую панель закрывает своя кнопка: две кнопки рядом с одним действием —
+   лишний выбор. */
+.chat-fab.is-open .chat-fab-toggle { display: none; }
+
+.chat-fab-panel {
+  display: flex;
+  flex-direction: column;
+  width: min(360px, calc(100vw - 2 * var(--space-md)));
+  max-height: min(540px, 72vh);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface-2);
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+}
+.chat-fab-panel[hidden] { display: none; }
+
+.chat-fab-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-sm) var(--space-md);
+  border-bottom: 1px solid var(--color-border);
+  background: rgba(255, 255, 255, 0.04);
+}
+.chat-fab-title { flex: 1; font-size: var(--text-small); font-weight: 600; }
+.chat-fab-close {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-full);
+  background: transparent;
+  color: var(--color-text-secondary);
+  font: inherit;
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+.chat-fab-close:hover { background: rgba(255, 255, 255, 0.1); color: #fff; }
+
+/* Лента сообщений — единственная прокручиваемая часть панели: поле ввода
+   обязано остаться на виду, как в терминале. */
+.chat-fab-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  padding: var(--space-md);
+  overflow-y: auto;
+}
+.chat-fab-intro { margin: 0; color: var(--color-text-secondary); font-size: var(--text-small); }
+.chat-fab-presets { display: flex; flex-wrap: wrap; gap: var(--space-xs); }
+.chat-fab-preset { padding: 0.35rem 0.7rem; font-size: var(--text-caption); }
+.chat-fab-presets[hidden] { display: none; }
+.chat-fab-messages {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  min-height: 112px;
+}
+
+.chat-fab-input-row {
+  display: flex;
+  gap: var(--space-sm);
+  padding: var(--space-sm) var(--space-md) var(--space-md);
+  border-top: 1px solid var(--color-border);
+}
+.chat-fab-input-row .btn { flex: 0 0 auto; white-space: nowrap; font-size: var(--text-small); padding: 0.5rem 0.9rem; }
+.chat-fab-input-row input {
+  flex: 1;
+  min-width: 0;
+  font-family: inherit;
+  font-size: var(--text-small);
+  color: var(--color-text);
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.05);
+}
+.chat-fab-input-row input::placeholder { color: var(--color-text-tertiary); }
+.chat-fab-input-row input:focus {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px var(--color-primary-soft);
+}
+
 /* ---------- 12. Footer ---------- */
 .footer {
   border-top: 1px solid var(--color-border);
@@ -1356,6 +1654,53 @@ ul { margin: 0; padding: 0; list-style: none; }
 .footer-contacts { display: flex; gap: var(--space-sm); align-items: center; margin: 0; }
 .footer a { color: var(--color-text-secondary); }
 .footer a:hover { color: #fff; }
+
+/* Внешние профили автора (GitHub, Habr). Круглые кнопки: иконка-логотип без
+   рамки в подвале теряется среди ссылок. Раньше жили в шапке — там они спорили
+   за место с навигацией, а статус занятости должен оставаться крайним справа. */
+.footer-social {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  margin-top: var(--space-xs);
+}
+.social-link {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 999px;
+  border: 1px solid var(--color-border);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--color-text-secondary);
+  font-size: 1.05rem;
+  transition: color var(--transition-fast), border-color var(--transition-fast),
+    background var(--transition-fast);
+}
+.social-link:hover {
+  color: #fff;
+  border-color: var(--color-border-strong);
+  background: rgba(255, 255, 255, 0.1);
+  text-decoration: none;
+}
+.social-link svg { display: block; }
+
+/* Знак Habr. Он приходит файлом (`/assets/habr.svg`), а не инлайн-SVG, как
+   знак GitHub: официальная фигура весит ~16 КБ, и в разметке каждой страницы
+   она удваивала бы вес документа. В `<img>` `currentColor` не работает,
+   поэтому заливка в файле белая, а вес гасится прозрачностью — кнопка должна
+   совпадать по яркости с соседней. */
+.social-icon {
+  display: block;
+  width: 19px;
+  height: 19px;
+  opacity: 0.62;
+  transition: opacity var(--transition-fast);
+}
+.social-link:hover .social-icon,
+.social-link:focus-visible .social-icon { opacity: 1; }
 
 /* Правая колонка — «работает на Beget»: логотип ведёт на партнёрскую ссылку. */
 .footer-col-beget { align-items: flex-start; gap: var(--space-xs); }
@@ -1400,6 +1745,41 @@ ul { margin: 0; padding: 0; list-style: none; }
 }
 .kpi-value { font-size: 2rem; font-weight: 700; color: #fff; }
 .kpi-label { font-size: var(--text-small); color: var(--color-text-secondary); }
+
+/* Настройки сайта: статус «Приём заявок», число проектов и слот. Три поля в
+   строку — это одна короткая форма, а не таблица: их заполняют за один заход. */
+.admin-settings {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  padding: var(--space-lg);
+  margin-bottom: var(--space-xl);
+}
+.admin-settings-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: var(--space-md);
+}
+.admin-settings-grid .form-field { margin: 0; }
+.admin-settings-grid label { display: block; margin-bottom: var(--space-xs); font-size: var(--text-small); }
+.admin-settings-grid input,
+.admin-settings-grid select {
+  width: 100%;
+  font-family: inherit;
+  font-size: var(--text-body);
+  color: var(--color-text);
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.05);
+}
+.admin-settings-grid input:focus,
+.admin-settings-grid select:focus {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px var(--color-primary-soft);
+}
+.admin-settings .admin-editor-actions { margin-top: var(--space-md); }
 
 .table-wrap { overflow-x: auto; margin-bottom: var(--space-xl); }
 .admin-table { width: 100%; border-collapse: collapse; font-size: var(--text-small); color: var(--color-text); }
@@ -1484,6 +1864,30 @@ ul { margin: 0; padding: 0; list-style: none; }
 .breadcrumbs a { color: var(--color-text-secondary); }
 .post-header { margin-bottom: var(--space-lg); }
 .post-cover { width: 100%; border-radius: var(--radius-lg); margin-bottom: var(--space-lg); }
+
+/* Ссылка «Читать на Хабр» — первое, что видно в тексте, когда статья
+   кросспостится: читатель должен узнать о внешней публикации до чтения, а не
+   в подвале. Вид — плашка, а не строка текста: это переход на другой сайт. */
+.post-crosspost { margin-bottom: var(--space-lg); }
+.post-crosspost-link {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: 0.55rem 1rem;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-full);
+  background: var(--color-primary-soft);
+  color: #fff;
+  font-size: var(--text-small);
+  font-weight: 600;
+  transition: background var(--transition-fast), border-color var(--transition-fast);
+}
+.post-crosspost-link:hover {
+  background: rgba(139, 127, 245, 0.3);
+  border-color: var(--color-primary);
+  text-decoration: none;
+}
+.post-crosspost-arrow { font-size: 0.95em; color: var(--color-text-secondary); }
 .post-footer {
   margin-top: var(--space-2xl);
   padding-top: var(--space-lg);
@@ -1708,6 +2112,9 @@ ul { margin: 0; padding: 0; list-style: none; }
     --text-h1: 2rem;   /* 32px */
     --text-h2: 1.75rem;
     --text-h3: 1.25rem;
+    /* На телефоне шапка выше, а экран ниже: тот же зазор читался бы как
+       дыра, поэтому воздуха меньше, чем на десктопе. */
+    --hero-top-gap: var(--space-xl);
   }
   /* --- Мобильная шапка: лого слева + бургер справа, одна строка.
          Пункты меню и бейдж статуса переезжают в выпадающую панель,
@@ -1744,20 +2151,25 @@ ul { margin: 0; padding: 0; list-style: none; }
   }
   .navbar-links a:hover { background: rgba(255, 255, 255, 0.06); }
   .navbar-menu .status-badge { align-self: flex-start; }
-  /* Иконка GitHub в выпадающей панели — по левому краю, как и бейдж. */
-  .navbar-menu .navbar-social-link { align-self: flex-start; }
 
   /* Отступ от липкой шапки до контента: --nav-offset — это её низ. */
-  .hero { padding: calc(var(--nav-offset) + var(--space-lg)) var(--space-md) var(--space-2xl); }
+  .hero { padding: calc(var(--nav-offset) + var(--hero-top-gap)) var(--space-md) var(--space-2xl); }
   .section { padding-top: calc(var(--nav-offset) + var(--space-2xl)); }
 
   .status-badge { font-size: var(--text-caption); padding: 2px var(--space-sm); }
   .hero-grid { grid-template-columns: 1fr; gap: var(--space-xl); }
   .hero-content { max-width: 100%; }
-  .hero-eyebrow { font-size: 2rem; }
   .code-window-body { font-size: 0.8rem; }
-  .terminal-window { max-height: 280px; }
-  .terminal-body { max-height: 140px; padding: var(--space-sm) 16px; }
+  /* На телефоне лента ниже (140px против 180px): места по вертикали меньше, а
+     подсказка и кнопки переносятся на несколько строк. Окно по-прежнему не
+     ограничиваем по высоте — иначе эти строки снова срежет. Минимум возвращаем
+     к 100px, чтобы лента не схлопнулась в пустом состоянии. */
+  .terminal-body {
+    max-height: 140px;
+    min-height: 100px;
+    padding: var(--space-sm) 16px;
+    padding-right: calc(var(--mascot-w) * 0.9 + var(--space-sm));
+  }
   .terminal-presets { gap: 4px; }
   .terminal-preset-btn { font-size: var(--text-caption); padding: 3px 10px; }
   .cta-buttons { flex-direction: column; }

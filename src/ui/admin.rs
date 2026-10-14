@@ -10,6 +10,8 @@
 
 use leptos::prelude::*;
 
+use crate::services::settings_bot::{MAX_PROJECTS, TEXT_FIELD_MAX_CHARS};
+
 #[component]
 pub fn Admin() -> impl IntoView {
     view! {
@@ -32,6 +34,51 @@ pub fn Admin() -> impl IntoView {
                 // Дашборд (скрыт до входа).
                 <div id="admin-dashboard" class="admin-dashboard" hidden>
                     <div class="kpi-cards" id="admin-kpi"></div>
+
+                    // Бейдж «Приём заявок» в шапке. Значения те же, что у
+                    // Telegram-бота (`services::settings_bot`): источник один, и
+                    // границы полей берутся из его констант, а не пишутся здесь
+                    // заново.
+                    <h2>Приём заявок</h2>
+                    <p class="admin-hint">
+                        "Бейдж в шапке: состояние, число проектов в работе и ближайший слот. Правки видны сразу на всех страницах сайта — их же меняет Telegram-бот."
+                    </p>
+                    <div class="admin-settings" id="admin-settings">
+                        <div class="admin-settings-grid">
+                            <div class="form-field">
+                                <label for="admin-status-select">"Статус"</label>
+                                <select id="admin-status-select">
+                                    <option value="available">"Открыт — беру новые проекты"</option>
+                                    <option value="busy">"Ограничен — беру не все"</option>
+                                    <option value="full">"Закрыт — новые не беру"</option>
+                                </select>
+                            </div>
+                            <div class="form-field">
+                                <label for="admin-projects">"Проектов в работе"</label>
+                                <input
+                                    id="admin-projects"
+                                    type="number"
+                                    min="0"
+                                    max=MAX_PROJECTS.to_string()
+                                    step="1"
+                                    inputmode="numeric"
+                                />
+                            </div>
+                            <div class="form-field">
+                                <label for="admin-slot">"Ближайший слот"</label>
+                                <input
+                                    id="admin-slot"
+                                    type="text"
+                                    maxlength=TEXT_FIELD_MAX_CHARS.to_string()
+                                    placeholder="например: с 1 октября"
+                                />
+                            </div>
+                        </div>
+                        <div class="admin-editor-actions">
+                            <button type="button" id="admin-settings-save" class="btn btn-primary">"Сохранить"</button>
+                        </div>
+                        <p id="admin-settings-message" class="form-status" role="status" aria-live="polite"></p>
+                    </div>
 
                     <h2>Заявки</h2>
                     <div class="table-wrap">
@@ -97,6 +144,12 @@ pub fn Admin() -> impl IntoView {
 
                                 <label for="article-canonical">"Канонический адрес"</label>
                                 <input id="article-canonical" type="text" placeholder="если статья уже опубликована в другом месте"/>
+
+                                <label for="article-habr">"Читать на Хабр"</label>
+                                <input id="article-habr" type="text" placeholder="https://habr.com/ru/articles/…"/>
+                                <p class="field-hint">
+                                    "Полная ссылка на внешнюю публикацию этой статьи. Пусто — блок не показывается. В отличие от канонического адреса это ссылка для читателя, и она появляется в начале текста."
+                                </p>
 
                                 <label for="article-status">"Статус"</label>
                                 <select id="article-status">

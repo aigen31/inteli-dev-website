@@ -528,7 +528,8 @@ pub(crate) fn format_availability(a: &Availability) -> String {
 }
 
 fn answer_lead_request() -> String {
-    "Опишите задачу в форме заявки: имя, контакт и что нужно сделать. Отвечу в течение 24 часов."
+    "Опишите задачу в форме заявки: имя, контакт и что нужно сделать. \
+     Отвечу при наличии свободного окна."
         .to_string()
 }
 
@@ -802,9 +803,19 @@ mod tests {
             url: None,
         };
         let resp = svc.answer(req, None).await.unwrap();
-        // Ответ должен объяснять следующий шаг и срок, без вводных «Отлично!».
+        // Ответ должен объяснять следующий шаг и рамку ответа, без вводных
+        // «Отлично!» и без срока, которого автор не обещал.
         assert!(resp.answer.contains("заявк"), "получено: {}", resp.answer);
-        assert!(resp.answer.contains("24"), "получено: {}", resp.answer);
+        assert!(
+            resp.answer.contains("при наличии свободного окна"),
+            "рамка ответа пропала: {}",
+            resp.answer
+        );
+        assert!(
+            !resp.answer.contains("24"),
+            "срок «24 часа» вернулся в ответ чата: {}",
+            resp.answer
+        );
         assert!(!resp.answer.starts_with("Отлично"));
         assert!(!resp.suggested_next.is_empty());
     }

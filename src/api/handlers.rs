@@ -240,6 +240,113 @@ pub async fn admin_update_lead(
 }
 
 // ---------------------------------------------------------------------------
+// Admin: настройки сайта (бейдж «Приём заявок»)
+// ---------------------------------------------------------------------------
+
+/// Состояние бейджа «Приём заявок» для админки — вместе с готовыми строками.
+///
+/// `summary`, `facts` и `aria_label` — те же, что видит посетитель в подсказке
+/// бейджа. Админка не склеивает их заново: число проектов в ней и в подсказке
+/// иначе разошлось бы в падежах («1 проект» против «1 проектов»), а состояние —
+/// в формулировках.
+#[derive(serde::Serialize)]
+pub struct AdminAvailability {
+    pub status: String,
+    pub label: String,
+    pub summary: String,
+    pub facts: Vec<String>,
+    pub aria_label: String,
+    pub current_projects: u8,
+    pub next_free_slot: String,
+    pub availability_date: String,
+    pub updated_at: String,
+}
+
+/// Собирает [`AdminAvailability`] из живых настроек.
+fn admin_availability() -> AdminAvailability {
+    let a = crate::settings::SiteSettings::availability();
+    let p = crate::services::status::presentation(&a.status);
+
+    AdminAvailability {
+        status: a.status.clone(),
+        label: crate::services::status::status_line(&a.status),
+        summary: p.summary.to_string(),
+        facts: crate::services::status::facts(&a),
+        aria_label: crate::services::status::aria_label(&a),
+        current_projects: a.current_projects,
+        next_free_slot: a.next_free_slot.clone(),
+        availability_date: a.availability_date.clone(),
+        updated_at: crate::settings::SiteSettings::updated_at(),
+    }
+}
+
+/// Текущие настройки сайта (GET /api/admin/settings).
+pub async fn admin_settings(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<AdminAvailability>, ApiError> {
+    check_admin(&headers, &state.config.admin.token)?;
+    Ok(Json(admin_availability()))
+}
+
+/// Правка настроек сайта (PATCH /api/admin/settings).
+///
+/// Поля необязательные: форма присылает все сразу, но правка одного поля тоже
+/// должна работать. Валидация — [`crate::services::settings_bot::apply_command`],
+/// то есть ровно та же, что у Telegram-бота: два входа, один свод правил. Иначе
+/// админка и бот разошлись бы в том, что считать допустимым числом проектов.
+#[derive(Deserialize)]
+pub struct AvailabilityUpdate {
+    #[serde(default)]
+    pub status: Option<String>,
+    #[serde(default)]
+    pub current_projects: Option<i64>,
+    #[serde(default)]
+    pub next_free_slot: Option<String>,
+}
+
+pub async fn admin_update_settings(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(body): Json<AvailabilityUpdate>,
+) -> Result<Json<AdminAvailability>, ApiError> {
+    use crate::services::settings_bot::{apply_command, Applied, BotCommand};
+
+    check_admin(&headers, &state.config.admin.token)?;
+
+    let mut commands: Vec<BotCommand> = Vec::new();
+    if let Some(status) = body.status {
+        commands.push(BotCommand::SetStatus(status));
+    }
+    if let Some(projects) = body.current_projects {
+        commands.push(BotCommand::SetProjects(projects));
+    }
+    if let Some(slot) = body.next_free_slot {
+        commands.push(BotCommand::SetSlot(slot));
+    }
+    if commands.is_empty() {
+        return Err(AppError::Validation("нечего менять: не передано ни одного поля".into()).into());
+    }
+
+    let current = crate::settings::SiteSettings::availability();
+    let mut availability = current.clone();
+    for command in commands {
+        match apply_command(&command, &availability) {
+            Applied::Changed(next) => availability = *next,
+            Applied::Unchanged => {}
+            // Причина уже написана для человека (см. `apply_command`) — её и
+            // показываем в админке, а не общее «ошибка валидации».
+            Applied::Rejected(reason) => return Err(AppError::Validation(reason).into()),
+        }
+    }
+
+    if availability != current {
+        crate::settings::update_availability(&state.db, availability).await?;
+    }
+    Ok(Json(admin_availability()))
+}
+
+// ---------------------------------------------------------------------------
 // Admin: статьи блога
 // ---------------------------------------------------------------------------
 
@@ -721,6 +828,44 @@ pub async fn favicon(raw: RawQuery) -> Response {
         assets::FAVICON_SVG,
         query_version(raw.0.as_deref()),
     )
+}
+
+/// Знак Habr — ссылка на профиль в шапке: `/assets/habr.svg`.
+///
+/// Отдельным файлом, а не инлайн-`<svg>` рядом со знаком GitHub: фигура весит
+/// ~16 КБ, и в разметке каждой страницы она удваивала бы вес документа
+/// (см. `HABR_SVG` в `api::assets`).
+pub async fn habr_icon(raw: RawQuery) -> Response {
+    asset_response(
+        "image/svg+xml",
+        assets::HABR_SVG,
+        query_version(raw.0.as_deref()),
+    )
+}
+
+/// Кадр маскота — ведьма на терминале в hero-секции: `/assets/mascot/<эмоция>.png`.
+///
+/// PNG с прозрачностью: спрайт должен «сидеть» на рамке терминала, а не
+/// висеть белым прямоугольником. Неизвестная эмоция — 404, а не пустая
+/// картинка: имена приходят из разметки, и опечатка должна быть видна сразу, а
+/// не превращаться в дыру на главной.
+pub async fn mascot_image(Path(file): Path<String>, raw: RawQuery) -> Result<Response, ApiError> {
+    let frame = file
+        .strip_suffix(".png")
+        .and_then(assets::mascot_frame)
+        .ok_or_else(|| AppError::NotFound(format!("mascot `{file}`")))?;
+
+    Ok((
+        [
+            (header::CONTENT_TYPE, "image/png"),
+            (
+                header::CACHE_CONTROL,
+                asset_cache_control(query_version(raw.0.as_deref())),
+            ),
+        ],
+        frame,
+    )
+        .into_response())
 }
 
 /// Обложка для соцсетей (`og:image`). Отдаётся как PNG: SVG не поддерживают

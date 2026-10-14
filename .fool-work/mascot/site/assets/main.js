@@ -1,0 +1,1813 @@
+// inteli.dev.ru — ванильный JS: интерактивность без фреймворков (P2: лёгкость).
+// Обработчики: чат (POST /api/chat), форма заявки (POST /api/lead), fade-in,
+// цели аналитики (data-goal).
+
+(function () {
+  'use strict';
+
+  // ---------- Цели аналитики ----------
+  //
+  // Цель привязывается к разметке атрибутом, а не кодом: `data-goal="имя"` —
+  // на ссылке, кнопке или форме, `data-goal-read="имя"` — на блоке, который
+  // считается прочитанным. Имена целей собраны в `src/services/goals.rs`; те же
+  // строки должны быть заведены целями типа «JavaScript-событие» в Метрике и
+  // событиями в GA4.
+  //
+  // Номера счётчиков приходят из разметки (`<body data-metrika-id="…">`,
+  // `data-ga-id`). Пустой атрибут — счётчик выключен: в разработке цели не
+  // уходят в живую статистику и не мешают отладке.
+  function trackGoal(goal) {
+    if (!goal || !document.body) return;
+
+    var metrika = document.body.getAttribute('data-metrika-id');
+    var ga = document.body.getAttribute('data-ga-id');
+
+    try {
+      if (metrika && typeof window.ym === 'function') {
+        window.ym(metrika, 'reachGoal', goal);
+      }
+      if (ga && typeof window.gtag === 'function') {
+        window.gtag('event', goal);
+      }
+    } catch (e) {
+      // Аналитика не имеет права ломать интерфейс: человек пришёл за заявкой,
+      // а не за метрикой. Ошибка счётчика — это пустой график, а не потерянный
+      // лид.
+    }
+  }
+
+  // ---------- Цели: клик по ссылке или кнопке ----------
+  //
+  // Слушатель один на документ: ссылок с целями сколько угодно на любой
+  // странице, и вешать обработчик на каждую — значит однажды забыть про новую.
+  function initGoalClicks() {
+    document.addEventListener('click', function (e) {
+      var el = e.target && e.target.closest
+        ? e.target.closest('a[data-goal], button[data-goal]')
+        : null;
+      if (el) trackGoal(el.getAttribute('data-goal'));
+    });
+  }
+
+  // ---------- Цели: дочитывание ----------
+  //
+  // Срабатывает, когда над нижней границей экрана прошло 90 % высоты блока.
+  // Считаем по блоку, а не по странице: «90 % страницы» у статьи с обложкой,
+  // подвалом и комментариями наступает позже, чем человек дочитал текст.
+  function initGoalRead() {
+    var blocks = document.querySelectorAll('[data-goal-read]');
+    if (!blocks.length) return;
+
+    var pending = Array.prototype.slice.call(blocks);
+    var scheduled = false;
+
+    function check() {
+      scheduled = false;
+      var left = [];
+
+      pending.forEach(function (el) {
+        var rect = el.getBoundingClientRect();
+        if (rect.height <= 0) return; // блок ещё не отрисован
+        if ((window.innerHeight - rect.top) / rect.height < 0.9) {
+          left.push(el);
+          return;
+        }
+        trackGoal(el.getAttribute('data-goal-read'));
+      });
+
+      pending = left;
+      if (!pending.length) {
+        window.removeEventListener('scroll', onScroll);
+        window.removeEventListener('resize', onScroll);
+      }
+    }
+
+    // Скролл приходит десятками событий в секунду, а измерение блока заставляет
+    // браузер пересчитать раскладку — считаем не чаще кадра.
+    function onScroll() {
+      if (scheduled) return;
+      scheduled = true;
+      requestAnimationFrame(check);
+    }
+
+    window.addEventListener('scroll', onScroll, { passive: true });
+    window.addEventListener('resize', onScroll, { passive: true });
+
+    // Короткая статья умещается в экран целиком, и скроллить нечего: без этой
+    // проверки цель не сработала бы никогда.
+    check();
+  }
+
+  // ---------- Fade-in секций при скролле (IntersectionObserver) ----------
+  // Секции скрыты в CSS (`.section, .hero { opacity: 0 }`), поэтому ошибка
+  // здесь стоит не «нет анимации», а «нет контента». Порог по доле пересечения
+  // для этого не годится: у секции выше десяти экранов максимальная доля равна
+  // высоте экрана, делённой на высоту секции (≈7% для статьи на 10 000 px), —
+  // заданные 10% недостижимы, `is-visible` не появляется никогда, и статья
+  // целиком остаётся прозрачной. Поэтому ждём первый же пиксель в вьюпорте:
+  // так порог достижим при любой высоте блока. Если наблюдатель недоступен или
+  // упал, показываем всё сразу — контент важнее анимации.
+  function initReveal() {
+    var targets = document.querySelectorAll('.section, .hero');
+    function showAll() {
+      targets.forEach(function (t) {
+        t.classList.add('is-visible');
+        t.style.animation = 'none';
+      });
+    }
+    if (!('IntersectionObserver' in window)) {
+      showAll();
+      return;
+    }
+    try {
+      var io = new IntersectionObserver(function (entries) {
+        entries.forEach(function (entry) {
+          if (entry.isIntersecting) {
+            entry.target.classList.add('is-visible');
+            io.unobserve(entry.target);
+          }
+        });
+      }, { threshold: 0 });
+      // Снимаем страховочную анимацию из CSS: она показывает секции через 5
+      // секунд, если этот код почему-то не выполнился. Дальше видимостью
+      // управляет наблюдатель.
+      targets.forEach(function (t) { t.style.animation = 'none'; });
+      targets.forEach(function (t) { io.observe(t); });
+    } catch (e) {
+      showAll();
+    }
+  }
+
+  // ---------- Мобильная навигация (бургер) ----------
+  // Разметка и стили: .navbar / .navbar-toggle / .navbar-menu.
+  // Панель существует всегда, видимость переключает класс .is-menu-open.
+  function initMobileNav() {
+    var navbar = document.querySelector('.navbar');
+    var toggle = document.getElementById('navbar-toggle');
+    var menu = document.getElementById('navbar-menu');
+    if (!navbar || !toggle || !menu) return;
+
+    var desktop = window.matchMedia('(min-width: 768px)');
+
+    function isOpen() { return navbar.classList.contains('is-menu-open'); }
+
+    function setOpen(open) {
+      navbar.classList.toggle('is-menu-open', open);
+      toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+      toggle.setAttribute('aria-label', open ? 'Закрыть меню' : 'Открыть меню');
+    }
+
+    toggle.addEventListener('click', function () { setOpen(!isOpen()); });
+
+    // Переход по ссылке закрывает панель.
+    menu.addEventListener('click', function (e) {
+      if (e.target.closest('a')) setOpen(false);
+    });
+
+    // Escape закрывает меню и возвращает фокус на кнопку.
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape' && isOpen()) {
+        setOpen(false);
+        toggle.focus();
+      }
+    });
+
+    // Клик вне шапки закрывает меню (клик по самой кнопке игнорируем —
+    // он обрабатывается выше и всплывает сюда же).
+    document.addEventListener('click', function (e) {
+      if (isOpen() && !navbar.contains(e.target)) setOpen(false);
+    });
+
+    // Ушли на десктоп — сбрасываем состояние, чтобы панель не «залипла».
+    function onBreakpoint() { if (desktop.matches) setOpen(false); }
+    if (desktop.addEventListener) desktop.addEventListener('change', onBreakpoint);
+    else if (desktop.addListener) desktop.addListener(onBreakpoint);
+  }
+
+  // ---------- Счётчики символов ----------
+  // Разметка: <span class="char-count" data-counter-for="<id поля>"></span>.
+  // Максимум берём из самого поля (maxlength), поэтому HTML и скрипт не могут
+  // разойтись. Цифры показываем только у предела — чтобы не шуметь.
+  function initCharCounters() {
+    document.querySelectorAll('[data-counter-for]').forEach(function (counter) {
+      var field = document.getElementById(counter.getAttribute('data-counter-for'));
+      if (!field) return;
+
+      var max = field.maxLength;
+      if (!max || max < 0) return;
+      var showFrom = Math.ceil(max * 0.8); // последние 20% — уже интересно
+
+      function update() {
+        var used = field.value.length;
+        if (used < showFrom) {
+          counter.textContent = '';
+          counter.classList.remove('is-near-limit', 'is-at-limit');
+          return;
+        }
+        counter.textContent = used + '/' + max;
+        counter.classList.toggle('is-near-limit', used < max);
+        counter.classList.toggle('is-at-limit', used >= max);
+      }
+
+      field.addEventListener('input', update);
+      update();
+    });
+  }
+
+  // Проверяет длину перед отправкой. Браузер режет ввод по maxlength сам, но
+  // вставка из буфера и автозаполнение — не всегда; плюс сервер вернёт ту же
+  // ошибку, только после сетевого запроса.
+  function tooLong(field, text) {
+    var max = field && field.maxLength > 0 ? field.maxLength : 0;
+    return max > 0 && text.length > max ? max : 0;
+  }
+
+  // ---------- Чат ----------
+  function initChat() {
+    var app = document.getElementById('chat-app');
+    if (!app) return;
+
+    var messages = document.getElementById('chat-messages');
+    var input = document.getElementById('chat-input');
+    var sendBtn = document.getElementById('chat-send');
+
+    // Пока ждём ответ ИИ — блокируем повторную отправку и показываем анимацию.
+    var isWaiting = false;
+    var MIN_TYPING_MS = 500; // индикатор не должен «мигать» на быстрых ответах
+    var reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    // Цель «диалог начат» — один раз за загрузку страницы и только после ответа
+    // сервера: запрос, который не дошёл, не должен выглядеть в статистике как
+    // состоявшийся разговор.
+    var startedGoal = app.getAttribute('data-goal');
+    var startedReported = false;
+
+    function markChatStarted() {
+      if (startedReported || !startedGoal) return;
+      startedReported = true;
+      trackGoal(startedGoal);
+    }
+
+    function addMessage(text, who) {
+      var div = document.createElement('div');
+      div.className = 'chat-message ' + (who === 'user' ? 'user-message' : 'bot-message');
+      div.textContent = text;
+      messages.appendChild(div);
+      messages.scrollTop = messages.scrollHeight;
+      return div;
+    }
+
+    function addSuggestions(suggested) {
+      if (!Array.isArray(suggested) || !suggested.length) return;
+      var row = document.createElement('div');
+      row.className = 'chat-suggestions';
+      suggested.forEach(function (s) {
+        var b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'preset-button';
+        b.textContent = s.text;
+        b.addEventListener('click', function () {
+          if (s.type && s.type.indexOf('link:') === 0) {
+            window.location.href = s.type.slice(5);
+          } else {
+            send({ message: s.text, question_type: 'lead_request' });
+          }
+        });
+        row.appendChild(b);
+      });
+      messages.appendChild(row);
+      messages.scrollTop = messages.scrollHeight;
+    }
+
+    // Индикатор ожидания ответа ИИ: пузырь с тремя «дышащими» точками и
+    // пробегающим блеском. Рендерится до запроса, а не после него.
+    function showTyping() {
+      var el = document.createElement('div');
+      el.className = 'chat-message bot-message chat-typing';
+      el.setAttribute('role', 'status');
+      el.innerHTML =
+        '<span class="typing-dots" aria-hidden="true"><i></i><i></i><i></i></span>' +
+        '<span class="sr-only">ИИ печатает ответ</span>';
+      // Если анимации отключены системно — оставляем читаемый текстовый статус.
+      if (reduceMotion) {
+        el.innerHTML =
+          '<span class="typing-static" aria-hidden="true">печатает</span>' +
+          '<span class="sr-only">ИИ печатает ответ</span>';
+      }
+      messages.appendChild(el);
+      messages.scrollTop = messages.scrollHeight;
+      return el;
+    }
+
+    function setWaiting(state) {
+      isWaiting = state;
+      app.classList.toggle('is-waiting', state);
+      app.setAttribute('aria-busy', state ? 'true' : 'false');
+      messages.setAttribute('aria-busy', state ? 'true' : 'false');
+      input.disabled = state;
+      sendBtn.disabled = state;
+      sendBtn.setAttribute('aria-busy', state ? 'true' : 'false');
+      input.placeholder = state ? 'Жду ответ...' : 'Ваш вопрос...';
+      app.querySelectorAll('.preset-button').forEach(function (b) { b.disabled = state; });
+    }
+
+    // Не даём индикатору исчезнуть раньше, чем он прочитается глазом.
+    function holdTyping(startedAt) {
+      var left = MIN_TYPING_MS - (Date.now() - startedAt);
+      if (left <= 0) return Promise.resolve();
+      return new Promise(function (resolve) { setTimeout(resolve, left); });
+    }
+
+    async function send(payload) {
+      if (isWaiting) return;
+      setWaiting(true);
+
+      var startedAt = Date.now();
+      var typingEl = showTyping();
+
+      try {
+        var res = await fetch('/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        var data = await res.json().catch(function () { return {}; });
+
+        await holdTyping(startedAt);
+        typingEl.remove();
+
+        if (!res.ok) {
+          addMessage(data.error || 'Ошибка. Попробуйте позже.', 'bot');
+          return;
+        }
+        addMessage(data.answer, 'bot');
+        markChatStarted();
+        addSuggestions(data.suggested_next);
+      } catch (err) {
+        await holdTyping(startedAt);
+        typingEl.remove();
+        addMessage('Сетевая ошибка. Попробуйте ещё раз.', 'bot');
+      } finally {
+        setWaiting(false);
+      }
+    }
+
+    function sendFree() {
+      if (isWaiting) return;
+      var text = input.value.trim();
+      if (!text) return;
+      var max = tooLong(input, text);
+      if (max) {
+        addMessage('Вопрос длиннее ' + max + ' символов — сократите его, пожалуйста.', 'bot');
+        return;
+      }
+      addMessage(text, 'user');
+      input.value = '';
+      send({ message: text, question_type: 'free' });
+    }
+
+    sendBtn.addEventListener('click', sendFree);
+    input.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') sendFree();
+    });
+
+    app.querySelectorAll('.preset-button[data-kind]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        if (isWaiting) return;
+        var kind = btn.getAttribute('data-kind');
+        var index = btn.getAttribute('data-index');
+        addMessage(btn.textContent, 'user');
+
+        if (kind === 'analysis') {
+          var url = window.prompt('Введите ссылку на ваш сайт (например, example.com):');
+          if (!url || !url.trim()) return;
+          send({ message: btn.textContent, question_type: 'analysis', url: url.trim() });
+        } else {
+          var payload = { message: btn.textContent, question_type: kind };
+          if (index) payload.preset_index = parseInt(index, 10);
+          send(payload);
+        }
+      });
+    });
+  }
+
+  // ---------- Форма заявки ----------
+  function initLeadForm() {
+    var form = document.getElementById('lead-form');
+    if (!form) return;
+    var status = document.getElementById('lead-form-status');
+    // Цель срабатывает на успешный ответ сервера, а не на нажатие кнопки:
+    // заявка, которую не приняли (валидация, лимит, сеть), — не лид.
+    var successGoal = form.getAttribute('data-goal');
+
+    form.addEventListener('submit', async function (e) {
+      e.preventDefault();
+      var data = {
+        name: form.name.value.trim(),
+        message: form.message.value.trim(),
+        source: 'form'
+      };
+      if (form.email && form.email.value.trim()) data.email = form.email.value.trim();
+      if (form.phone && form.phone.value.trim()) data.phone = form.phone.value.trim();
+
+      if (!data.name || !data.message) {
+        status.textContent = 'Заполните имя и сообщение.';
+        status.className = 'form-status error';
+        return;
+      }
+
+      try {
+        var res = await fetch('/api/lead', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data)
+        });
+        var json = await res.json().catch(function () { return {}; });
+        if (res.ok) {
+          status.textContent = json.message || 'Заявка отправлена!';
+          status.className = 'form-status success';
+          form.reset();
+          trackGoal(successGoal);
+        } else {
+          status.textContent = json.error || 'Ошибка отправки.';
+          status.className = 'form-status error';
+        }
+      } catch (err) {
+        status.textContent = 'Сетевая ошибка. Попробуйте ещё раз.';
+        status.className = 'form-status error';
+      }
+    });
+  }
+
+  // ---------- Админ-панель ----------
+  function escapeHtml(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+
+  function initAdmin() {
+    var app = document.getElementById('admin-app');
+    if (!app) return;
+
+    var login = document.getElementById('admin-login');
+    var dashboard = document.getElementById('admin-dashboard');
+    var tokenInput = document.getElementById('admin-token');
+    var loginBtn = document.getElementById('admin-login-btn');
+    var loginStatus = document.getElementById('admin-login-status');
+
+    var STORAGE_KEY = 'admin_token';
+
+    function token() {
+      return localStorage.getItem(STORAGE_KEY) || '';
+    }
+
+    function authHeaders() {
+      return { 'Authorization': 'Bearer ' + token(), 'Content-Type': 'application/json' };
+    }
+
+    async function api(path, options) {
+      var res = await fetch(path, Object.assign({ headers: authHeaders() }, options || {}));
+      var body = await res.json().catch(function () { return {}; });
+      return { ok: res.ok, status: res.status, body: body };
+    }
+
+    function showLogin(message) {
+      login.hidden = false;
+      dashboard.hidden = true;
+      if (message) { loginStatus.textContent = message; loginStatus.className = 'form-status error'; }
+    }
+
+    function showDashboard() {
+      login.hidden = true;
+      dashboard.hidden = false;
+    }
+
+    async function loadDashboard() {
+      var stats = await api('/api/admin/stats');
+      if (stats.status === 401) { showLogin('Неверный или пустой токен.'); return; }
+
+      var [leads, chats] = await Promise.all([
+        api('/api/admin/leads?limit=100'),
+        api('/api/admin/chats?limit=100')
+      ]);
+
+      renderKpi(stats.body);
+      renderLeads(leads.body);
+      renderChats(chats.body);
+      await Promise.all([loadArticles(), loadOutbox()]);
+      showDashboard();
+    }
+
+    function renderKpi(s) {
+      var el = document.getElementById('admin-kpi');
+      var avg = s.avg_response_time_ms == null ? '—' : Math.round(s.avg_response_time_ms) + 'ms';
+      var cards = [
+        ['📩 Заявки сегодня', s.leads_today != null ? s.leads_today : '—'],
+        ['💬 Чатов сегодня', s.chats_today != null ? s.chats_today : '—'],
+        ['⚡ Ср. время ответа', avg]
+      ];
+      el.innerHTML = cards.map(function (c) {
+        return '<div class="kpi-card"><div class="kpi-value">' + escapeHtml(c[1]) +
+               '</div><div class="kpi-label">' + escapeHtml(c[0]) + '</div></div>';
+      }).join('');
+    }
+
+    function renderLeads(leads) {
+      var table = document.getElementById('admin-leads-table');
+      if (!Array.isArray(leads) || !leads.length) {
+        table.innerHTML = '<tbody><tr><td colspan="6">Заявок пока нет.</td></tr></tbody>';
+        return;
+      }
+      var statuses = ['new', 'processing', 'contacted', 'converted', 'dismissed'];
+      var rows = leads.map(function (l) {
+        var contact = [l.email, l.phone].filter(Boolean).join(' / ') || '—';
+        var select = '<select class="lead-status" data-id="' + l.id + '">' + statuses.map(function (st) {
+          return '<option value="' + st + '"' + (st === l.status ? ' selected' : '') + '>' + st + '</option>';
+        }).join('') + '</select>';
+        return '<tr><td data-label="Дата">' + escapeHtml((l.created_at || '').slice(0, 16).replace('T', ' ')) +
+          '</td><td data-label="Имя">' + escapeHtml(l.name) +
+          '</td><td data-label="Контакт">' + escapeHtml(contact) +
+          '</td><td data-label="Сообщение">' + escapeHtml((l.message || '').slice(0, 120)) +
+          '</td><td data-label="Источник">' + escapeHtml(l.source) +
+          '</td><td data-label="Статус">' + select + '</td></tr>';
+      }).join('');
+      table.innerHTML = '<thead><tr><th>Дата</th><th>Имя</th><th>Контакт</th><th>Сообщение</th><th>Источник</th><th>Статус</th></tr></thead><tbody>' + rows + '</tbody>';
+
+      table.querySelectorAll('.lead-status').forEach(function (sel) {
+        sel.addEventListener('change', async function () {
+          var id = sel.getAttribute('data-id');
+          var res = await api('/api/admin/leads/' + id, {
+            method: 'PATCH',
+            body: JSON.stringify({ status: sel.value })
+          });
+          if (!res.ok) { alert('Не удалось обновить статус: ' + (res.body.error || res.status)); }
+        });
+      });
+    }
+
+    function renderChats(chats) {
+      var table = document.getElementById('admin-chats-table');
+      if (!Array.isArray(chats) || !chats.length) {
+        table.innerHTML = '<tbody><tr><td colspan="5">Чатов пока нет.</td></tr></tbody>';
+        return;
+      }
+      var rows = chats.map(function (c) {
+        var rt = c.response_time_ms == null ? '—' : c.response_time_ms + 'ms';
+        return '<tr><td data-label="Дата">' + escapeHtml((c.created_at || '').slice(0, 16).replace('T', ' ')) +
+          '</td><td data-label="Вопрос">' + escapeHtml((c.user_message || '').slice(0, 100)) +
+          '</td><td data-label="Ответ">' + escapeHtml((c.bot_response || '').slice(0, 100)) +
+          '</td><td data-label="Тип">' + escapeHtml(c.question_type || 'free') +
+          '</td><td data-label="Время">' + escapeHtml(rt) + '</td></tr>';
+      }).join('');
+      table.innerHTML = '<thead><tr><th>Дата</th><th>Вопрос</th><th>Ответ</th><th>Тип</th><th>Время отв.</th></tr></thead><tbody>' + rows + '</tbody>';
+    }
+
+    loginBtn.addEventListener('click', async function () {
+      var value = tokenInput.value.trim();
+      if (!value) { loginStatus.textContent = 'Введите токен.'; loginStatus.className = 'form-status error'; return; }
+      localStorage.setItem(STORAGE_KEY, value);
+      await loadDashboard();
+    });
+    tokenInput.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') loginBtn.click();
+    });
+
+    // ---------- Статьи блога ----------
+    //
+    // Редактор работает на markdown: предпросмотр запрашивается у сервера
+    // (/api/admin/article-preview), поэтому он рендерится тем же кодом, что и
+    // публичная страница, и не может разойтись с ней.
+
+    var articleFilter = '';
+    var editingId = null;
+
+    function parseTags(value) {
+      return String(value || '')
+        .split(',')
+        .map(function (t) { return t.trim(); })
+        .filter(Boolean);
+    }
+
+    function field(id) { return document.getElementById(id); }
+
+    function setEditorStatus(message, kind) {
+      var el = field('article-editor-status');
+      if (!el) return;
+      el.textContent = message || '';
+      el.className = 'form-status' + (kind ? ' ' + kind : '');
+    }
+
+    async function loadArticles() {
+      var qs = articleFilter ? '?status=' + encodeURIComponent(articleFilter) : '';
+      var res = await api('/api/admin/articles' + qs);
+      if (!res.ok) return;
+      renderArticles(res.body);
+    }
+
+    function renderArticles(data) {
+      var table = field('admin-articles-table');
+      if (!table) return;
+
+      var items = data.items || [];
+      var c = data.counts || {};
+      var summary = field('admin-articles-summary');
+      if (summary) {
+        summary.textContent = 'Показано: ' + items.length + ' из ' + (data.total || 0) +
+          ' · черновиков ' + (c.draft || 0) +
+          ' · опубликовано ' + (c.published || 0) +
+          ' · в архиве ' + (c.archived || 0);
+      }
+
+      if (!items.length) {
+        table.innerHTML = '<tbody><tr><td>Статей нет. Нажмите «Новая статья».</td></tr></tbody>';
+        return;
+      }
+
+      var statusLabels = { draft: 'черновик', published: 'опубликована', archived: 'архив' };
+      var rows = items.map(function (a) {
+        var label = statusLabels[a.status] || a.status;
+        var date = String(a.published_at || a.updated_at || '').slice(0, 16).replace('T', ' ');
+        var slug = encodeURIComponent(a.slug);
+
+        var actions = a.status === 'published'
+          ? '<button type="button" class="mini-btn" data-act="unpublish" data-id="' + a.id + '">Снять</button>' +
+            ' <a class="mini-btn" href="/blog/' + slug + '" target="_blank" rel="noopener">Открыть</a>'
+          : '<button type="button" class="mini-btn" data-act="publish" data-id="' + a.id + '">Опубликовать</button>';
+        actions += ' <button type="button" class="mini-btn" data-act="edit" data-id="' + a.id + '">Изменить</button>';
+        actions += ' <button type="button" class="mini-btn mini-btn-danger" data-act="delete" data-id="' + a.id + '">Удалить</button>';
+
+        return '<tr>' +
+          '<td data-label="Заголовок">' + escapeHtml(a.title) + '</td>' +
+          '<td data-label="Адрес"><code>' + escapeHtml(a.slug) + '</code></td>' +
+          '<td data-label="Статус"><span class="status-chip status-' + escapeHtml(a.status) + '">' + escapeHtml(label) + '</span></td>' +
+          '<td data-label="Обновлено">' + escapeHtml(date) + '</td>' +
+          '<td data-label="Чтение">' + escapeHtml(a.reading_time_minutes) + ' мин</td>' +
+          '<td data-label="Действия" class="admin-actions">' + actions + '</td>' +
+          '</tr>';
+      }).join('');
+
+      table.innerHTML = '<thead><tr><th>Заголовок</th><th>Адрес</th><th>Статус</th>' +
+        '<th>Обновлено</th><th>Чтение</th><th>Действия</th></tr></thead><tbody>' + rows + '</tbody>';
+
+      table.querySelectorAll('.mini-btn[data-act]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          onArticleAction(btn.getAttribute('data-act'), btn.getAttribute('data-id'));
+        });
+      });
+    }
+
+    async function onArticleAction(act, rawId) {
+      var id = parseInt(rawId, 10);
+      if (!id) return;
+
+      if (act === 'edit') { await openEditor(id); return; }
+
+      if (act === 'publish' || act === 'unpublish') {
+        // «Снять» возвращает в черновики, а не в архив: владелец почти всегда
+        // хочет доработать текст, а не отложить его навсегда.
+        var status = act === 'publish' ? 'published' : 'draft';
+        var res = await api('/api/admin/articles/' + id, {
+          method: 'PATCH',
+          body: JSON.stringify({ status: status })
+        });
+        if (!res.ok) { alert('Не удалось сменить статус: ' + (res.body.error || res.status)); return; }
+        await Promise.all([loadArticles(), loadOutbox()]);
+        return;
+      }
+
+      if (act === 'delete') {
+        if (!confirm('Удалить статью безвозвратно?')) return;
+        var res2 = await api('/api/admin/articles/' + id, { method: 'DELETE' });
+        if (!res2.ok) { alert('Не удалось удалить: ' + (res2.body.error || res2.status)); return; }
+        if (editingId === id) closeEditor();
+        await Promise.all([loadArticles(), loadOutbox()]);
+      }
+    }
+
+    function resetPreview() {
+      var preview = field('article-preview');
+      if (preview) {
+        preview.innerHTML = '<p class="admin-hint">Нажмите «Предпросмотр», ' +
+          'чтобы увидеть, как статья будет выглядеть на сайте.</p>';
+      }
+      var meta = field('article-preview-meta');
+      if (meta) meta.textContent = '';
+    }
+
+    function closeEditor() {
+      editingId = null;
+      field('article-editor').hidden = true;
+      setEditorStatus('');
+      setMediaStatus('');
+      resetPreview();
+    }
+
+    async function openEditor(id) {
+      var editor = field('article-editor');
+      if (!editor) return;
+
+      setEditorStatus('');
+      setMediaStatus('');
+      resetPreview();
+
+      if (id == null) {
+        editingId = null;
+        field('article-editor-heading').textContent = 'Новая статья';
+        field('article-title').value = '';
+        field('article-slug').value = '';
+        field('article-summary').value = '';
+        field('article-tags').value = '';
+        field('article-cover').value = '';
+        field('article-canonical').value = '';
+        field('article-body').value = '';
+        field('article-status').value = 'draft';
+        renderCoverPreview();
+        editor.hidden = false;
+        field('article-title').focus();
+        return;
+      }
+
+      var res = await api('/api/admin/articles/' + id);
+      if (!res.ok) {
+        alert('Не удалось загрузить статью: ' + (res.body.error || res.status));
+        return;
+      }
+
+      var a = res.body;
+      editingId = a.id;
+      field('article-editor-heading').textContent = 'Редактирование: ' + a.title;
+      field('article-title').value = a.title || '';
+      field('article-slug').value = a.slug || '';
+      field('article-summary').value = a.summary || '';
+      field('article-tags').value = (a.tags || []).join(', ');
+      field('article-cover').value = a.cover_image_url || '';
+      field('article-canonical').value = a.canonical_url || '';
+      field('article-body').value = a.body_markdown || '';
+      field('article-status').value = a.status || 'draft';
+      renderCoverPreview();
+      editor.hidden = false;
+      editor.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    async function saveArticle() {
+      var payload = {
+        title: field('article-title').value,
+        slug: field('article-slug').value,
+        summary: field('article-summary').value,
+        body_markdown: field('article-body').value,
+        cover_image_url: field('article-cover').value,
+        canonical_url: field('article-canonical').value,
+        tags: parseTags(field('article-tags').value),
+        status: field('article-status').value
+      };
+
+      var isNew = editingId == null;
+      var res = isNew
+        ? await api('/api/admin/articles', { method: 'POST', body: JSON.stringify(payload) })
+        : await api('/api/admin/articles/' + editingId, { method: 'PUT', body: JSON.stringify(payload) });
+
+      if (!res.ok) {
+        setEditorStatus(res.body.error || ('Ошибка ' + res.status), 'error');
+        return;
+      }
+
+      // Сервер мог подобрать другой slug (транслит или коллизия) — показываем
+      // фактический адрес, а не то, что ввели.
+      editingId = res.body.id;
+      field('article-slug').value = res.body.slug;
+      field('article-editor-heading').textContent = 'Редактирование: ' + res.body.title;
+      setEditorStatus(res.body.status === 'published'
+        ? 'Сохранено и опубликовано.'
+        : 'Сохранено как «' + res.body.status + '».', 'success');
+
+      await Promise.all([loadArticles(), loadOutbox()]);
+    }
+
+    async function previewArticle() {
+      var res = await api('/api/admin/article-preview', {
+        method: 'POST',
+        body: JSON.stringify({ body_markdown: field('article-body').value })
+      });
+
+      var preview = field('article-preview');
+      if (!res.ok) {
+        preview.innerHTML = '<p class="form-status error">' +
+          escapeHtml(res.body.error || 'Не удалось построить предпросмотр') + '</p>';
+        return;
+      }
+
+      // HTML пришёл от нашего рендерера: сырой HTML в нём экранирован.
+      preview.innerHTML = res.body.html || '<p class="admin-hint">Пустой текст.</p>';
+      var meta = field('article-preview-meta');
+      if (meta) meta.textContent = (res.body.reading_time_minutes || 1) + ' мин чтения';
+    }
+
+    // ---------- Изображения статьи: drag&drop, вставка из буфера ----------
+    //
+    // Картинка сначала уезжает на сервер (/api/admin/media), и только потом в
+    // текст попадает её адрес. Порядок именно такой: markdown со ссылкой на
+    // несуществующий файл выглядит как готовый текст, но ломается на сайте.
+    //
+    // Отправляем через XMLHttpRequest, а не fetch: только он умеет сообщать
+    // прогресс отправки, а фото с телефона — это несколько мегабайт, и
+    // молчащий интерфейс выглядит зависшим.
+
+    // Больше этого размера сервер не примет — не гоняем байты зря.
+    var MAX_UPLOAD_BYTES = 8 * 1024 * 1024;
+
+    function setMediaStatus(message, kind) {
+      var el = field('article-media-status');
+      if (!el) return;
+      el.textContent = message || '';
+      el.className = 'form-status' + (kind ? ' ' + kind : '');
+    }
+
+    // Файл похож на изображение? Тип у перетаскиваемого файла бывает пустым,
+    // поэтому смотрим ещё и на расширение; окончательное слово всё равно за
+    // сервером — он определяет формат по содержимому.
+    function looksLikeImage(file) {
+      if (!file) return false;
+      if (file.type) return file.type.indexOf('image/') === 0;
+      return /\.(png|jpe?g|webp|gif|avif)$/i.test(file.name || '');
+    }
+
+    // В drag&drop участвует файл, а не выделенный текст.
+    function carriesFiles(event) {
+      var types = (event.dataTransfer && event.dataTransfer.types) || [];
+      return Array.prototype.indexOf.call(types, 'Files') !== -1;
+    }
+
+    function mediaError(message) {
+      var err = new Error(message);
+      return err;
+    }
+
+    async function uploadImage(file, onProgress) {
+      if (file.size > MAX_UPLOAD_BYTES) {
+        throw mediaError('«' + file.name + '» больше 8 МБ — сожмите его перед загрузкой.');
+      }
+
+      return new Promise(function (resolve, reject) {
+        var xhr = new XMLHttpRequest();
+        xhr.open('POST', '/api/admin/media');
+        // Content-Type не ставим: это не JSON, а сам файл. Тип сервер
+        // определяет по содержимому, а не по заголовку.
+        xhr.setRequestHeader('Authorization', 'Bearer ' + token());
+
+        xhr.upload.addEventListener('progress', function (e) {
+          if (onProgress && e.lengthComputable) onProgress(e.loaded / e.total);
+        });
+
+        xhr.addEventListener('load', function () {
+          var body = {};
+          try { body = JSON.parse(xhr.responseText); } catch (err) { /* не JSON */ }
+          if (xhr.status >= 200 && xhr.status < 300 && body.url) {
+            resolve(body);
+          } else {
+            reject(mediaError(body.error || ('Не удалось загрузить: ' + xhr.status)));
+          }
+        });
+        xhr.addEventListener('error', function () {
+          reject(mediaError('Сеть недоступна — изображение не загружено.'));
+        });
+        xhr.addEventListener('abort', function () {
+          reject(mediaError('Загрузка отменена.'));
+        });
+
+        xhr.send(file);
+      });
+    }
+
+    // Alt-текст по умолчанию — из имени файла. Кривой alt лучше пустого:
+    // его видно в предпросмотре, и автор поправит.
+    function altFromFile(file) {
+      var name = String(file.name || '').replace(/\.[^.]+$/, '');
+      name = name.replace(/[-_]+/g, ' ').replace(/[[\]]/g, '').trim();
+      return name || 'изображение';
+    }
+
+    function markdownFor(file, url) {
+      return '![' + altFromFile(file) + '](' + url + ')';
+    }
+
+    // Вставляет текст в позицию курсора, отделяя его пустой строкой.
+    //
+    // Без этого картинка приклеивается к абзацу («текст![схема](…)»), а
+    // markdown считает её частью строки — на сайте она встаёт не туда.
+    function insertIntoBody(text) {
+      var area = field('article-body');
+      if (!area) return;
+
+      var start = area.selectionStart == null ? area.value.length : area.selectionStart;
+      var end = area.selectionEnd == null ? start : area.selectionEnd;
+      var before = area.value.slice(0, start);
+      var after = area.value.slice(end);
+
+      var prefix = '';
+      if (before && !/\n\n$/.test(before)) prefix = /\n$/.test(before) ? '\n' : '\n\n';
+      var suffix = '';
+      if (after && !/^\n\n/.test(after)) suffix = /^\n/.test(after) ? '\n' : '\n\n';
+
+      var insertion = prefix + text + suffix;
+      area.value = before + insertion + after;
+
+      var caret = start + insertion.length;
+      area.setSelectionRange(caret, caret);
+      area.focus();
+    }
+
+    // Загружает файлы и раскладывает результат: в текст или в обложку.
+    async function uploadFiles(files, mode) {
+      var all = Array.prototype.slice.call(files || []);
+      var images = all.filter(looksLikeImage);
+
+      if (!images.length) {
+        if (all.length) setMediaStatus('Это не изображение: нужен PNG, JPEG, WebP, GIF или AVIF.', 'error');
+        return;
+      }
+
+      // Про пропущенные файлы говорим в каждом статусе: при перетаскивании
+      // нескольких файлов автор иначе не заметит, что часть не уехала.
+      var skipped = all.length - images.length;
+      var note = skipped
+        ? ' Пропущено файлов: ' + skipped + ' — нужен PNG, JPEG, WebP, GIF или AVIF.'
+        : '';
+
+      var button = field('article-image-btn');
+      if (button) button.disabled = true;
+
+      try {
+        for (var i = 0; i < images.length; i++) {
+          var file = images[i];
+          var caption = 'Загрузка «' + (file.name || 'изображение') + '»' +
+            (images.length > 1 ? ' (' + (i + 1) + ' из ' + images.length + ')' : '');
+
+          setMediaStatus(caption + '…' + note);
+          var stored = await uploadImage(file, function (progress) {
+            setMediaStatus(caption + ' — ' + Math.round(progress * 100) + '%' + note);
+          });
+
+          if (mode === 'cover') {
+            setCover(stored.url);
+            setMediaStatus((stored.deduplicated
+              ? 'Это изображение уже загружено — подставил прежний адрес.'
+              : 'Обложка загружена.') + note, skipped ? '' : 'success');
+          } else {
+            insertIntoBody(markdownFor(file, stored.url));
+            setMediaStatus((stored.deduplicated
+              ? 'Изображение уже было в медиатеке — вставил прежний адрес.'
+              : 'Изображение вставлено в текст.') + note, skipped ? '' : 'success');
+          }
+        }
+      } catch (err) {
+        setMediaStatus(err.message || 'Не удалось загрузить изображение.', 'error');
+      } finally {
+        if (button) button.disabled = false;
+      }
+    }
+
+    // Зона, принимающая перетаскиваемый файл.
+    //
+    // `dragenter`/`dragleave` приходят и на дочерние элементы, поэтому
+    // подсветка считается счётчиком, а не флагом: иначе она мигает, когда
+    // курсор проходит над текстарией внутри зоны.
+    function bindDropzone(element, mode) {
+      if (!element) return;
+      var depth = 0;
+
+      element.addEventListener('dragenter', function (e) {
+        if (!carriesFiles(e)) return;
+        e.preventDefault();
+        depth++;
+        element.classList.add('is-dragover');
+      });
+      element.addEventListener('dragover', function (e) {
+        if (!carriesFiles(e)) return;
+        e.preventDefault();
+        if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+      });
+      element.addEventListener('dragleave', function () {
+        depth = Math.max(0, depth - 1);
+        if (!depth) element.classList.remove('is-dragover');
+      });
+      element.addEventListener('drop', function (e) {
+        if (!carriesFiles(e)) return;
+        e.preventDefault();
+        e.stopPropagation();
+        depth = 0;
+        element.classList.remove('is-dragover');
+        uploadFiles(e.dataTransfer && e.dataTransfer.files, mode);
+      });
+    }
+
+    function setCover(url) {
+      field('article-cover').value = url || '';
+      renderCoverPreview();
+    }
+
+    function renderCoverPreview() {
+      var wrap = field('article-cover-preview');
+      var img = field('article-cover-preview-img');
+      if (!wrap || !img) return;
+
+      var url = (field('article-cover').value || '').trim();
+      if (url) {
+        img.src = url;
+        wrap.hidden = false;
+      } else {
+        img.removeAttribute('src');
+        wrap.hidden = true;
+      }
+    }
+
+    function initMediaUpload() {
+      var body = field('article-body');
+      var cover = field('article-cover');
+      var editor = field('article-editor');
+      if (!body || !editor) return;
+
+      bindDropzone(field('article-body-dropzone'), 'body');
+      bindDropzone(field('article-cover-dropzone'), 'cover');
+
+      // Страховка: файл, брошенный мимо зоны (на заголовок, на таблицу), не
+      // должен открываться вместо страницы — вместе с ним потеряется
+      // несохранённый текст. Такие файлы считаем вложением в текст статьи.
+      editor.addEventListener('dragover', function (e) {
+        if (carriesFiles(e)) e.preventDefault();
+      });
+      editor.addEventListener('drop', function (e) {
+        if (!carriesFiles(e)) return;
+        e.preventDefault();
+        uploadFiles(e.dataTransfer && e.dataTransfer.files, 'body');
+      });
+
+      // Скриншот из буфера — самый частый способ вставить картинку в статью.
+      body.addEventListener('paste', function (e) {
+        var files = (e.clipboardData && e.clipboardData.files) || [];
+        var images = Array.prototype.filter.call(files, looksLikeImage);
+        if (!images.length) return; // обычный текст: не мешаем вставке
+        e.preventDefault();
+        uploadFiles(images, 'body');
+      });
+
+      var input = field('article-image-input');
+      var button = field('article-image-btn');
+      if (button && input) {
+        button.addEventListener('click', function () { input.click(); });
+        input.addEventListener('change', function () {
+          uploadFiles(input.files, 'body');
+          // Сбрасываем: иначе повторный выбор того же файла не вызовет change.
+          input.value = '';
+        });
+      }
+
+      if (cover) cover.addEventListener('input', renderCoverPreview);
+      var clear = field('article-cover-clear');
+      if (clear) clear.addEventListener('click', function () { setCover(''); });
+
+      // Файл, брошенный вообще мимо редактора, браузер открывает вместо
+      // страницы — вместе с ним теряется несохранённый текст. Пока редактор
+      // открыт, гасим это поведение на всей странице.
+      document.addEventListener('dragover', function (e) {
+        if (!editor.hidden && carriesFiles(e)) e.preventDefault();
+      });
+      document.addEventListener('drop', function (e) {
+        if (!editor.hidden && carriesFiles(e)) e.preventDefault();
+      });
+    }
+
+    // ---------- События кросспостинга ----------
+
+    async function loadOutbox() {
+      var [pending, failed] = await Promise.all([
+        api('/api/admin/outbox?status=pending&limit=20'),
+        api('/api/admin/outbox?status=failed&limit=10')
+      ]);
+      if (!pending.ok) return;
+
+      var items = (pending.body.items || []).concat(failed.body ? (failed.body.items || []) : []);
+      renderOutbox(items, pending.body.pending);
+    }
+
+    function renderOutbox(items, pendingCount) {
+      var table = field('admin-outbox-table');
+      if (!table) return;
+
+      var summary = field('admin-outbox-summary');
+      if (summary) {
+        summary.textContent = 'Ждут доставки: ' + (pendingCount || 0) +
+          ' · в выборке: ' + items.length;
+      }
+
+      if (!items.length) {
+        table.innerHTML = '<tbody><tr><td>Событий нет. Опубликуйте статью — ' +
+          'здесь появится событие для n8n.</td></tr></tbody>';
+        return;
+      }
+
+      var rows = items.map(function (e) {
+        var slug = (e.payload && e.payload.article && e.payload.article.slug) || e.slug || '—';
+        var created = String(e.created_at || '').slice(0, 19).replace('T', ' ');
+        return '<tr>' +
+          '<td data-label="ID">' + escapeHtml(e.id) + '</td>' +
+          '<td data-label="Событие"><code>' + escapeHtml(e.event_type) + '</code></td>' +
+          '<td data-label="Статья">' + escapeHtml(slug) + '</td>' +
+          '<td data-label="Статус"><span class="status-chip status-' + escapeHtml(e.status) + '">' +
+            escapeHtml(e.status) + '</span></td>' +
+          '<td data-label="Попытки">' + escapeHtml(e.attempts) + '</td>' +
+          '<td data-label="Создано">' + escapeHtml(created) + '</td>' +
+          '</tr>';
+      }).join('');
+
+      table.innerHTML = '<thead><tr><th>ID</th><th>Событие</th><th>Статья</th>' +
+        '<th>Статус</th><th>Попытки</th><th>Создано</th></tr></thead><tbody>' + rows + '</tbody>';
+    }
+
+    // ---------- Обработчики интерфейса статей ----------
+
+    initMediaUpload();
+
+    if (field('article-new-btn')) {
+      field('article-new-btn').addEventListener('click', function () { openEditor(null); });
+    }
+    if (field('article-save-btn')) {
+      field('article-save-btn').addEventListener('click', saveArticle);
+    }
+    if (field('article-preview-btn')) {
+      field('article-preview-btn').addEventListener('click', previewArticle);
+    }
+    if (field('article-cancel-btn')) {
+      field('article-cancel-btn').addEventListener('click', closeEditor);
+    }
+    document.querySelectorAll('#admin-article-filters .filter-btn').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        document.querySelectorAll('#admin-article-filters .filter-btn').forEach(function (b) {
+          b.classList.remove('is-active');
+        });
+        btn.classList.add('is-active');
+        articleFilter = btn.getAttribute('data-status') || '';
+        loadArticles();
+      });
+    });
+
+    // Автовход, если токен уже сохранён.
+    if (token()) { loadDashboard(); }
+  }
+
+  // ---------- Интерактивные карточки: tilt + radial spotlight ----------
+  function initHeroCanvas() {
+    var canvas = document.getElementById('hero-canvas');
+    if (!canvas) return;
+    var ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    var hero = canvas.parentElement;
+    var reduceMotion = !!(window.matchMedia &&
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+
+    var W = 0, H = 0, cols = 0, rows = 0;
+    var grid = [];
+    var mouse = { x: -1e5, y: -1e5, active: false };
+    var rafId = 0, running = false;
+    var CURSOR_R = 190;   // радиус влияния курсора
+    var PUSH = 30;        // сила отталкивания точек
+    var IDLE_AMP = 3;     // лёгкое «дыхание» в покое
+    var FADE_START = 620; // Y-координата, с которой начинается затухание сетки (фиксированная)
+
+    function build() {
+      // Force canvas to match the CSS-stretched dimensions (bottom: -80px for fade)
+      var hero = canvas.parentElement;
+      var heroRect = hero.getBoundingClientRect();
+
+      // Expand canvas below hero for gradient fade overlay
+      canvas.style.height = Math.round(heroRect.height + 80) + 'px';
+
+      // Wait for layout to settle, then read actual canvas bounding rect
+      requestAnimationFrame(function() {
+        var canvasRect = canvas.getBoundingClientRect();
+        W = canvasRect.width;
+        H = canvasRect.height;
+        if (W < 40 || H < 40) return;
+
+        var dpr = Math.min(window.devicePixelRatio || 1, 2);
+        canvas.width = Math.round(W * dpr);
+        canvas.height = Math.round(H * dpr);
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+        // Плотная сетка: базовый шаг, расширяемый при ресайзе canvas.
+        var base = W < 640 ? 130 : 110;   // крупные ячейки
+        // Растягиваем сетку по всей высоте canvas (без зоны сохранения снизу).
+        cols = Math.max(2, Math.round(W / base));
+        rows = Math.max(2, Math.round(H / base));
+        var spX = cols > 1 ? W / (cols - 1) : W;
+        var spY = rows > 1 ? H / (rows - 1) : H;
+
+        grid = [];
+        for (var r = 0; r < rows; r++) {
+          var row = [];
+          for (var c = 0; c < cols; c++) {
+            row.push({ hx: c * spX, hy: r * spY, cx: c * spX, cy: r * spY, ph: Math.random() * 6.283 });
+          }
+          grid.push(row);
+        }
+        layoutReady = true;
+        if (reduceMotion) draw();
+      });
+    }
+
+    function draw() {
+      if (W < 40 || H < 40) return;
+      ctx.clearRect(0, 0, W, H);
+
+      // Зона затухания — фиксированная Y=620. С этой высоты начинается прозрачность.
+      var fadeStart = FADE_START; // 620px
+      var fadeRange = H - fadeStart; // ~241px при canvas.height=861
+
+      // Линии сетки — с постепенным затуханием к низу.
+      ctx.lineWidth = 1;
+      for (var r = 0; r < rows; r++) {
+        var row = grid[r];
+        for (var c = 0; c < cols; c++) {
+          var d = row[c];
+
+          // Горизонтальная линия к соседу справа.
+          if (c + 1 < cols) {
+            var nx = row[c + 1].cx, ny = row[c + 1].cy;
+            var avgY = (d.cy + ny) / 2;
+            var lineAlpha = avgY < fadeStart ? 0.045 : Math.max(0, 0.045 * (1 - (avgY - fadeStart) / fadeRange));
+            ctx.strokeStyle = 'rgba(255,255,255,' + lineAlpha.toFixed(3) + ')';
+            ctx.beginPath();
+            ctx.moveTo(d.cx, d.cy);
+            ctx.lineTo(nx, ny);
+            ctx.stroke();
+          }
+
+          // Вертикальная линия к соседу снизу.
+          if (r + 1 < rows) {
+            var sx = grid[r + 1][c].cx, sy = grid[r + 1][c].cy;
+            var avgYV = (d.cy + sy) / 2;
+            var lineAlphaV = avgYV < fadeStart ? 0.045 : Math.max(0, 0.045 * (1 - (avgYV - fadeStart) / fadeRange));
+            ctx.strokeStyle = 'rgba(255,255,255,' + lineAlphaV.toFixed(3) + ')';
+            ctx.beginPath();
+            ctx.moveTo(d.cx, d.cy);
+            ctx.lineTo(sx, sy);
+            ctx.stroke();
+          }
+        }
+      }
+
+      // Точки сетки — с постепенным затуханием к низу.
+      for (r = 0; r < rows; r++) {
+        row = grid[r];
+        for (c = 0; c < cols; c++) {
+          d = row[c];
+          var dotAlpha = d.cy < fadeStart ? 0.32 : Math.max(0, 0.32 * (1 - (d.cy - fadeStart) / fadeRange));
+          ctx.fillStyle = 'rgba(214,210,255,' + dotAlpha.toFixed(3) + ')';
+          ctx.beginPath();
+          ctx.moveTo(d.cx + 2.2, d.cy);
+          ctx.arc(d.cx, d.cy, 2.2, 0, 6.283);
+          ctx.fill();
+        }
+      }
+
+      // Финальное затемнение — чёрный градиент поверх зоны fade для полного растворения в фоне.
+      if (fadeRange > 0) {
+        var grad = ctx.createLinearGradient(0, fadeStart, 0, H);
+        grad.addColorStop(0, 'rgba(10,10,20,0)');
+        grad.addColorStop(0.6, 'rgba(10,10,20,0.4)');
+        grad.addColorStop(1, 'rgba(10,10,20,0.95)');
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, fadeStart, W, fadeRange);
+      }
+    }
+
+    // Вычисляем целевые координаты и плавно двигаем точки.
+    function update() {
+      var t = performance.now() / 1000;
+      for (var r = 0; r < rows; r++) {
+        var row = grid[r];
+        for (var c = 0; c < cols; c++) {
+          var d = row[c];
+          var idle = reduceMotion ? 0 : Math.sin(t * 1.1 + d.ph) * IDLE_AMP;
+          var tx = d.hx;
+          var ty = d.hy + idle;
+
+          if (mouse.active && !reduceMotion) {
+            var vx = d.hx - mouse.x;
+            var vy = d.hy - mouse.y;
+            var dist = Math.sqrt(vx * vx + vy * vy);
+            if (dist < CURSOR_R && dist > 0.01) {
+              var k = 1 - dist / CURSOR_R;
+              var push = PUSH * k * k;
+              tx += (vx / dist) * push;
+              ty += (vy / dist) * push;
+            }
+          }
+          d.cx += (tx - d.cx) * 0.1;
+          d.cy += (ty - d.cy) * 0.1;
+        }
+      }
+    }
+
+    function frame() {
+      if (!running) return;
+      rafId = requestAnimationFrame(frame);
+      update();
+      draw();
+    }
+
+    function start() {
+      if (running || reduceMotion) return;
+      running = true;
+      cancelAnimationFrame(rafId);
+      rafId = requestAnimationFrame(frame);
+    }
+    function stop() {
+      running = false;
+      cancelAnimationFrame(rafId);
+    }
+
+    function onMove(e) {
+      var rect = canvas.getBoundingClientRect();
+      mouse.x = e.clientX - rect.left;
+      mouse.y = e.clientY - rect.top;
+      mouse.active = true;
+    }
+
+    window.addEventListener('pointermove', onMove, { passive: true });
+    hero.addEventListener('pointerleave', function () { mouse.active = false; });
+    window.addEventListener('blur', function () { mouse.active = false; });
+
+    // Запускаем/останавливаем анимацию при попадании hero в вьюпорт.
+    if ('IntersectionObserver' in window) {
+      new IntersectionObserver(function (entries) {
+        entries.forEach(function (en) {
+          if (en.isIntersecting) { start(); } else { stop(); }
+        });
+      }, { threshold: 0.05 }).observe(hero);
+    }
+
+    var layoutReady = false; // flag что build() завершил асинхронно
+
+    function onResize() {
+      build();
+      // Ждём завершения requestAnimationFrame перед запуском анимации
+      setTimeout(function() {
+        if (reduceMotion) { draw(); } else if (layoutReady) { start(); }
+      }, 50);
+    }
+
+    if ('ResizeObserver' in window) {
+      new ResizeObserver(onResize).observe(hero);
+    } else {
+      window.addEventListener('resize', onResize);
+    }
+
+    build();
+    // После начального build() ждём RAF и стартуем
+    setTimeout(function() {
+      layoutReady = true;
+      if (!reduceMotion) { start(); }
+    }, 100);
+  }
+
+  // ---------- Маскот: эмоции по ходу запроса ----------
+  //
+  // Все пять кадров уже лежат в разметке (см. `ui::home`), поэтому смена
+  // эмоции — это смена `data-emotion` на контейнере: CSS показывает нужный
+  // кадр. Ни одного запроса в сети в этот момент не происходит, иначе ведьма
+  // мигала бы в самый заметный момент — во время ответа.
+  //
+  // Эмоции короткие, кроме «базовой»: `smirk` и `dissatisfied` — реакция на
+  // событие, а не состояние. Они держатся пару секунд и возвращаются к
+  // базовой, иначе ведьма осталась бы довольной до следующего вопроса.
+  function initMascot() {
+    var mascot = document.getElementById('hero-mascot');
+    if (!mascot) return null;
+
+    var KNOWN = ['base', 'read', 'thinking', 'smirk', 'dissatisfied'];
+    var holdTimer = null;
+
+    function show(emotion) {
+      if (KNOWN.indexOf(emotion) === -1) return;
+      clearTimeout(holdTimer);
+      holdTimer = null;
+      mascot.setAttribute('data-emotion', emotion);
+    }
+
+    function showThenIdle(emotion, holdMs) {
+      show(emotion);
+      holdTimer = setTimeout(function () { show('base'); }, holdMs);
+    }
+
+    return {
+      // Запрос отправлен и ждём ответа — читаем.
+      reading: function () { show('read'); },
+      // Ответ пришёл и печатается — обдумываем.
+      thinking: function () { show('thinking'); },
+      // Ответ допечатан — довольная ухмылка и возврат в покой.
+      done: function () { showThenIdle('smirk', 2600); },
+      // Запрос не удался — недовольство держится дольше: это сигнал человеку.
+      failed: function () { showThenIdle('dissatisfied', 4000); },
+      idle: function () { show('base'); }
+    };
+  }
+
+  // ---------- Hero: интерактивная AI-терминальная сессия (CLI) ----------
+  function initHeroTerminal(mascot) {
+    var terminal = document.getElementById('hero-terminal');
+    if (!terminal) return;
+
+    var output = document.getElementById('hero-terminal-output');
+    var input = document.getElementById('hero-terminal-input');
+    var inputRow = document.getElementById('hero-terminal-input-row');
+
+    // Та же цель, что у чата на /chat (см. `services::goals`): терминал на
+    // главной — второй вход в диалог. Срабатывает один раз и только после
+    // ответа сервера.
+    var startedGoal = terminal.getAttribute('data-goal');
+    var startedReported = false;
+
+    function markChatStarted() {
+      if (startedReported || !startedGoal) return;
+      startedReported = true;
+      trackGoal(startedGoal);
+    }
+
+    var reduceMotion = !!(window.matchMedia &&
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+
+    // Состояние терминала
+    var isTyping = false;       // идёт анимация печати ответа
+    var isBusy = false;         // запрос к API ещё не завершён
+    var skipTyping = null;      // мгновенно допечатать текущую строку
+    var typingToken = 0;        // поколение печати: старый таймаут не должен гасить новую
+
+    // ---------- Утилиты ----------
+    function scrollToBottom() {
+      output.scrollTop = output.scrollHeight;
+    }
+
+    function appendLine(className, text) {
+      var line = document.createElement('div');
+      line.className = 'terminal-line ' + (className || '');
+      line.textContent = text;
+      output.appendChild(line);
+      scrollToBottom();
+      return line;
+    }
+
+    // ---------- Печать «как в терминале» ----------
+    // Раньше задержка была фиксированной (~15 ms на символ): строка росла
+    // ровным потоком и читалась как линейный «занавес», а не как набор текста.
+    // Теперь у каждого символа своя задержка с джиттером + паузы на знаках
+    // препинания — ритм рваный, и буквы видно по отдельности.
+    var TYPE_BASE_MS = 26;    // базовая скорость набора
+    var TYPE_JITTER_MS = 22;  // разброс, чтобы ритм не был метрономом
+
+    function typeDelay(ch) {
+      var d = TYPE_BASE_MS + Math.random() * TYPE_JITTER_MS;
+      if (ch === '\n') return d + 150;                // новая строка
+      if ('.!?…'.indexOf(ch) !== -1) return d + 240;  // конец предложения
+      if (';:—–-'.indexOf(ch) !== -1) return d + 110; // пауза внутри фразы
+      if (ch === ' ') return d * 0.7;                 // между словами чуть быстрее
+      return d;
+    }
+
+    function typeText(element, text, callback, speed) {
+      if (!element) return; // null element — просто пропускаем
+      if (reduceMotion) {
+        element.textContent = text;
+        if (callback) callback();
+        return;
+      }
+      speed = speed || 1;
+      isTyping = true;
+      var myToken = ++typingToken;
+
+      var i = 0;
+      var finished = false;
+      var timer = null;
+      var cursorEl = document.createElement('span');
+      cursorEl.className = 'terminal-cursor';
+      cursorEl.textContent = '█';
+      element.textContent = '';
+      element.appendChild(cursorEl);
+
+      function complete() {
+        if (finished) return;
+        finished = true;
+        clearTimeout(timer);
+        // Курсор гаснет не сразу — даём глазу увидеть конец строки.
+        setTimeout(function () {
+          if (cursorEl.parentNode) cursorEl.remove();
+          // Если за это время стартовала новая печать — её состояние не трогаем.
+          if (myToken === typingToken) {
+            isTyping = false;
+            skipTyping = null;
+          }
+          if (callback) callback();
+        }, 400);
+      }
+
+      function typeChar() {
+        if (i >= text.length) {
+          complete();
+          return;
+        }
+        var ch = text[i++];
+        element.insertBefore(document.createTextNode(ch), cursorEl);
+        scrollToBottom();
+        timer = setTimeout(typeChar, typeDelay(ch) * speed);
+      }
+
+      // Допечатать всё сразу: Enter во время вывода не должен терять ввод.
+      skipTyping = function () {
+        if (i < text.length) {
+          element.insertBefore(document.createTextNode(text.slice(i)), cursorEl);
+          i = text.length;
+          scrollToBottom();
+        }
+        complete();
+      };
+
+      typeChar();
+    }
+
+    // ---------- Анимация загрузочного индикатора ("думает...") ----------
+    function showLoading() {
+      var line = document.createElement('div');
+      line.className = 'terminal-line terminal-loading';
+      line.innerHTML = '<span class="code-fn">[думает]</span><span class="loading-dots">...</span>';
+      output.appendChild(line);
+      scrollToBottom();
+
+      // Анимация точек
+      var dotsEl = line.querySelector('.loading-dots');
+      var dotCount = 0;
+      var dotInterval = setInterval(function() {
+        dotCount = (dotCount + 1) % 4;
+        dotsEl.textContent = '.'.repeat(dotCount);
+      }, 500);
+
+      return function hideLoading() {
+        clearInterval(dotInterval);
+        line.remove();
+      };
+    }
+
+    // ---------- Управление состоянием ввода ----------
+    function disableInput() {
+      isBusy = true;
+      input.disabled = true;
+      input.placeholder = 'ждём ответ...';
+      inputRow.classList.add('is-busy');
+    }
+
+    function enableInput() {
+      isBusy = false;
+      input.disabled = false;
+      input.placeholder = 'Задайте вопрос...';
+      inputRow.classList.remove('is-busy');
+      input.focus();
+    }
+
+    // ---------- Приветственное сообщение (typewriter) ----------
+    var welcomeLine = document.createElement('div');
+    welcomeLine.className = 'terminal-line terminal-welcome';
+    output.appendChild(welcomeLine);
+    typeText(welcomeLine, '> inteli-dev CLI v1.0 — спрашивайте обо мне, услугах, ценах или оставьте заявку.', function() {
+      input.focus();
+    }, 0.6);
+
+    // ---------- Отправка сообщения в API ----------
+    async function sendMessage(message, questionType) {
+      if (isBusy) return;                          // предыдущий запрос ещё в полёте
+      if (isTyping && skipTyping) skipTyping();    // недопечатанный ответ — допечатать мгновенно
+
+      disableInput();
+      var loading = showLoading();
+      // Запрос в полёте: ведьма читает. Дальше эмоции пойдут по событию, а не
+      // по таймеру — «печатает» начинается ровно с ответа сервера.
+      if (mascot) mascot.reading();
+
+      try {
+        var res = await fetch('/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message: message, question_type: questionType })
+        });
+
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+
+        var data = await res.json();
+        loading(); // убрать лоадер
+        markChatStarted();
+
+        appendLine('terminal-user', '$ > ' + message);
+
+        // Напечатать ответ от бота с анимацией
+        var botLine = document.createElement('div');
+        botLine.className = 'terminal-line terminal-bot-response';
+        output.appendChild(botLine);
+
+        // Ввод разблокируем сразу: пока идёт вывод, можно печатать следующий
+        // вопрос (Enter допечатает текущий ответ мгновенно) — как в терминале.
+        enableInput();
+
+        // Ответ пришёл: пока он печатается, ведьма думает; как только строка
+        // допечатана (или допечатана по Enter) — довольна и возвращается в покой.
+        if (mascot) mascot.thinking();
+        typeText(botLine, data.answer, function () {
+          scrollToBottom();
+          if (mascot) mascot.done();
+        });
+
+      } catch (err) {
+        loading(); // убрать лоадер в случае ошибки
+        appendLine('terminal-error', '⚠ Ошибка: ' + err.message);
+        enableInput();
+        if (mascot) mascot.failed();
+      }
+    }
+
+    // ---------- Обработчики событий ----------
+    function handleSend() {
+      var text = input.value.trim();
+      if (!text) return;
+      var max = tooLong(input, text);
+      if (max) {
+        appendLine('terminal-line-warn', 'Вопрос длиннее ' + max + ' символов — сократите его, пожалуйста.');
+        return;
+      }
+      sendMessage(text, 'free');
+      input.value = '';
+    }
+
+    input.addEventListener('keydown', function(e) {
+      if (e.key === 'Enter') handleSend();
+    });
+
+    // Preset-кнопки
+    terminal.querySelectorAll('.terminal-preset-btn').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        var kind = btn.getAttribute('data-kind');
+        var index = btn.getAttribute('data-index');
+        var message = btn.textContent.replace(/^["']|["']$/g, ''); // убрать кавычки из шаблона
+
+        if (kind === 'analysis') {
+          var url = prompt('Введите ссылку на ваш сайт (например, example.com):');
+          if (!url || !url.trim()) return;
+          sendMessage(message + ' (' + url.trim() + ')', 'analysis');
+        } else {
+          var payload = { message: message, question_type: kind };
+          if (index) payload.preset_index = parseInt(index, 10);
+          sendMessage(message, kind);
+        }
+      });
+    });
+  }
+
+  // ---------- Кнопки: radial spotlight под курсором (без box-shadow) ----------
+  function initButtonSpotlight() {
+    var buttons = document.querySelectorAll('.btn');
+    if (!buttons.length) return;
+
+    buttons.forEach(function(btn) {
+      function onMove(e) {
+        var rect = btn.getBoundingClientRect();
+        var x = e.clientX - rect.left;
+        var y = e.clientY - rect.top;
+        // CSS-переменные для radial spotlight.
+        btn.style.setProperty('--mx', x + 'px');
+        btn.style.setProperty('--my', y + 'px');
+      }
+
+      function onLeave() {
+        btn.style.setProperty('--mx', '50%');
+        btn.style.setProperty('--my', '50%');
+      }
+
+      btn.addEventListener('pointermove', onMove, { passive: true });
+      btn.addEventListener('pointerleave', onLeave);
+    });
+  }
+
+  // ---------- Hero: интерактивная геометрическая сетка (реагирует на курсор) ----------
+  function initCardEffects() {
+    var cards = document.querySelectorAll('.card');
+    if (!cards.length) return;
+
+    var MAX_TILT = 6; // градусов максимального наклона
+    var ROTATE_SPEED = 0.15; // плавность возврата (0-1, меньше = медленнее)
+
+    cards.forEach(function(card) {
+      var currentRotateX = 0;
+      var currentRotateY = 0;
+      var targetRotateX = 0;
+      var targetRotateY = 0;
+      var rafId = 0;
+      var reduceMotion = !!(window.matchMedia &&
+        window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+
+      function onMove(e) {
+        var rect = card.getBoundingClientRect();
+        var x = e.clientX - rect.left;
+        var y = e.clientY - rect.top;
+
+        // CSS-переменные для radial spotlight.
+        card.style.setProperty('--mx', x + 'px');
+        card.style.setProperty('--my', y + 'px');
+
+        if (!reduceMotion) {
+          // Вычисляем tilt: нормализуем позицию к [-1, 1], умножаем на MAX_TILT.
+          targetRotateX = ((y / rect.height - 0.5) * -2) * MAX_TILT;
+          targetRotateY = ((x / rect.width - 0.5) * 2) * MAX_TILT;
+        }
+
+        // Запускаем анимацию если не запущена.
+        if (!rafId && !reduceMotion) { rafId = animate(); }
+      }
+
+      function onLeave() {
+        targetRotateX = 0;
+        targetRotateY = 0;
+        card.style.setProperty('--mx', '50%');
+        card.style.setProperty('--my', '50%');
+      }
+
+      function animate() {
+        currentRotateX += (targetRotateX - currentRotateX) * ROTATE_SPEED;
+        currentRotateY += (targetRotateY - currentRotateY) * ROTATE_SPEED;
+
+        // Условие остановки: близко к нулю.
+        if (Math.abs(currentRotateX) < 0.01 && Math.abs(currentRotateY) < 0.01 &&
+            targetRotateX === 0 && targetRotateY === 0) {
+          currentRotateX = 0;
+          currentRotateY = 0;
+          card.style.transform = '';
+          rafId = 0;
+          return;
+        }
+
+        card.style.transform = 'perspective(800px) rotateX(' + currentRotateX.toFixed(2) +
+          'deg) rotateY(' + currentRotateY.toFixed(2) + 'deg)';
+        rafId = requestAnimationFrame(animate);
+      }
+
+      // Убираем raf на mouseleave чтобы цикл остановился.
+      card.addEventListener('pointermove', onMove, { passive: true });
+      card.addEventListener('pointerleave', onLeave);
+    });
+  }
+
+  // ---------- Подсказка статуса занятости ----------
+  // Бейдж — кнопка с постоянным подлежащим («Приём заявок: открыт») и
+  // подсказкой с подробностями. На десктопе подсказку показывает сам CSS
+  // (:hover / :focus-visible), здесь — только явное переключение: на
+  // тач-устройстве hover недоступен, и состояние иначе не раскрыть.
+  function initStatusBadge() {
+    var badges = document.querySelectorAll('.status-badge');
+    if (!badges.length) return;
+
+    function setOpen(badge, open) {
+      badge.classList.toggle('is-open', open);
+      badge.setAttribute('aria-expanded', open ? 'true' : 'false');
+    }
+
+    function closeAll(except) {
+      badges.forEach(function (badge) { if (badge !== except) setOpen(badge, false); });
+    }
+
+    badges.forEach(function (badge) {
+      badge.addEventListener('click', function () {
+        var open = !badge.classList.contains('is-open');
+        closeAll(badge);
+        setOpen(badge, open);
+      });
+    });
+
+    // Клик вне бейджа и Escape закрывают подсказку.
+    document.addEventListener('click', function (e) {
+      if (!e.target.closest('.status-badge')) closeAll(null);
+    });
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') closeAll(null);
+    });
+  }
+
+  initReveal();
+  initMobileNav();
+  initStatusBadge();
+  initCharCounters();
+  initGoalClicks();
+  initGoalRead();
+  initHeroTerminal(initMascot());
+  initHeroCanvas();
+  initCardEffects();
+  initButtonSpotlight();
+  initChat();
+  initLeadForm();
+  initAdmin();
+})();

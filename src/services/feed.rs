@@ -174,6 +174,7 @@ mod tests {
             source: "admin".into(),
             external_id: None,
             canonical_url: None,
+            habr_url: None,
         }
     }
 

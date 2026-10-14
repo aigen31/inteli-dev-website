@@ -37,6 +37,7 @@ OCTICON_URL="https://cdn.jsdelivr.net/npm/@primer/octicons@${OCTICON_VERSION}/bu
 #   6. DevOps и серверы          → server-cog    (сервер + автоматизация)
 #
 # Последние три — иконки статуса занятости (services/chat.rs → status_icon_name).
+# Десятая — кнопка чата в правом нижнем углу (assets/main.js → initFloatingChat).
 ICONS=(
   brain-circuit
   plug-zap
@@ -47,6 +48,7 @@ ICONS=(
   circle-check
   settings
   check-circle
+  message-circle
 )
 
 # Брендовые иконки (Octicons). Список = ключи BRAND_ICON_PATHS в icon.rs.

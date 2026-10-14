@@ -3,6 +3,9 @@
 .vscode/
 .idea/
 target/
+# Кэш сборки для проверок в контейнере (CARGO_TARGET_DIR): в контекст он не
+# нужен, а это гигабайты и файлы, которые читает только root.
+target-check/
 .DS_Store
 *.md
 viking-content/
@@ -16,3 +19,5 @@ config.toml
 
 # Local docker CLI state
 .docker-build/
+# Черновая папка проверок (снимки страниц, скриншоты): в образ не идёт
+.fool-work/

@@ -36,6 +36,64 @@
     }
   }
 
+  // ---------- Общий транспорт чата ----------
+  //
+  // Единственная точка обращения к `/api/chat`: страница /chat, терминал в hero
+  // и плавающая панель на главной ходят туда одним и тем же запросом. Своя
+  // обёртка вокруг fetch у каждого входа означала бы, что «сеть упала» и «сервер
+  // отказал» обрабатываются в трёх местах по-разному.
+  async function postChat(payload) {
+    var res = await fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    var body = await res.json().catch(function () { return {}; });
+    return { ok: res.ok, status: res.status, body: body };
+  }
+
+  // Пузырь «ИИ печатает». Один на оба чата: индикатор ожидания не должен
+  // выглядеть по-разному на странице /chat и в плавающей панели.
+  function typingBubble() {
+    var el = document.createElement('div');
+    el.className = 'chat-message bot-message chat-typing';
+    el.setAttribute('role', 'status');
+
+    // Если анимации отключены системно — оставляем читаемый текстовый статус.
+    var reduceMotion = window.matchMedia &&
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    el.innerHTML = reduceMotion
+      ? '<span class="typing-static" aria-hidden="true">печатает</span>' +
+        '<span class="sr-only">ИИ печатает ответ</span>'
+      : '<span class="typing-dots" aria-hidden="true"><i></i><i></i><i></i></span>' +
+        '<span class="sr-only">ИИ печатает ответ</span>';
+    return el;
+  }
+
+  // Кнопки-подсказки после ответа. `send` — как отправить выбранный текст.
+  // Возвращает `null`, если подсказок нет.
+  function suggestionsRow(suggested, send) {
+    if (!Array.isArray(suggested) || !suggested.length) return null;
+
+    var row = document.createElement('div');
+    row.className = 'chat-suggestions';
+    suggested.forEach(function (s) {
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'preset-button';
+      b.textContent = s.text;
+      b.addEventListener('click', function () {
+        if (s.type && s.type.indexOf('link:') === 0) {
+          window.location.href = s.type.slice(5);
+        } else {
+          send({ message: s.text, question_type: 'lead_request' });
+        }
+      });
+      row.appendChild(b);
+    });
+    return row;
+  }
+
   // ---------- Цели: клик по ссылке или кнопке ----------
   //
   // Слушатель один на документ: ссылок с целями сколько угодно на любой
@@ -234,7 +292,6 @@
     // Пока ждём ответ ИИ — блокируем повторную отправку и показываем анимацию.
     var isWaiting = false;
     var MIN_TYPING_MS = 500; // индикатор не должен «мигать» на быстрых ответах
-    var reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
     // Цель «диалог начат» — один раз за загрузку страницы и только после ответа
     // сервера: запрос, который не дошёл, не должен выглядеть в статистике как
@@ -258,23 +315,8 @@
     }
 
     function addSuggestions(suggested) {
-      if (!Array.isArray(suggested) || !suggested.length) return;
-      var row = document.createElement('div');
-      row.className = 'chat-suggestions';
-      suggested.forEach(function (s) {
-        var b = document.createElement('button');
-        b.type = 'button';
-        b.className = 'preset-button';
-        b.textContent = s.text;
-        b.addEventListener('click', function () {
-          if (s.type && s.type.indexOf('link:') === 0) {
-            window.location.href = s.type.slice(5);
-          } else {
-            send({ message: s.text, question_type: 'lead_request' });
-          }
-        });
-        row.appendChild(b);
-      });
+      var row = suggestionsRow(suggested, send);
+      if (!row) return;
       messages.appendChild(row);
       messages.scrollTop = messages.scrollHeight;
     }
@@ -282,18 +324,7 @@
     // Индикатор ожидания ответа ИИ: пузырь с тремя «дышащими» точками и
     // пробегающим блеском. Рендерится до запроса, а не после него.
     function showTyping() {
-      var el = document.createElement('div');
-      el.className = 'chat-message bot-message chat-typing';
-      el.setAttribute('role', 'status');
-      el.innerHTML =
-        '<span class="typing-dots" aria-hidden="true"><i></i><i></i><i></i></span>' +
-        '<span class="sr-only">ИИ печатает ответ</span>';
-      // Если анимации отключены системно — оставляем читаемый текстовый статус.
-      if (reduceMotion) {
-        el.innerHTML =
-          '<span class="typing-static" aria-hidden="true">печатает</span>' +
-          '<span class="sr-only">ИИ печатает ответ</span>';
-      }
+      var el = typingBubble();
       messages.appendChild(el);
       messages.scrollTop = messages.scrollHeight;
       return el;
@@ -326,12 +357,8 @@
       var typingEl = showTyping();
 
       try {
-        var res = await fetch('/api/chat', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        });
-        var data = await res.json().catch(function () { return {}; });
+        var res = await postChat(payload);
+        var data = res.body;
 
         await holdTyping(startedAt);
         typingEl.remove();
@@ -495,7 +522,7 @@
       renderKpi(stats.body);
       renderLeads(leads.body);
       renderChats(chats.body);
-      await Promise.all([loadArticles(), loadOutbox()]);
+      await Promise.all([loadArticles(), loadOutbox(), loadSettings()]);
       showDashboard();
     }
 
@@ -571,6 +598,93 @@
     });
     tokenInput.addEventListener('keydown', function (e) {
       if (e.key === 'Enter') loginBtn.click();
+    });
+
+    // ---------- Настройки сайта: бейдж «Приём заявок» ----------
+    //
+    // Те же поля правит Telegram-бот, поэтому ответ сервера — единственный
+    // источник и для формы, и для бейджа в шапке: он отдаёт готовые строки
+    // («В работе 2 проекта», «Приём заявок: открыт»), и админка не склеивает
+    // их заново — иначе падежи в форме и в подсказке разошлись бы.
+    function setSettingsMessage(message, kind) {
+      var el = field('admin-settings-message');
+      if (!el) return;
+      el.textContent = message || '';
+      el.className = 'form-status' + (kind ? ' ' + kind : '');
+    }
+
+    function renderSettings(s) {
+      field('admin-status-select').value = s.status || 'available';
+      field('admin-projects').value = s.current_projects == null ? 0 : s.current_projects;
+      field('admin-slot').value = s.next_free_slot || '';
+    }
+
+    // Бейдж в шапке отрендерен сервером. После правки он показывал бы старое
+    // состояние — это читается как «не сохранилось», поэтому обновляем его
+    // здесь тем же текстом, что пришёл в ответе.
+    function syncStatusBadge(s) {
+      document.querySelectorAll('.status-badge').forEach(function (badge) {
+        // Класс состояния меняем через classList: у бейджа есть второй класс
+        // `status-badge`, и замена по регулярке задела бы именно его.
+        badge.classList.remove('status-available', 'status-busy', 'status-full');
+        badge.classList.add('status-' + s.status);
+        badge.setAttribute('aria-label', s.aria_label);
+
+        var state = badge.querySelector('.status-state');
+        if (state) {
+          // label — «Приём заявок: открыт»: подлежащее у бейджа своё.
+          var parts = String(s.label || '').split(': ');
+          state.textContent = parts.length > 1 ? parts.slice(1).join(': ') : s.label;
+        }
+
+        var summary = badge.querySelector('.status-popover-summary');
+        if (summary) summary.textContent = s.summary;
+
+        var lines = badge.querySelectorAll('.status-popover-line');
+        (s.facts || []).forEach(function (fact, i) {
+          if (lines[i]) lines[i].textContent = fact;
+        });
+      });
+    }
+
+    async function loadSettings() {
+      var res = await api('/api/admin/settings');
+      if (!res.ok) return;
+      renderSettings(res.body);
+      syncStatusBadge(res.body);
+    }
+
+    async function saveSettings() {
+      var raw = field('admin-projects').value;
+      var projects = parseInt(raw, 10);
+      if (isNaN(projects)) {
+        setSettingsMessage('Число проектов должно быть целым.', 'error');
+        return;
+      }
+
+      var payload = {
+        status: field('admin-status-select').value,
+        current_projects: projects,
+        next_free_slot: field('admin-slot').value
+      };
+
+      var res = await api('/api/admin/settings', {
+        method: 'PATCH',
+        body: JSON.stringify(payload)
+      });
+      if (!res.ok) {
+        setSettingsMessage(res.body.error || ('Ошибка ' + res.status), 'error');
+        return;
+      }
+
+      renderSettings(res.body);
+      syncStatusBadge(res.body);
+      setSettingsMessage('Сохранено: ' + res.body.label + ' · ' + (res.body.facts || []).join(' · '), 'success');
+    }
+
+    field('admin-settings-save').addEventListener('click', saveSettings);
+    field('admin-slot').addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') saveSettings();
     });
 
     // ---------- Статьи блога ----------
@@ -720,6 +834,7 @@
         field('article-tags').value = '';
         field('article-cover').value = '';
         field('article-canonical').value = '';
+        field('article-habr').value = '';
         field('article-body').value = '';
         field('article-status').value = 'draft';
         renderCoverPreview();
@@ -743,6 +858,7 @@
       field('article-tags').value = (a.tags || []).join(', ');
       field('article-cover').value = a.cover_image_url || '';
       field('article-canonical').value = a.canonical_url || '';
+      field('article-habr').value = a.habr_url || '';
       field('article-body').value = a.body_markdown || '';
       field('article-status').value = a.status || 'draft';
       renderCoverPreview();
@@ -758,6 +874,7 @@
         body_markdown: field('article-body').value,
         cover_image_url: field('article-cover').value,
         canonical_url: field('article-canonical').value,
+        habr_url: field('article-habr').value,
         tags: parseTags(field('article-tags').value),
         status: field('article-status').value
       };
@@ -1372,8 +1489,50 @@
     }, 100);
   }
 
+  // ---------- Маскот: эмоции по ходу запроса ----------
+  //
+  // Все пять кадров уже лежат в разметке (см. `ui::home`), поэтому смена
+  // эмоции — это смена `data-emotion` на контейнере: CSS показывает нужный
+  // кадр. Ни одного запроса в сети в этот момент не происходит, иначе ведьма
+  // мигала бы в самый заметный момент — во время ответа.
+  //
+  // Эмоции короткие, кроме «базовой»: `smirk` и `dissatisfied` — реакция на
+  // событие, а не состояние. Они держатся пару секунд и возвращаются к
+  // базовой, иначе ведьма осталась бы довольной до следующего вопроса.
+  function initMascot() {
+    var mascot = document.getElementById('hero-mascot');
+    if (!mascot) return null;
+
+    var KNOWN = ['base', 'read', 'thinking', 'smirk', 'dissatisfied'];
+    var holdTimer = null;
+
+    function show(emotion) {
+      if (KNOWN.indexOf(emotion) === -1) return;
+      clearTimeout(holdTimer);
+      holdTimer = null;
+      mascot.setAttribute('data-emotion', emotion);
+    }
+
+    function showThenIdle(emotion, holdMs) {
+      show(emotion);
+      holdTimer = setTimeout(function () { show('base'); }, holdMs);
+    }
+
+    return {
+      // Запрос отправлен и ждём ответа — читаем.
+      reading: function () { show('read'); },
+      // Ответ пришёл и печатается — обдумываем.
+      thinking: function () { show('thinking'); },
+      // Ответ допечатан — довольная ухмылка и возврат в покой.
+      done: function () { showThenIdle('smirk', 2600); },
+      // Запрос не удался — недовольство держится дольше: это сигнал человеку.
+      failed: function () { showThenIdle('dissatisfied', 4000); },
+      idle: function () { show('base'); }
+    };
+  }
+
   // ---------- Hero: интерактивная AI-терминальная сессия (CLI) ----------
-  function initHeroTerminal() {
+  function initHeroTerminal(mascot) {
     var terminal = document.getElementById('hero-terminal');
     if (!terminal) return;
 
@@ -1535,7 +1694,8 @@
     var welcomeLine = document.createElement('div');
     welcomeLine.className = 'terminal-line terminal-welcome';
     output.appendChild(welcomeLine);
-    typeText(welcomeLine, '> inteli-dev CLI v1.0 — спрашивайте обо мне, услугах, ценах или оставьте заявку.', function() {
+    // Маскота зовут Кики — приветствие знакомит с ней до первого вопроса.
+    typeText(welcomeLine, '> Привет! Я Кики. Спрашивайте о задачах, услугах, ценах или оставьте заявку.', function() {
       input.focus();
     }, 0.6);
 
@@ -1546,17 +1706,16 @@
 
       disableInput();
       var loading = showLoading();
+      // Запрос в полёте: ведьма читает. Дальше эмоции пойдут по событию, а не
+      // по таймеру — «печатает» начинается ровно с ответа сервера.
+      if (mascot) mascot.reading();
 
       try {
-        var res = await fetch('/api/chat', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ message: message, question_type: questionType })
-        });
+        var res = await postChat({ message: message, question_type: questionType });
 
-        if (!res.ok) throw new Error('HTTP ' + res.status);
+        if (!res.ok) throw new Error(res.body.error || ('HTTP ' + res.status));
 
-        var data = await res.json();
+        var data = res.body;
         loading(); // убрать лоадер
         markChatStarted();
 
@@ -1571,12 +1730,19 @@
         // вопрос (Enter допечатает текущий ответ мгновенно) — как в терминале.
         enableInput();
 
-        typeText(botLine, data.answer, scrollToBottom);
+        // Ответ пришёл: пока он печатается, ведьма думает; как только строка
+        // допечатана (или допечатана по Enter) — довольна и возвращается в покой.
+        if (mascot) mascot.thinking();
+        typeText(botLine, data.answer, function () {
+          scrollToBottom();
+          if (mascot) mascot.done();
+        });
 
       } catch (err) {
         loading(); // убрать лоадер в случае ошибки
         appendLine('terminal-error', '⚠ Ошибка: ' + err.message);
         enableInput();
+        if (mascot) mascot.failed();
       }
     }
 
@@ -1615,6 +1781,231 @@
         }
       });
     });
+  }
+
+  // ---------- Плавающий чат ----------
+  //
+  // Кнопка в правом нижнем углу есть на каждой странице (кроме /chat — там чат
+  // занимает всю страницу). На главной она возвращает вход в диалог, когда
+  // терминал в hero уехал вверх; на остальных страницах видна сразу.
+  //
+  // «Отображается постоянно» — это память браузера, а не таймер: если человек
+  // уже открывал чат, кнопка показывается сразу, без прокрутки, и переживает
+  // обновление страницы. Ключ в localStorage, а не в sessionStorage: визит —
+  // это не вкладка.
+  var CHAT_FAB_STORAGE_KEY = 'inteli:chat-opened';
+
+  function initFloatingChat() {
+    var fab = document.getElementById('chat-fab');
+    if (!fab) return;
+
+    var panel = document.getElementById('chat-fab-panel');
+    var toggle = document.getElementById('chat-fab-toggle');
+    var closeBtn = document.getElementById('chat-fab-close');
+    var messages = document.getElementById('chat-fab-messages');
+    var input = document.getElementById('chat-fab-input');
+    var sendBtn = document.getElementById('chat-fab-send');
+    var intro = document.getElementById('chat-fab-intro');
+    var presets = document.getElementById('chat-fab-presets');
+    // Кнопка нужна там, где терминала из hero не видно. Терминал есть только на
+    // главной: на остальных страницах (в том числе на 404, где секция `.hero`
+    // тоже есть) привязываться не к чему, и кнопка видна сразу.
+    var hero = document.getElementById('hero-terminal')
+      ? document.querySelector('.hero')
+      : null;
+
+    var isWaiting = false;
+    var MIN_TYPING_MS = 500; // как на /chat: индикатор не должен «мигать»
+
+    // Цель «диалог начат» — та же, что у /chat и терминала, и так же только
+    // после ответа сервера: запрос, который не дошёл, разговором не считается.
+    var startedGoal = panel ? panel.getAttribute('data-goal') : '';
+    var startedReported = false;
+
+    function markChatStarted() {
+      if (startedReported || !startedGoal) return;
+      startedReported = true;
+      trackGoal(startedGoal);
+    }
+
+    // ---------- Видимость кнопки ----------
+    // Приватный режим и запрет хранилища не должны ломать чат: без памяти
+    // кнопка просто ведёт себя как при первом визите.
+    var remembered = false;
+    try {
+      remembered = window.localStorage.getItem(CHAT_FAB_STORAGE_KEY) === '1';
+    } catch (e) {
+      remembered = false;
+    }
+
+    function heroPassed() {
+      return !hero || hero.getBoundingClientRect().bottom <= 0;
+    }
+
+    function syncVisibility() {
+      // Открытую панель прокрутка прятать не должна: человек сам её открыл.
+      if (panel && !panel.hidden) { fab.hidden = false; return; }
+      fab.hidden = !(remembered || heroPassed());
+    }
+
+    var ticking = false;
+    function onScroll() {
+      if (ticking) return;
+      ticking = true;
+      window.requestAnimationFrame(function () {
+        ticking = false;
+        syncVisibility();
+      });
+    }
+
+    // ---------- Открытие и закрытие ----------
+    function remember() {
+      remembered = true;
+      try {
+        window.localStorage.setItem(CHAT_FAB_STORAGE_KEY, '1');
+      } catch (e) {
+        // Запомнить не вышло — кнопка останется видимой до конца этой страницы.
+      }
+    }
+
+    function openPanel() {
+      panel.hidden = false;
+      fab.hidden = false;
+      fab.classList.add('is-open');
+      toggle.setAttribute('aria-expanded', 'true');
+      remember();
+      syncVisibility();
+      input.focus();
+    }
+
+    function closePanel() {
+      panel.hidden = true;
+      fab.classList.remove('is-open');
+      toggle.setAttribute('aria-expanded', 'false');
+      syncVisibility();
+      toggle.focus();
+    }
+
+    // ---------- Переписка ----------
+    function addMessage(text, who) {
+      var div = document.createElement('div');
+      div.className = 'chat-message ' + (who === 'user' ? 'user-message' : 'bot-message');
+      div.textContent = text;
+      messages.appendChild(div);
+      messages.scrollTop = messages.scrollHeight;
+      return div;
+    }
+
+    // Приглашение и кнопки-подсказки уступают место переписке после первого
+    // вопроса: в компактной панели дорога каждая строка.
+    function hideGreeting() {
+      if (intro) intro.hidden = true;
+      if (presets) presets.hidden = true;
+    }
+
+    function scrollMessages() {
+      messages.scrollTop = messages.scrollHeight;
+    }
+
+    async function send(payload) {
+      if (isWaiting) return;
+      isWaiting = true;
+      input.disabled = true;
+      sendBtn.disabled = true;
+
+      var startedAt = Date.now();
+      var typing = typingBubble();
+      messages.appendChild(typing);
+      scrollMessages();
+
+      try {
+        var res = await postChat(payload);
+
+        // Тот же минимум на индикатор, что на /chat: на быстром ответе он
+        // иначе мигает, и кажется, что ничего не произошло.
+        var left = MIN_TYPING_MS - (Date.now() - startedAt);
+        if (left > 0) await new Promise(function (r) { setTimeout(r, left); });
+        typing.remove();
+
+        if (!res.ok) {
+          addMessage(res.body.error || 'Ошибка. Попробуйте позже.', 'bot');
+          return;
+        }
+
+        addMessage(res.body.answer, 'bot');
+        markChatStarted();
+
+        var row = suggestionsRow(res.body.suggested_next, send);
+        if (row) {
+          messages.appendChild(row);
+          scrollMessages();
+        }
+      } catch (err) {
+        typing.remove();
+        addMessage('Сетевая ошибка. Попробуйте ещё раз.', 'bot');
+      } finally {
+        isWaiting = false;
+        input.disabled = false;
+        sendBtn.disabled = false;
+        input.focus();
+      }
+    }
+
+    function sendFree() {
+      if (isWaiting) return;
+      var text = input.value.trim();
+      if (!text) return;
+      var max = tooLong(input, text);
+      if (max) {
+        addMessage('Вопрос длиннее ' + max + ' символов — сократите его, пожалуйста.', 'bot');
+        return;
+      }
+      hideGreeting();
+      addMessage(text, 'user');
+      input.value = '';
+      send({ message: text, question_type: 'free' });
+    }
+
+    if (presets) {
+      presets.querySelectorAll('.chat-fab-preset').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          if (isWaiting) return;
+          var kind = btn.getAttribute('data-kind');
+          var index = btn.getAttribute('data-index');
+          hideGreeting();
+          addMessage(btn.textContent, 'user');
+
+          if (kind === 'analysis') {
+            var url = window.prompt('Введите ссылку на ваш сайт (например, example.com):');
+            if (!url || !url.trim()) return;
+            send({ message: btn.textContent, question_type: 'analysis', url: url.trim() });
+          } else {
+            var payload = { message: btn.textContent, question_type: kind };
+            if (index) payload.preset_index = parseInt(index, 10);
+            send(payload);
+          }
+        });
+      });
+    }
+
+    toggle.addEventListener('click', function () {
+      if (panel.hidden) openPanel(); else closePanel();
+    });
+    closeBtn.addEventListener('click', closePanel);
+    sendBtn.addEventListener('click', sendFree);
+    input.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') sendFree();
+    });
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape' && !panel.hidden) closePanel();
+    });
+
+    // Скролл через requestAnimationFrame: обработчик не должен считать
+    // геометрию на каждое событие прокрутки.
+    window.addEventListener('scroll', onScroll, { passive: true });
+    window.addEventListener('resize', onScroll);
+
+    syncVisibility();
   }
 
   // ---------- Кнопки: radial spotlight под курсором (без box-shadow) ----------
@@ -1751,7 +2142,8 @@
   initCharCounters();
   initGoalClicks();
   initGoalRead();
-  initHeroTerminal();
+  initHeroTerminal(initMascot());
+  initFloatingChat();
   initHeroCanvas();
   initCardEffects();
   initButtonSpotlight();
