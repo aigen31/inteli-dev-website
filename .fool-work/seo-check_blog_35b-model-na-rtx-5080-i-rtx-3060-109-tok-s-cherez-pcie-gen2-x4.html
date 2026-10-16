@@ -1,0 +1,207 @@
+<!DOCTYPE html><html lang="ru"><head><meta charset="utf-8"><script nonce="ptNtd6lb4nDyZFIP34yq-w">(function () {
+  // Синтетические прогоны (Lighthouse, PageSpeed Insights, WebPageTest,
+  // автоматизация) счётчик не получают: см. `Counters::loader_script`.
+  var synthetic = (navigator.webdriver === true) ||
+    /Chrome-Lighthouse|HeadlessChrome|PTST|GTmetrix/i.test(navigator.userAgent || '');
+  if (synthetic) return;
+
+  // Очереди вызовов создаются сразу: цель может уйти раньше, чем появится
+  // сам тег, и должна дождаться его в очереди, а не потеряться.
+  window.ym = window.ym || function () { (window.ym.a = window.ym.a || []).push(arguments); };
+  window.ym.l = 1 * new Date();
+  window.dataLayer = window.dataLayer || [];
+  window.gtag = window.gtag || function () { window.dataLayer.push(arguments); };
+
+ym(113215363, 'init', {ssr:true, webvisor:true, clickmap:true, ecommerce:"dataLayer", referrer: document.referrer, url: location.href, accurateTrackBounce:true, trackLinks:true});
+gtag('js', new Date());
+gtag('config', 'G-YNP4E8TF80');
+
+  // Внешние теги — в конце загрузки и в простое браузера.
+  var urls = ['https://mc.yandex.ru/metrika/tag.js?id=113215363', 'https://www.googletagmanager.com/gtag/js?id=G-YNP4E8TF80'];
+  var started = false;
+
+  function loadTags() {
+    if (started) return;
+    started = true;
+    urls.forEach(function (url) {
+      var s = document.createElement('script');
+      s.async = true;
+      s.src = url;
+      document.head.appendChild(s);
+    });
+  }
+
+  function schedule() {
+    // Человек успел что-то сделать раньше простоя — грузим сразу: визит,
+    // начавшийся до загрузки страницы, терять нельзя.
+    ['pointerdown', 'keydown', 'scroll', 'touchstart'].forEach(function (name) {
+      window.addEventListener(name, loadTags, { once: true, passive: true });
+    });
+    if (window.requestIdleCallback) window.requestIdleCallback(loadTags, { timeout: 3000 });
+    else setTimeout(loadTags, 1500);
+  }
+
+  // Страховка на случай, когда `load` не наступает вовсе: его ждёт один
+  // медленный ресурс (чужая картинка в статье), а визит в это время уже идёт.
+  function armFallback() { setTimeout(loadTags, 5000); }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', armFallback, { once: true });
+  else armFallback();
+
+  if (document.readyState === 'complete') schedule();
+  else window.addEventListener('load', schedule, { once: true });
+})();</script><noscript><div><img src="https://mc.yandex.ru/watch/113215363" alt="" style="position:absolute; left:-9999px;"></div></noscript><meta name="viewport" content="width=device-width, initial-scale=1"><title>35B-модель на RTX 5080 и RTX 3060: 109 ток/с через PCIe Gen2 x4</title><meta name="description" content="Как MoE и послойный сплит обнуляют аргумент «одна видеокарта лучше двух»."><link rel="canonical" href="https://inteli-dev.ru/blog/35b-model-na-rtx-5080-i-rtx-3060-109-tok-s-cherez-pcie-gen2-x4"><!><meta content="article" property="og:type"><meta content="inteli-dev.ru" property="og:site_name"><meta content="ru_RU" property="og:locale"><meta content="35B-модель на RTX 5080 и RTX 3060: 109 ток/с через PCIe Gen2 x4" property="og:title"><meta content="Как MoE и послойный сплит обнуляют аргумент «одна видеокарта лучше двух»." property="og:description"><meta content="https://inteli-dev.ru/blog/35b-model-na-rtx-5080-i-rtx-3060-109-tok-s-cherez-pcie-gen2-x4" property="og:url"><meta content="https://inteli-dev.ru/media/1e65d7d88146eac748e865a0.webp" property="og:image"><meta name="twitter:card" content="summary_large_image"><meta name="twitter:title" content="35B-модель на RTX 5080 и RTX 3060: 109 ток/с через PCIe Gen2 x4"><meta name="twitter:description" content="Как MoE и послойный сплит обнуляют аргумент «одна видеокарта лучше двух»."><meta name="twitter:image" content="https://inteli-dev.ru/media/1e65d7d88146eac748e865a0.webp"><link rel="stylesheet" href="/assets/style.css?v=fb7a789a"><link rel="manifest" href="/manifest.json?v=fb7a789a"><link rel="icon" href="/favicon.svg?v=fb7a789a" type="image/svg+xml"><script src="/assets/main.js?v=fb7a789a" defer></script><noscript><style>.section, .hero { opacity: 1; transform: none; }</style></noscript></head><body data-metrika-id="113215363" data-ga-id="G-YNP4E8TF80"><a href="#main" class="skip-link">Перейти к содержимому</a><header class="navbar"><nav aria-label="Основная навигация" class="navbar-inner"><a href="/" class="navbar-brand">Евгений Биль</a><button type="button" class="navbar-toggle" id="navbar-toggle" aria-controls="navbar-menu" aria-expanded="false" aria-label="Открыть меню"><span class="navbar-toggle-box" aria-hidden="true"><span class="navbar-toggle-bar"></span><span class="navbar-toggle-bar"></span><span class="navbar-toggle-bar"></span></span></button><div id="navbar-menu" class="navbar-menu"><div class="navbar-links"><a href="/">Главная</a><a href="/services">Услуги</a><a href="/projects">Проекты</a><a href="/blog">Блог</a><a href="/chat">Чат</a><a href="/contact">Контакты</a></div><button type="button" aria-expanded="false" aria-label="Приём заявок: открыт. Беру новые проекты. В работе 2 проекта. Ближайший слот: немедленно — есть свободные слоты" class="status-badge status-available"><span class="status-dot" aria-hidden="true"></span><span class="status-subject">Приём заявок:</span><span class="status-state">открыт</span><span aria-hidden="true" class="status-popover"><span class="status-popover-summary">Беру новые проекты</span><span class="status-popover-line">В работе 2 проекта</span><span class="status-popover-line">Ближайший слот: немедленно — есть свободные слоты</span><!></span></button></div></nav></header><main id="main" class="main"><article data-goal-read="article_read_90" class="section post-section"><nav aria-label="Хлебные крошки" class="breadcrumbs"><a href="/blog">Блог</a><span aria-hidden="true">→</span><span>35B-модель на RTX 5080 и RTX 3060: 109 ток/с через PCIe Gen2 x4</span></nav><header class="post-header"><h1>35B-модель на RTX 5080 и RTX 3060: 109 ток/с через PCIe Gen2 x4</h1><p class="post-meta"><time datetime="2026-09-29T20:36:27.103422955+00:00">29 сентября 2026</time><span aria-hidden="true">·</span><span>12<!> мин чтения</span></p><ul class="tag-list"><li class="tag">llama.cpp</li><li class="tag">локальные llm</li><li class="tag">moe</li><li class="tag">gguf</li><li class="tag">инференс llm</li><li class="tag">vram использование</li><li class="tag">pcie</li><li class="tag">Qwen 3.6</li><li class="tag">локальный ии</li><!></ul></header><img src="/media/1e65d7d88146eac748e865a0.webp" alt="35B-модель на RTX 5080 и RTX 3060: 109 ток/с через PCIe Gen2 x4" loading="lazy" class="post-cover"><!><div class="prose"><p>Совет «одна видеокарта лучше двух» встречается постоянно, и звучит он убедительно: одна карта на 32 ГБ лучше, чем две по 16 ГБ, а причина в шине. Второй слот на обычной материнке работает на урезанных x4 или x8, и обмен между картами упирается именно в него. Тот же спор идёт в обсуждениях сравнений вроде «две RTX 5060 Ti 16GB или одна RTX 3090 24GB» и в комментариях к сборкам на нескольких картах. Возражают там же и сразу: 24 ГБ, мол, отлично тянут 27B и 35B-MoE с контекстом 256K.</p>
+<p>У меня ровно тот случай, о котором предупреждает этот совет: на материнской плате я сэкономил, и вместо неё стоит ASUS Prime B450-Plus, у которой второй слот x16 распаян как PCIe 2.0 x4. То есть худший вариант из возможных, а не «ну чуть медленнее, чем x8».</p>
+<p>Qwen3.6-35B-A3B у меня работает на RTX 5080 и RTX 3060. Причём 3060 висит на PCIe Gen2 x4. Это 2 ГБ/с, в восемь раз медленнее, чем линия у 5080. Скорость генерации: 109 токенов в секунду на коротком промпте и 77 на контексте 53 тысяч токенов.</p>
+<p>Разберу, почему это работает, и в каком случае аргумент про PCIe всё-таки прав.</p>
+<h2>Стенд</h2>
+<ul>
+<li>CPU: Ryzen 7 5800X, 8 ядер / 16 потоков</li>
+<li>RAM: 64 ГБ DDR4</li>
+<li>Матплата: ASUS Prime B450-Plus (второй слот x16 = PCIe 2.0 x4)</li>
+<li>GPU 0: RTX 3060 12 ГБ, GDDR6, шина 192 бита, 15 Гбит/с → <strong>360 ГБ/с</strong></li>
+<li>GPU 1: RTX 5080 16 ГБ, GDDR7, шина 256 бит, 30 Гбит/с → <strong>960 ГБ/с</strong></li>
+<li>NVLink: нет</li>
+<li>OS: Arch Linux, ядро 7.1.11 (i use arch btw)</li>
+<li>Драйвер 610.57.04, CUDA 13.3</li>
+<li>llama.cpp build 10738</li>
+</ul>
+<p>Суммарно 28 ГБ видеопамяти. Полосы пропускания складывать нельзя: карты работают последовательно, а не параллельно. К этому вернусь.</p>
+<p>Про PCIe разговор особый, потому что это самая интересная часть стенда:</p>
+<pre><code>GPU 0 (RTX 3060):  Gen2 x4   ≈ 2 ГБ/с    (карта умеет Gen4 x16)
+GPU 1 (RTX 5080):  Gen3 x16  ≈ 16 ГБ/с   (карта умеет Gen5 x16)
+</code></pre>
+<p>3060 стоит во втором слоте, который у B450-Plus <a href="https://www.asus.com/motherboards-components/motherboards/prime/prime-b450-plus/techspec/">по спецификации</a> распаян как PCIe 2.0 x4: четыре линии вместо шестнадцати, и не по ошибке сборки, а по замыслу платы. Верхний слот плата отдаёт как PCIe 3.0 x16, поэтому 5080 с её Gen5 тоже упирается в потолок B450. Обе карты висят на одном PCIe-хосте. Никакого NVLink, никакого x16/x16.</p>
+<h2>Почему PCIe здесь ни при чём</h2>
+<p>Классический аргумент против двух карт опирается на тензорный параллелизм. Там каждая карта считает свой кусок каждого слоя, и после каждого слоя нужно синхронизировать результаты через all-reduce. Чем длиннее контекст, тем больше данных гоняется по шине. Вот там Gen2 x4 действительно убивает.</p>
+<p>У меня включён <strong>послойный сплит</strong> (в llama.cpp это режим по умолчанию). Слои просто поделены между картами: одна держит первую половину, вторая другую. По шине ходит не вес, а активация, и ровно один раз за токен.</p>
+<p>Считаем. Скрытая размерность модели равна 2048. Активация в fp16 занимает 2048 × 2 байта, то есть 4 КБ. Один переход между картами за токен.</p>
+<p>При 109 ток/с это 437 КБ/с. Линия Gen2 x4 даёт 2 ГБ/с. Загрузка шины измеряется сотыми долями процента.</p>
+<p>Даже на префилле картина не меняется. Батч из 2048 токенов занимает 8 МБ, и они размазываются по всей обработке промпта. При 1500 ток/с префилла получается около 6 МБ/с.</p>
+<p>Вот почему кривая Gen2 x4 не мешает: она не участвует в горячем пути. <strong>Веса остаются на своих картах, по шине едет только активация.</strong></p>
+<h2>Почему MoE меняет арифметику</h2>
+<p>Если бы Qwen3.6-35B-A3B была плотной моделью, всё было бы иначе. Файл весит 21,3 ГиБ, и плотная модель читала бы все эти гигабайты на каждый токен. На 5080 с её 960 ГБ/с это потолок около 42 ток/с, и то без второй карты. С послойным сплитом карты работают по очереди, поэтому полосы не складываются, а время суммируется.</p>
+<p>Но Qwen3.6-35B-A3B это MoE. Из 35B параметров на каждом токене активируются примерно 3B: 8 маршрутизируемых экспертов из 256 плюс один общий. Остальные 32B лежат в памяти и не читаются.</p>
+<p>Отсюда и результат. Модель на 35B параметров по требованиям к памяти, но по стоимости одного токена ближе к 3B. Именно это рассогласование и делает возможной работу на двух разных потребительских картах.</p>
+<p>Структура модели, по карточке на HuggingFace:</p>
+<ul>
+<li>40 слоёв, скрытая размерность 2048</li>
+<li>256 экспертов, из них 8 маршрутизируемых + 1 общий на токен</li>
+<li>чередование Gated DeltaNet (линейное внимание) и Gated Attention</li>
+<li>контекст 262 144 токена нативно</li>
+<li>MTP-голова для спекулятивного декодирования</li>
+</ul>
+<p>Теперь про внимание. Полное внимание стоит в каждом четвёртом слое, в остальных работает Gated DeltaNet с состоянием постоянного размера. Поэтому KV-кэш растёт медленно, и скорость генерации почти не зависит от длины контекста. Ниже это видно в замерах.</p>
+<h2>Замеры</h2>
+<p>Все замеры сняты через <code>/completion</code> с <code>cache_prompt: false</code>, то есть промпт каждый раз обрабатывается заново. Пресет не менялся, сервер не перезапускался, замеры шли последовательно. Ниже не пересчёт старых чисел, а отдельный прогон на живом сервере.</p>
+<h3>Базовая скорость</h3>
+<p>Короткий промпт, генерация 256 токенов, пять прогонов подряд:</p>
+<table><thead><tr><th>Прогон</th><th>Генерация, ток/с</th></tr></thead><tbody>
+<tr><td>1</td><td>109,2</td></tr>
+<tr><td>2</td><td>109,7</td></tr>
+<tr><td>3</td><td>106,0</td></tr>
+<tr><td>4</td><td>109,6</td></tr>
+<tr><td>5</td><td>108,4</td></tr>
+</tbody></table>
+<p>Разброс между прогонами 3,5%, среднее 108,6. Это меньше, чем разница между большинством конфигураций ниже, так что базовую скорость можно считать устойчивой.</p>
+<h3>От типа контента</h3>
+<p>Здесь разброс уже не шумовой, а содержательный:</p>
+<table><thead><tr><th>Задача</th><th>Генерация, ток/с</th><th>Принято черновиков MTP</th></tr></thead><tbody>
+<tr><td>Код на Python</td><td>114,6</td><td>85,7%</td></tr>
+<tr><td>JSON по схеме</td><td>113,3</td><td>85,1%</td></tr>
+<tr><td>Код на русском</td><td>100,4</td><td>68,8%</td></tr>
+<tr><td>Проза на английском</td><td>96,0</td><td>62,9%</td></tr>
+<tr><td>Проза на русском</td><td>95,4</td><td>62,0%</td></tr>
+</tbody></table>
+<p>Скорость следует за долей принятых черновиков почти линейно. На структурированном выводе MTP угадывает больше восьми токенов из десяти, на свободной прозе около шести.</p>
+<h3>Сколько токенов даёт один проход модели</h3>
+<p>Тот же замер, но с подсчётом циклов спекулятивного декодирования (предсказано минус принято):</p>
+<table><thead><tr><th>Задача</th><th>Токенов за проход</th><th>Принято черновиков</th></tr></thead><tbody>
+<tr><td>Код на Python</td><td>2,70</td><td>85,7%</td></tr>
+<tr><td>JSON по схеме</td><td>2,68</td><td>85,1%</td></tr>
+<tr><td>Проза на русском</td><td>2,22</td><td>62,0%</td></tr>
+</tbody></table>
+<p>При <code>--spec-draft-n-max 2</code> теоретический максимум равен трём токенам за проход. На структурированном выводе модель подходит к нему вплотную.</p>
+<p>Оговорюсь: токенов за проход не то же самое, что ускорение. Проверяющий проход обрабатывает несколько токенов сразу и стоит дороже одного. Unsloth в карточке модели обещает ускорение в 1,5–2 раза; я это не изолировал, потому что для честного A/B пришлось бы перезапускать сервер без <code>--spec-type draft-mtp</code>. Пресет я не трогал.</p>
+<h3>Длинный контекст</h3>
+<p>Самая интересная таблица:</p>
+<table><thead><tr><th>Контекст, токенов</th><th>Обработка промпта, ток/с</th><th>Генерация, ток/с</th></tr></thead><tbody>
+<tr><td>13 865</td><td>1820</td><td>90,8</td></tr>
+<tr><td>27 703</td><td>1708</td><td>87,9</td></tr>
+<tr><td>42 528</td><td>1586</td><td>80,6</td></tr>
+<tr><td>53 401</td><td>1504</td><td>76,7</td></tr>
+</tbody></table>
+<p>Генерация падает на 15% при росте контекста с 14K до 53K: 90,8 → 76,7. Заметно, но не обвал. Работает линейное внимание: состояние Gated DeltaNet не растёт с длиной контекста, а полное внимание стоит только в десяти слоях из сорока, и KV там узкий — 2 головы по 256 измерений, около 10 КБ на токен на все десять слоёв. У плотной модели с полным вниманием на всех сорока слоях кривая здесь ушла бы вниз гораздо круче.</p>
+<p>Обработка промпта падает быстрее (1820 → 1504, это 17%), но там работает вычисление, а не память.</p>
+<h3>Два слота параллельно</h3>
+<p>Пресет задаёт <code>parallel = 2</code>, то есть контекст 131 072 делится на два слота по 65 536. Два одновременных запроса:</p>
+<table><thead><tr><th></th><th>Генерация, ток/с</th></tr></thead><tbody>
+<tr><td>Слот 1 (код)</td><td>69,3</td></tr>
+<tr><td>Слот 2 (проза)</td><td>60,5</td></tr>
+<tr><td>Суммарно</td><td>≈ 130</td></tr>
+</tbody></table>
+<p>Суммарная пропускная способность выросла с 109 до 130 ток/с, но каждый отдельный запрос замедлился почти вдвое. Для агента, который ходит в сервер параллельно, это скорее минус: два запроса ждут друг друга дольше, чем если бы шли по очереди.</p>
+<h2>Конфиг</h2>
+<p>Пресет в <code>~/.config/llama.cpp/models.ini</code>:</p>
+<pre><code class="language-ini">[unsloth/Qwen3.6-35B-A3B-MTP-GGUF-64K]
+hf = unsloth/Qwen3.6-35B-A3B-MTP-GGUF:UD-Q4_K_XL
+ctx-size = 131072
+cache-type-k = q8_0
+cache-type-v = q8_0
+spec-type = draft-mtp
+spec-draft-n-max = 2
+temperature = 1.0
+top-p = 0.95
+top-k = 20
+min-p = 0.0
+presence-penalty = 1.5
+repeat-penalty = 1.0
+</code></pre>
+<p>Запускается через роутер <code>llama-server --models-preset</code>, который сам поднимает модель отдельным процессом. Итоговая команда, которую он собирает:</p>
+<pre><code>llama-server --host 127.0.0.1 --port &lt;динамический&gt; \
+  --alias unsloth/Qwen3.6-35B-A3B-MTP-GGUF-64K \
+  --hf-repo unsloth/Qwen3.6-35B-A3B-MTP-GGUF:UD-Q4_K_XL \
+  --ctx-size 131072 --parallel 2 \
+  --cache-type-k q8_0 --cache-type-v q8_0 \
+  --n-gpu-layers -1 --flash-attn on --load-mode mmap \
+  --spec-type draft-mtp --spec-draft-n-max 2 \
+  --temperature 1.0 --top-p 0.95 --top-k 20 --min-p 0.0 \
+  --presence-penalty 1.5 --repeat-penalty 1.0
+</code></pre>
+<p>Что здесь важно и чего нет:</p>
+<p><strong>Нет <code>--split-mode</code>.</strong> Стоит режим по умолчанию, то есть послойный. Именно поэтому Gen2 x4 не мешает.</p>
+<p><strong>Есть квантизация KV-кэша до q8_0.</strong> KV у этой модели узкий (2 головы), и на коротком контексте выигрыш от квантизации незаметен. Но он освобождает около гигабайта VRAM, а на этой паре карт каждый гигабайт решает, сколько слоёв уедет на быструю 5080. На длинном контексте экономия растёт линейно.</p>
+<p><strong><code>--load-mode mmap</code>, а не <code>mlock</code>.</strong> Про это стоит сказать отдельно, потому что <code>mlock</code> тут не работает так, как читается. В ядре <code>RLIMIT_MEMLOCK</code> на моей машине выставлен в 8 МБ, а модель весит 22,85 ГБ. llama.cpp честно пишет в лог <code>failed to mlock ... Cannot allocate memory</code>, а <code>VmLck</code> в <code>/proc/&lt;pid&gt;/status</code> остаётся нулевым. То есть модель не заблокирована в памяти, и режим только создаёт иллюзию. <code>mmap</code> в этой ситуации честнее: файл остаётся в страничном кэше и переиспользуется при следующей загрузке.</p>
+<p><strong>Параметры сэмплирования взяты из карточки модели</strong> для режима размышления: <code>temperature=1.0, top_p=0.95, top_k=20, min_p=0.0, presence_penalty=1.5</code>.</p>
+<p><strong><code>parallel = 2</code> при включённом MTP.</strong> Unsloth в карточке прямо пишет, что <code>-np &gt; 1</code> и <code>--mmproj</code> вместе с MTP пока не поддерживаются. У меня <code>parallel = 2</code>, то есть <code>-np 2</code>, и связка работает: токены идут, все замеры выше сняты именно с неё. <code>--mmproj</code> в пресете нет, так что вторая половина предупреждения меня не касается.</p>
+<h2>Что ограничивает на самом деле</h2>
+<p>Замеры выше отвели подозрение от PCIe. Но что тогда упирается?</p>
+<p>Я снимал <code>nvidia-smi</code> раз в секунду во время длинной генерации — 2200 токенов за 24 секунды, 23 сэмпла на карту. В статистику идут только сэмплы с ненулевой загрузкой, иначе в выборку попадает простой и портит минимум.</p>
+<table><thead><tr><th>GPU</th><th>Средняя загрузка</th><th>Разброс</th><th>Средняя мощность</th><th>Разброс</th><th>Лимит</th></tr></thead><tbody>
+<tr><td>RTX 3060</td><td>62%</td><td>58–66%</td><td>110,7 Вт</td><td>102–113 Вт</td><td>170 Вт</td></tr>
+<tr><td>RTX 5080</td><td><strong>15%</strong></td><td>14–18%</td><td>67,6 Вт</td><td>65–68 Вт</td><td>360 Вт</td></tr>
+</tbody></table>
+<p>Вот это и есть ответ. 3060 работает на 62% и ест две трети своего лимита. 5080 при этом загружена на 15% и потребляет меньше пятой части того, что может. Карты не насыщены: быстрая простаивает, ожидая медленную.</p>
+<p>Оговорюсь про методику: сэмпл раз в секунду усредняет около сотни токенов, поэтому по этим числам нельзя судить о том, что происходит внутри одного токена. Здесь важна средняя загрузка за прогон, а не мгновенный профиль.</p>
+<p>Общая память под модель: 10 462 МиБ на 3060 и 14 986 МиБ на 5080. Быстрая карта получила заметно больше слоёв, но три четверти времени она всё равно ждёт.</p>
+<p>Вывод: узкое место не шина и не пропускная способность памяти, а <strong>последовательная цепочка зависимостей</strong>. 5080 не может начать свои слои, пока 3060 не закончила свои, и наоборот. Сорок слоёв, сорок передач управления, и на каждой карта ждёт соседа. Мы платим латентностью, а не байтами.</p>
+<p>MoE делает каждый шаг настолько дешёвым, что даже при такой расточительной схеме получается 109 ток/с.</p>
+<h2>Чего я не проверял</h2>
+<p>Три вещи, которые честнее назвать, чем умолчать.</p>
+<p><strong>Тензорный сплит на этой паре карт.</strong> Он должен убрать простои, потому что карты считают каждый слой одновременно. Но стоит он дороже по шине, а у 3060 линия Gen2 x4. Есть ли выигрыш на такой асимметричной паре, вопрос открытый.</p>
+<p><strong>MTP без MTP.</strong> Для честного замера нужен второй запуск сервера, а пресет я не менял.</p>
+<p><strong>Качество на длинном контексте.</strong> Все замеры скорости снимались на одном фиксированном промпте. Что модель одинаково хорошо отвечает на 53K и на 1K, я не проверял. Гонял только скорость.</p>
+<h2>Итоги</h2>
+<p>Аргумент «одна видеокарта лучше двух» верен для плотных моделей и тензорного параллелизма. Там полосы пропускания складываются в узкое место, и разница между картами бьёт больно.</p>
+<p>Для MoE с послойным сплитом он не работает. Причины две:</p>
+<ol>
+<li><strong>Активных параметров в разы меньше общих.</strong> 3B из 35B, а плотная модель такого размера читала бы в десять раз больше байт на токен.</li>
+<li><strong>По шине едет активация, а не вес.</strong> 4 КБ на переход при 2 ГБ/с это ничто. Кривая линия 3060 просто не участвует в горячем пути.</li>
+</ol>
+<p>Что в этой схеме действительно стоит денег и внимания: карты работают по очереди, поэтому латентность складывается, а суммарная полоса не растёт. Если бюджет позволяет одну быструю карту вместо двух медленных, плотную модель на ней будет удобнее. Если у вас уже есть две разные карты, как у меня, и вы берёте MoE-модель с узким KV — связка выдаёт 109 ток/с на коротких промптах и 77 на контексте 53 тысяч токенов.</p>
+<p>Это по-прежнему не сервер. Но это стоит под столом и не требует ничего, кроме слотов PCIe.</p>
+<h2>Как повторить у себя</h2>
+<p>Пресет, с которого я начинал, лежит в открытом репозитории: <a href="https://github.com/aigen31/llama-cpp-preset-base">github.com/aigen31/llama-cpp-preset-base</a>, лицензия MIT. Это установщик, который раскладывает три вещи: лаунчер <code>llama-qwen</code>, INI-пресет <code>~/.config/llama.cpp/models.ini</code> и проверку, что <code>llama-server</code> вообще есть в <code>PATH</code>.</p>
+<p>Компилировать llama.cpp он не пытается. Если бинарника нет, скрипт просто показывает ссылку на <a href="https://github.com/ggml-org/llama.cpp">апстрим</a> и таблицу бэкендов под ваше железо: CUDA, ROCm, Vulkan, SYCL, Metal или чистый CPU. Сборка остаётся за вами, потому что правильный флаг зависит от того, что стоит в корпусе.</p>
+<p>Модели описываются одним ключом <code>hf</code> с полной ссылкой и квантизацией, например <code>hf = unsloth/Qwen3.6-35B-A3B-MTP-GGUF:UD-Q4_K_XL</code>. При первом запросе llama-server сам скачает GGUF с Hugging Face. API-ключ генерируется в формате <code>sk-</code> плюс 48 символов, установщик неинтерактивный и годится для <code>curl | bash</code>. README продублирован на английском, русском и китайском.</p>
+<p>Мой рабочий конфиг отличается от шаблона в репозитории: я дописал квантизацию KV-кэша и заменил <code>mlock</code> на <code>mmap</code> после того, как выяснил, что лимит на блокировку памяти на этой машине равен 8 МБ.</p>
+</div><footer class="post-footer"><p>Есть задача по этой теме? <a href="/contact">Напишите мне</a> — отвечу при наличии свободного окна.</p><a class="btn btn-secondary" href="/blog">← Все статьи</a></footer></article></main><footer class="footer"><div class="footer-inner"><div class="footer-col"><p>Евгений Биль — Fullstack и приватные AI-системы</p><p class="footer-contacts"><a href="https://t.me/AiGen31" data-goal="tg_click">@AiGen31</a><span aria-hidden="true">·</span><a href="mailto:contact@inteli-dev.ru" data-goal="email_click">contact@inteli-dev.ru</a></p><div class="footer-social"><a href="https://github.com/aigen31" target="_blank" rel="me noopener noreferrer" title="GitHub — aigen31" aria-label="Профиль aigen31 на GitHub" class="social-link"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" stroke="none" width="1em" height="1em" aria-hidden="true"><path d="M12.5.75C6.146.75 1 5.896 1 12.25c0 5.089 3.292 9.387 7.863 10.91.575.101.79-.244.79-.546 0-.273-.014-1.178-.014-2.142-2.889.532-3.636-.704-3.866-1.35-.13-.331-.69-1.352-1.18-1.625-.402-.216-.977-.748-.014-.762.906-.014 1.553.834 1.769 1.179 1.035 1.74 2.688 1.25 3.349.948.1-.747.402-1.25.733-1.538-2.559-.287-5.232-1.279-5.232-5.678 0-1.25.445-2.285 1.178-3.09-.115-.288-.517-1.467.115-3.048 0 0 .963-.302 3.163 1.179.92-.259 1.897-.388 2.875-.388.977 0 1.955.13 2.875.388 2.2-1.495 3.162-1.179 3.162-1.179.633 1.581.23 2.76.115 3.048.733.805 1.179 1.825 1.179 3.09 0 4.413-2.688 5.39-5.247 5.678.417.36.776 1.05.776 2.128 0 1.538-.014 2.774-.014 3.162 0 .302.216.662.79.547C20.709 21.637 24 17.324 24 12.25 24 5.896 18.854.75 12.5.75Z"/></svg></a><a href="https://habr.com/ru/users/intelidev/" target="_blank" rel="me noopener noreferrer" title="Профиль на Habr" aria-label="Профиль на Habr" class="social-link"><img src="/assets/habr.svg?v=fb7a789a" alt="" width="20" height="20" decoding="async" class="social-icon"></a></div></div><div class="footer-col footer-col-beget"><span class="footer-beget-label">работает на</span><a href="https://beget.com/p1627316" target="_blank" rel="noopener noreferrer nofollow" aria-label="Хостинг Beget" class="footer-beget-logo"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 87 40" fill="none" aria-hidden="true" focusable="false"><path d="M51.1169 23.7018C55.3726 26.7135 56.0689 32.1073 53.6787 35.9103C51.3031 39.6903 46.5389 41.0618 42.5714 39.1364C38.8582 37.3346 36.2591 32.5326 38.4518 27.3202C38.0955 27.2658 37.7554 27.213 37.4154 27.1603C37.404 27.1174 37.3927 27.0729 37.3813 27.03C38.7011 26.585 40.0209 26.1399 41.4087 25.6701C41.6063 27.1405 41.7958 28.545 41.9836 29.9478C41.948 29.966 41.9107 29.9857 41.8751 30.0039C41.5901 29.5802 41.3035 29.1582 41.0087 28.7214C39.9416 30.6138 40.4047 33.4871 42.0354 35.2509C43.875 37.239 46.7899 37.722 49.1429 36.4263C51.4958 35.1306 52.7055 32.3579 52.0626 29.7286C51.4035 27.0333 49.104 25.1706 46.398 25.1393C41.8443 25.0865 38.2445 21.8176 37.6777 17.2233C37.1546 12.9785 39.94 8.85243 44.1034 7.71004C48.0563 6.6237 52.2294 8.52273 54.0965 12.2582C55.9604 15.9853 55.0066 20.5351 51.8132 23.1529C51.5946 23.3292 51.3711 23.5007 51.1169 23.7018ZM40.4501 16.2359C40.4387 19.5625 43.0427 22.2561 46.2895 22.2775C49.5623 22.299 52.2391 19.6037 52.244 16.2821C52.2472 12.9818 49.6028 10.2767 46.364 10.2685C43.1058 10.2586 40.4614 12.9291 40.4501 16.2359Z" fill="currentColor"/> <path d="M3.99524 12.3437C4.33855 10.931 4.63975 9.61714 4.99116 8.31815C5.03974 8.13682 5.31341 7.96868 5.51907 7.88955C8.61369 6.7109 12.0694 7.71646 14.2637 10.4199C17.8474 14.8312 16.5098 21.8026 11.5998 24.305C7.46232 26.4133 2.48761 24.394 0.711157 19.8063C0.31441 18.7826 0.0553109 17.632 0.0407365 16.5358C-0.0272771 11.1436 0.00834906 5.7482 0.00834906 0.35442C0.00834906 0.243973 0.0196847 0.135174 0.0261622 0C0.954062 0.00164846 1.84472 0.00164846 2.81796 0.00164846C2.81796 0.220894 2.81796 0.44014 2.81796 0.661034C2.81796 5.84546 2.81796 11.0299 2.81796 16.2127C2.81796 17.8166 3.28758 19.2541 4.34017 20.4607C6.47774 22.912 9.90433 22.8823 12.016 20.408C14.1196 17.9452 13.9479 13.9955 11.6419 11.7354C9.64199 9.77705 6.66235 9.77869 4.65919 11.7371C4.47296 11.9184 4.27539 12.0882 3.99524 12.3437Z" fill="currentColor"/> <path d="M35.2406 17.6977C33.0641 17.6977 30.878 17.6977 28.6902 17.6977C26.5025 17.6977 24.3163 17.6977 22.0573 17.6977C22.5933 19.7665 23.6928 21.2617 25.6426 21.9903C27.6587 22.7436 29.4092 22.1403 31.461 20.0369C32.235 20.4984 33.0188 20.965 33.8479 21.4595C32.5006 23.3898 30.7808 24.6542 28.5202 25.0119C24.0297 25.7224 19.8679 22.4667 19.2218 17.7917C18.8056 14.7799 19.5213 12.1028 21.6006 9.89386C25.6458 5.59302 32.4585 7.07994 34.7127 12.7292C35.3588 14.3431 35.5596 16.1811 35.2406 17.6977ZM32.3662 14.8178C32.0585 12.2957 29.6214 10.2137 27.1097 10.2648C24.7309 10.3142 22.3115 12.5182 22.1334 14.8178C25.5357 14.8178 28.9364 14.8178 32.3662 14.8178Z" fill="currentColor"/> <path d="M73.4564 17.693C69.063 17.693 64.7037 17.693 60.2569 17.693C60.7378 19.6464 61.7386 21.1235 63.5394 21.8636C65.9911 22.8725 67.9861 22.0235 69.6363 20.0322C70.4217 20.4987 71.1957 20.957 72.0378 21.4581C71.8678 21.6905 71.7253 21.9032 71.5666 22.101C68.3084 26.1447 62.5726 26.1447 59.3096 22.1043C56.4724 18.5898 56.6522 13.2553 59.7193 9.95512C63.8713 5.48778 70.9221 7.13625 73.0305 13.0674C73.5519 14.5329 73.6961 16.0314 73.4564 17.693ZM70.5512 14.8148C70.331 12.3454 67.7789 10.181 65.2186 10.27C62.8689 10.3524 60.3719 12.6784 60.3459 14.8148C63.7482 14.8148 67.1489 14.8148 70.5512 14.8148Z" fill="currentColor"/> <path d="M85.4075 20.6699C85.7087 21.5914 86.0244 22.5261 86.3078 23.4707C86.3451 23.596 86.256 23.8333 86.1475 23.9207C83.7039 25.8972 79.3413 25.4076 77.3657 22.9448C76.7552 22.1832 76.3989 21.3128 76.3973 20.3221C76.3924 14.8129 76.394 9.30378 76.3957 3.79461C76.3957 3.68416 76.4086 3.57206 76.4183 3.43359C77.3349 3.43359 78.2256 3.43359 79.1842 3.43359C79.1842 4.92381 79.1842 6.41896 79.1842 7.95863C80.891 7.95863 82.5315 7.95863 84.2156 7.95863C84.2156 8.92628 84.2156 9.84612 84.2156 10.8171C82.5671 10.8171 80.9267 10.8171 79.2344 10.8171C79.2215 11.0446 79.2037 11.2275 79.2037 11.4089C79.202 14.2871 79.2134 17.1653 79.1939 20.0435C79.1891 20.7243 79.4676 21.2123 79.9793 21.5931C81.1971 22.503 83.3816 22.508 84.5864 21.5749C84.8925 21.3425 85.1144 20.9996 85.4075 20.6699Z" fill="currentColor"/></svg></a></div></div></footer><div id="chat-fab" hidden class="chat-fab"><section id="chat-fab-panel" hidden aria-label="Чат с AI-ассистентом" data-goal="chat_started" class="chat-fab-panel"><header class="chat-fab-head"><span class="chat-fab-title">AI-ассистент</span><button type="button" id="chat-fab-close" aria-label="Свернуть чат" class="chat-fab-close"><span aria-hidden="true">×</span></button></header><div class="chat-fab-body"><p class="chat-fab-intro" id="chat-fab-intro">Спросите о задачах, услугах и сроках — отвечу прямо здесь.</p><div id="chat-fab-presets" role="group" aria-label="Частые вопросы" class="chat-fab-presets"><button type="button" data-kind="preset" data-index="0" class="preset-button chat-fab-preset">Кто вы?</button><button type="button" data-kind="preset" data-index="1" class="preset-button chat-fab-preset">Чем занимаетесь?</button><button type="button" data-kind="preset" data-index="2" class="preset-button chat-fab-preset">Сколько стоит?</button><!></div><div class="chat-fab-messages" id="chat-fab-messages" role="log" aria-live="polite"></div></div><div class="chat-fab-input-row"><input id="chat-fab-input" type="text" placeholder="Ваш вопрос..." autocomplete="off" maxlength="500" aria-label="Ваш вопрос"><button id="chat-fab-send" type="button" class="btn btn-primary">Отправить</button></div></section><button type="button" id="chat-fab-toggle" aria-expanded="false" aria-controls="chat-fab-panel" aria-label="Открыть чат" class="chat-fab-toggle"><span aria-hidden="true" class="chat-fab-toggle-icon"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round" width="1em" height="1em" aria-hidden="true"><path d="M2.992 16.342a2 2 0 0 1 .094 1.167l-1.065 3.29a1 1 0 0 0 1.236 1.168l3.413-.998a2 2 0 0 1 1.099.092 10 10 0 1 0-4.777-4.719" /></svg></span><span class="chat-fab-toggle-label">Спросить</span></button></div></body></html><script nonce="ptNtd6lb4nDyZFIP34yq-w">__RESOLVED_RESOURCES=[];__SERIALIZED_ERRORS=[];__PENDING_RESOURCES=[];__RESOURCE_RESOLVERS=[];</script><script nonce="ptNtd6lb4nDyZFIP34yq-w">__INCOMPLETE_CHUNKS=[];</script>

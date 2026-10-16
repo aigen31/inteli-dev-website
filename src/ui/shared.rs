@@ -51,6 +51,71 @@ pub fn StatusBadge() -> impl IntoView {
     }
 }
 
+/// Просмотр изображения статьи в полном размере.
+///
+/// Картинка в тексте ограничена шириной колонки: схему или скриншот в ней не
+/// разглядеть. Здесь только разметка панели — показывает её клик по картинке
+/// (`initLightbox` в `assets/main.js`), поэтому до клика панель выключена
+/// атрибутом `hidden` и не читается ни скринридером, ни поиском.
+///
+/// Живёт в [`crate::ui::layout::Layout`], а не внутри статьи: `position: fixed`
+/// ломается у предка с `opacity < 1` или `transform` — он становится содержащим
+/// блоком. Секции на сайте проявляются именно так (`.section` в
+/// `assets/style.css`), и панель на время анимации растянулась бы по статье
+/// длиной в несколько экранов вместо окна браузера.
+#[component]
+pub fn Lightbox() -> impl IntoView {
+    view! {
+        <div
+            class="lightbox"
+            id="lightbox"
+            hidden
+            role="dialog"
+            aria-modal="true"
+            aria-label="Просмотр изображения"
+        >
+            <button
+                type="button"
+                class="lightbox-close"
+                id="lightbox-close"
+                aria-label="Закрыть просмотр"
+            >
+                <span aria-hidden="true">{"×"}</span>
+            </button>
+
+            // Стрелки скрыты до первого показа: галерея из одной картинки их не
+            // показывает, а решает это уже скрипт.
+            <button
+                type="button"
+                class="lightbox-nav lightbox-prev"
+                id="lightbox-prev"
+                aria-label="Предыдущее изображение"
+                hidden
+            >
+                <span aria-hidden="true">{"‹"}</span>
+            </button>
+
+            <div class="lightbox-body">
+                <figure class="lightbox-figure">
+                    <img class="lightbox-img" id="lightbox-img" alt=""/>
+                    <figcaption class="lightbox-caption" id="lightbox-caption" hidden></figcaption>
+                </figure>
+                <p class="lightbox-counter" id="lightbox-counter" hidden></p>
+            </div>
+
+            <button
+                type="button"
+                class="lightbox-nav lightbox-next"
+                id="lightbox-next"
+                aria-label="Следующее изображение"
+                hidden
+            >
+                <span aria-hidden="true">{"›"}</span>
+            </button>
+        </div>
+    }
+}
+
 /// Primary CTA-кнопка (ссылка).
 #[component]
 pub fn PrimaryButton(#[prop(into)] text: String, #[prop(into)] href: String) -> impl IntoView {

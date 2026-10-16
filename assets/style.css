@@ -1940,6 +1940,134 @@ ul { margin: 0; padding: 0; list-style: none; }
 .prose th { background: rgba(255, 255, 255, 0.04); }
 .prose hr { border: none; border-top: 1px solid var(--color-border); }
 
+/* ---------- 13.1a. Лайтбокс: просмотр изображений статьи ---------- */
+/* Разметка панели — `Lightbox` в src/ui/shared.rs, показ и клавиатура —
+   `initLightbox` в assets/main.js. До клика панель выключена атрибутом
+   `hidden`: пустая форма не занимает места и не читается скринридером.
+   Панель живёт в `Layout`, а не в статье: `position: fixed` не работает у
+   потомка секции, пока та проявляется (`opacity < 1` и `transform` делают
+   предка содержащим блоком) — подробнее в `Lightbox`. */
+.lightbox {
+  position: fixed;
+  inset: 0;
+  /* Выше шапки (100) и кнопки чата (45): просмотр — верхний слой. */
+  z-index: 120;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-md);
+  padding: var(--space-xl);
+  background: rgba(8, 6, 24, 0.92);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+/* `display: flex` перебивает служебный стиль `[hidden]`, поэтому выключенное
+   состояние задаём явно. */
+.lightbox[hidden] { display: none; }
+/* Открытая панель держит страницу на месте. Полоса прокрутки при этом
+   исчезает, и её ширину компенсирует `--lightbox-scrollbar` из скрипта. */
+html.lightbox-open { overflow: hidden; }
+html.lightbox-open body { padding-right: var(--lightbox-scrollbar, 0px); }
+
+.lightbox-body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-sm);
+  min-width: 0;
+  max-height: 100%;
+}
+.lightbox-figure {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-sm);
+  min-height: 0;
+  margin: 0;
+}
+/* Максимум по высоте, а не по ширине: вертикальный скриншот должен влезать
+   целиком, поэтому место под подпись и счётчик вычитаем заранее. */
+.lightbox-img {
+  max-width: 100%;
+  max-height: calc(100vh - 180px);
+  width: auto;
+  height: auto;
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  background: rgba(255, 255, 255, 0.04);
+}
+.lightbox-caption {
+  max-width: 70ch;
+  color: var(--color-text-secondary);
+  font-size: var(--text-small);
+  text-align: center;
+}
+.lightbox-counter {
+  color: var(--color-text-secondary);
+  font-size: var(--text-caption);
+  opacity: 0.75;
+}
+.lightbox-caption[hidden], .lightbox-counter[hidden] { display: none; }
+
+.lightbox-close,
+.lightbox-nav {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-full);
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--color-text);
+  line-height: 1;
+  cursor: pointer;
+  transition: background var(--transition-fast), border-color var(--transition-fast);
+}
+.lightbox-close {
+  position: absolute;
+  top: var(--space-lg);
+  right: var(--space-lg);
+  width: 44px;
+  height: 44px;
+  font-size: 1.5rem;
+}
+.lightbox-nav {
+  flex: 0 0 auto;
+  width: 48px;
+  height: 48px;
+  font-size: 1.75rem;
+}
+.lightbox-nav[hidden] { display: none; }
+.lightbox-close:hover,
+.lightbox-nav:hover {
+  background: rgba(255, 255, 255, 0.16);
+  border-color: var(--color-primary);
+}
+.lightbox-close:focus-visible,
+.lightbox-nav:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+/* Картинка показывает, что её можно открыть: курсор и рамка на наведении.
+   Рамка не сдвигает текст — `outline` не участвует в раскладке. */
+.prose img.is-zoomable,
+.post-cover.is-zoomable { cursor: zoom-in; }
+.prose img.is-zoomable:hover,
+.post-cover.is-zoomable:hover { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+
+@media (max-width: 767px) {
+  /* Стрелки уезжают под картинку: по бокам они съедали бы по 48 px ширины, а
+     на телефоне это и есть вся картинка. Нижний отступ резервирует полосу под
+     них, чтобы они не накрыли подпись. */
+  .lightbox { flex-direction: column; padding: var(--space-md) var(--space-md) 88px; }
+  .lightbox-nav { position: absolute; bottom: var(--space-lg); }
+  .lightbox-prev { left: calc(50% - 54px); }
+  .lightbox-next { right: calc(50% - 54px); }
+  .lightbox-close { top: var(--space-md); right: var(--space-md); }
+  .lightbox-img { max-height: calc(100vh - 200px); }
+}
+
 /* ---------- 13.2 Админка: статьи и кросспостинг ---------- */
 .admin-toolbar {
   display: flex;

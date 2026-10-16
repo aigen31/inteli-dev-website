@@ -2053,6 +2053,71 @@ async fn habr_link_leads_the_body_of_a_crossposted_article() {
     );
 }
 
+/// Лайтбокс отдаётся только страницей статьи.
+///
+/// Панель лежит в разметке (её собирает `initLightbox`, и без разметки от
+/// скрипта не было бы толку), но нужна она там, где есть картинки статьи:
+/// на списке статей и на остальных страницах это лишние полторы сотни байт и
+/// пустая форма в дереве доступности.
+#[tokio::test]
+async fn article_carries_the_lightbox_and_other_pages_do_not() {
+    let _guard = articles_lock();
+    let state = test_state().await;
+
+    let (status, article) = request(
+        &state,
+        "POST",
+        "/api/admin/articles",
+        Some(serde_json::json!({
+            "title": "Статья со схемой",
+            "summary": "Кратко",
+            "body_markdown": "Текст до схемы.\n\n![Схема стенда](/media/stand.png)\n\nТекст после.",
+            "tags": ["rust"],
+            "status": "published",
+        })),
+        Some(ADMIN_TOKEN),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{article}");
+
+    let slug = article["slug"].as_str().unwrap();
+    let (status, _, html) = get_page(&state, &format!("/blog/{slug}")).await;
+    assert_eq!(status, StatusCode::OK);
+
+    // Картинка статьи — то, что открывается: без неё панель бессмысленна.
+    assert!(html.contains(r#"src="/media/stand.png""#), "картинка статьи не отрендерилась");
+
+    // Панель приходит выключенной: до клика её не видно и в дереве доступности
+    // её нет. Модальность и подпись — то, чем диалог описан скринридеру.
+    let dialog = tag_with(&html, "id=\"lightbox\"");
+    assert!(dialog.contains("class=\"lightbox\""), "панель потеряла класс: {dialog}");
+    assert!(dialog.contains("hidden"), "панель приходит открытой: {dialog}");
+    assert!(dialog.contains("role=\"dialog\""), "панель без роли диалога: {dialog}");
+    assert!(
+        dialog.contains("aria-modal=\"true\""),
+        "панель не помечена модальной: {dialog}"
+    );
+
+    // Кнопки закрытия и листания: имя у иконок задаёт `aria-label`, текста в них
+    // нет. Без кнопки закрытия с клавиатуры панель не покинуть.
+    let close = tag_with(&html, "id=\"lightbox-close\"");
+    assert!(close.contains("aria-label="), "у кнопки закрытия нет имени: {close}");
+    for id in ["lightbox-prev", "lightbox-next"] {
+        let button = tag_with(&html, &format!("id=\"{id}\""));
+        assert!(button.contains("aria-label="), "у стрелки {id} нет имени: {button}");
+        assert!(button.contains("hidden"), "стрелка {id} видна без галереи: {button}");
+    }
+
+    // Остальные страницы панель не грузят — в том числе список статей и главная.
+    for path in ["/blog", "/", "/services", "/contact"] {
+        let (_, _, html) = get_page(&state, path).await;
+        assert!(
+            !html.contains("id=\"lightbox\""),
+            "{path}: лайтбокс отдаётся странице без статьи"
+        );
+    }
+}
+
 /// GET страницы: статус, заголовки ответа и HTML.
 async fn get_page(
     state: &AppState,

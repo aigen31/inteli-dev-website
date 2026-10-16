@@ -2136,6 +2136,174 @@
     });
   }
 
+  // ---------- Лайтбокс: просмотр изображений статьи ----------
+  // Картинка в тексте статьи упирается в ширину колонки, а схемы и скриншоты
+  // читаются только в полном размере. Панель (`#lightbox`) приходит из разметки
+  // страницы статьи и выключена атрибутом `hidden`; здесь — только показ. Без
+  // скрипта картинки остаются обычными: просмотр открывать нечем, но и ломаться
+  // нечему.
+  function initLightbox() {
+    var overlay = document.getElementById('lightbox');
+    if (!overlay) return;
+
+    var image = document.getElementById('lightbox-img');
+    var caption = document.getElementById('lightbox-caption');
+    var counter = document.getElementById('lightbox-counter');
+    var closeBtn = document.getElementById('lightbox-close');
+    var prevBtn = document.getElementById('lightbox-prev');
+    var nextBtn = document.getElementById('lightbox-next');
+
+    var gallery = [];
+    var index = 0;
+    // Куда вернуть фокус при закрытии: иначе он улетает в начало страницы, и
+    // клавиатурный читатель теряет место, на котором остановился.
+    var lastFocus = null;
+
+    // Что вообще можно увеличить: картинки статьи и её обложка. Картинку внутри
+    // ссылки не трогаем — автор уже назначил ей действие (`[![…](…)](…)`), и клик
+    // должен вести по ссылке.
+    function zoomable() {
+      return Array.prototype.filter.call(
+        document.querySelectorAll('.prose img, .post-cover'),
+        function (img) {
+          return !img.closest('a') && !img.closest('.lightbox') && img.getAttribute('src');
+        }
+      );
+    }
+
+    function captionText(img) {
+      return img.getAttribute('alt') || img.getAttribute('title') || 'изображение';
+    }
+
+    // Клавиатуре картинку нужно чем-то выбрать: `<img>` фокуса не получает.
+    // Роль `button` описывает действие, а не внешний вид, поэтому alt переезжает
+    // в доступное имя — скринридер читает «Увеличить: схема стенда».
+    function markZoomable() {
+      zoomable().forEach(function (img) {
+        if (img.classList.contains('is-zoomable')) return;
+        img.classList.add('is-zoomable');
+        img.setAttribute('tabindex', '0');
+        img.setAttribute('role', 'button');
+        img.setAttribute('aria-label', 'Увеличить: ' + captionText(img));
+      });
+    }
+
+    function show() {
+      var img = gallery[index];
+      if (!img) return;
+
+      // Полный размер — тот же файл: миниатюр сервер не делает.
+      image.src = img.currentSrc || img.src;
+      var text = img.getAttribute('alt') || img.getAttribute('title') || '';
+      image.alt = text;
+      caption.textContent = text;
+      caption.hidden = !text;
+
+      // Стрелки и счётчик — только у галереи: у одной картинки листать нечего.
+      var many = gallery.length > 1;
+      prevBtn.hidden = !many;
+      nextBtn.hidden = !many;
+      counter.hidden = !many;
+      counter.textContent = many ? (index + 1) + ' из ' + gallery.length : '';
+    }
+
+    function open(img) {
+      gallery = zoomable();
+      index = gallery.indexOf(img);
+      // Картинку могли убрать между отрисовкой и кликом.
+      if (index < 0) return;
+
+      lastFocus = img;
+      // Полоса прокрутки уезжает вместе с `overflow: hidden`; её ширину отдаём
+      // в CSS, чтобы страница под затемнением не прыгала вправо.
+      var gap = window.innerWidth - document.documentElement.clientWidth;
+      document.documentElement.style.setProperty('--lightbox-scrollbar', gap + 'px');
+      document.documentElement.classList.add('lightbox-open');
+      overlay.hidden = false;
+      show();
+      closeBtn.focus();
+    }
+
+    function close() {
+      if (overlay.hidden) return;
+      overlay.hidden = true;
+      document.documentElement.classList.remove('lightbox-open');
+      document.documentElement.style.removeProperty('--lightbox-scrollbar');
+      // Адрес снимаем: иначе декодированная копия висит в памяти до перезагрузки.
+      image.removeAttribute('src');
+      if (lastFocus && document.contains(lastFocus)) lastFocus.focus();
+      lastFocus = null;
+    }
+
+    function step(delta) {
+      if (gallery.length < 2) return;
+      index = (index + delta + gallery.length) % gallery.length;
+      show();
+    }
+
+    // Модальность: пока панель открыта, Tab ходит по её кнопкам. Иначе фокус
+    // уезжает на страницу под затемнением, и с клавиатуры её не покинуть.
+    function trapFocus(e) {
+      var items = [closeBtn, prevBtn, nextBtn].filter(function (btn) { return !btn.hidden; });
+      if (!items.length) return;
+      e.preventDefault();
+      var current = items.indexOf(document.activeElement);
+      var next = current < 0 ? 0 : current + (e.shiftKey ? -1 : 1);
+      items[(next + items.length) % items.length].focus();
+    }
+
+    closeBtn.addEventListener('click', close);
+    prevBtn.addEventListener('click', function () { step(-1); });
+    nextBtn.addEventListener('click', function () { step(1); });
+
+    // Клик по затемнению закрывает, по самой картинке — нет: широкая картинка
+    // занимает почти весь экран, и закрывать её случайным промахом не нужно.
+    overlay.addEventListener('click', function (e) {
+      if (e.target === overlay) close();
+    });
+
+    // Делегирование вместо привязки к каждой картинке: в админке предпросмотр
+    // перерисовывается после загрузки файла, и новые картинки иначе остались бы
+    // без реакции.
+    document.addEventListener('click', function (e) {
+      var img = e.target;
+      if (!img || img.tagName !== 'IMG' || !img.classList.contains('is-zoomable')) return;
+      e.preventDefault();
+      open(img);
+    });
+
+    document.addEventListener('keydown', function (e) {
+      if (overlay.hidden) {
+        // Enter и пробел на картинке — то же, что клик по ней.
+        if ((e.key === 'Enter' || e.key === ' ') &&
+            e.target && e.target.tagName === 'IMG' &&
+            e.target.classList.contains('is-zoomable')) {
+          e.preventDefault();
+          open(e.target);
+        }
+        return;
+      }
+      if (e.key === 'Escape') { close(); return; }
+      if (e.key === 'ArrowLeft') { step(-1); return; }
+      if (e.key === 'ArrowRight') { step(1); return; }
+      if (e.key === 'Tab') trapFocus(e);
+    });
+
+    // Новые картинки (предпросмотр в админке) помечаем по факту появления.
+    if (window.MutationObserver) {
+      new MutationObserver(function (records) {
+        var fresh = records.some(function (record) {
+          return Array.prototype.some.call(record.addedNodes, function (node) {
+            return node.nodeType === 1 && (node.tagName === 'IMG' || node.querySelector('img'));
+          });
+        });
+        if (fresh) markZoomable();
+      }).observe(document.body, { childList: true, subtree: true });
+    }
+
+    markZoomable();
+  }
+
   initReveal();
   initMobileNav();
   initStatusBadge();
@@ -2144,6 +2312,7 @@
   initGoalRead();
   initHeroTerminal(initMascot());
   initFloatingChat();
+  initLightbox();
   initHeroCanvas();
   initCardEffects();
   initButtonSpotlight();

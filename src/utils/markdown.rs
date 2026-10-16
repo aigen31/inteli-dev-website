@@ -229,6 +229,19 @@ mod tests {
     }
 
     #[test]
+    fn keeps_image_alt_and_title() {
+        // На этих двух атрибутах держится просмотр изображения: `alt` уходит в
+        // подпись панели и в доступное имя картинки, `title` — запасная подпись,
+        // если alt пустой. Пропадут — панель станет безымянной.
+        let html = render("![Схема стенда](/media/stand.png \"Стенд 5080 + 3060\")");
+        assert!(html.contains(r#"alt="Схема стенда""#), "alt потерян: {html}");
+        assert!(
+            html.contains(r#"title="Стенд 5080 + 3060""#),
+            "title потерян: {html}"
+        );
+    }
+
+    #[test]
     fn absolute_rendering_resolves_only_local_paths() {
         let html = render_absolute(
             "![схема](/media/abc.png) [в блог](/blog) [наружу](https://x.ru/a) \

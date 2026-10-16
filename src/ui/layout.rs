@@ -13,7 +13,7 @@ use crate::services::github;
 use crate::services::goals;
 use crate::ui::beget::BegetLogo;
 use crate::ui::icon::{BrandIcon, LucideIcon};
-use crate::ui::shared::StatusBadge;
+use crate::ui::shared::{Lightbox, StatusBadge};
 
 /// Ссылка на профиль Habr.
 ///
@@ -53,6 +53,9 @@ pub fn Layout(children: Children) -> impl IntoView {
     // Есть на каждой странице, кроме `/chat`: там чат занимает всю страницу, и
     // вторая кнопка «Спросить» над ним дублировала бы поле ввода.
     let chat_widget = request_path().as_deref() != Some("/chat");
+    // Просмотр изображений нужен только статье: разметку панели отдаём там,
+    // где есть `.prose` с картинками, — остальным страницам она не нужна.
+    let article_page = request_path().is_some_and(|path| path.starts_with("/blog/"));
     // Кнопки в компактной панели — то же подмножество, что в терминале на
     // главной: список общий с /chat, поэтому подпись и индекс кнопки не могут
     // разойтись с тем, как их обрабатывает сервер.
@@ -177,6 +180,10 @@ pub fn Layout(children: Children) -> impl IntoView {
                 </div>
             </div>
         </footer>
+
+        // Просмотр изображений статьи: панель лежит в разметке и выключена
+        // `hidden`, открывает её клик по картинке (`initLightbox`).
+        {article_page.then(|| view! { <Lightbox/> })}
 
         // Плавающий чат: кнопка в правом нижнем углу и компактная панель к ней.
         // Панель лежит в разметке всегда и выключена атрибутом `hidden`: так она
