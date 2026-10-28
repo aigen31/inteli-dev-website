@@ -3078,15 +3078,22 @@ a:hover { color: #fff; }
   z-index: auto;
 }
 .hero-art {
+  /* Кадр не растягивается на всю обложку: картинка 16:9, и `cover` срезал у неё
+     верх шляпы и кольцо на полу. Поэтому арт — бокс с честной пропорцией 16:9,
+     прижатый к правому краю по высоте обложки: изображение видно целиком, а его
+     пустая левая часть уходит под текст. */
   position: absolute;
-  inset: 0;
+  top: 0;
+  right: 0;
+  height: 100%;
+  aspect-ratio: 16 / 9;
   z-index: 0;
 }
 .hero-art-img {
   width: 100%;
   height: 100%;
   object-fit: cover;
-  object-position: 70% 44%;
+  object-position: center;
   display: block;
   /* Левый край растворяется в фоне маской, а не подкладывается плашкой: у
      картинки собственное чёрное поле, и жёсткая граница читалась бы как
@@ -3491,13 +3498,24 @@ a:hover { color: #fff; }
 
 /* ---------- 17.14 Кейсы: компактнее ---------- */
 .project-card-media {
-  max-height: clamp(300px, 42vh, 520px);
+  /* Ширина — вся колонка, высота — по пропорции кадра. Пока стоял `max-height`
+     вместе с `aspect-ratio`, бокс сужался до 672px и кадр уезжал влево; теперь
+     скриншот занимает колонку целиком и центрируется. */
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  max-height: none;
   display: flex;
   align-items: center;
   justify-content: center;
   background: #07070b;
 }
-.project-card-img { max-height: 100%; }
+.project-card-img {
+  width: 100%;
+  height: 100%;
+  max-height: none;
+  object-fit: contain;
+  object-position: center;
+}
 .project-card-body { gap: 0; }
 .project-card-meta { margin-bottom: 10px; }
 .project-card-title { margin-top: 0; }
@@ -3576,6 +3594,167 @@ a:hover { color: #fff; }
   padding: 10px 16px;
 }
 .floating-cta:hover { background: rgba(139, 127, 245, 0.1); border-color: var(--color-primary); color: var(--color-text); }
+
+
+/* ---------- 17.17 Терминал: расположение и новый вид ----------
+   Терминал стоит рядом с заголовком, а не под ним: слева — кто отвечает и на
+   каких условиях, справа — само окно. Так секция читается как диалог, а не как
+   ещё одна карточка в ленте. Окно перестало быть «мокапом macOS»: без
+   светофорных точек, с моно-шапкой и одной линейкой вместо тени и свечения. */
+.terminal-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 0.78fr) minmax(0, 1.22fr);
+  gap: clamp(28px, 4.5vw, 64px);
+  align-items: start;
+}
+.terminal-intro h2 { margin: 10px 0 0; }
+.terminal-intro .section-note { margin: 18px 0 0; max-width: 40ch; }
+.terminal-facts {
+  margin: 34px 0 0;
+  padding: 0;
+  list-style: none;
+  border-top: 1px solid var(--rule);
+}
+.terminal-facts li {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  gap: 10px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--rule);
+  font-size: 0.88rem;
+  line-height: 1.45;
+  color: var(--color-text-secondary);
+}
+.terminal-fact-num { color: var(--color-text-tertiary); font-size: 0.6rem; letter-spacing: 0.12em; padding-top: 3px; }
+
+.section-terminal .terminal-window {
+  max-width: none;
+  margin: 0;
+  background: #0a0a11;
+  border: 1px solid var(--rule);
+  border-radius: 10px;
+  box-shadow: none;
+}
+.terminal-bar {
+  height: 46px;
+  padding: 0 18px;
+  gap: 0;
+  background: transparent;
+  border-bottom: 1px solid var(--rule);
+}
+/* Светофорные точки — примета десктопного мокапа; в редакционном макете они
+   читаются как иконка приложения, а не как терминал. */
+.terminal-bar .dot { display: none; }
+.terminal-title {
+  margin-left: 0;
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--color-text-tertiary);
+}
+.terminal-bar::after {
+  content: "AI";
+  margin-left: auto;
+  padding: 2px 7px;
+  border: 1px solid rgba(139, 127, 245, 0.35);
+  border-radius: 4px;
+  font-family: var(--font-mono);
+  font-size: 0.56rem;
+  letter-spacing: 0.14em;
+  color: var(--color-primary);
+}
+.terminal-body {
+  min-height: 200px;
+  max-height: 220px;
+  padding: 20px 22px;
+  padding-right: calc(var(--mascot-w) * 0.9 + 18px);
+  font-size: 0.84rem;
+  line-height: 1.7;
+}
+.terminal-welcome { color: var(--color-text-secondary); font-style: normal; }
+.terminal-footer {
+  background: rgba(255, 255, 255, 0.025);
+  border-top: 1px solid var(--rule-strong);
+}
+.terminal-input-line { padding: 10px 18px 8px; }
+.terminal-prompt { color: var(--color-primary); font-weight: 500; }
+.terminal-input { font-size: 0.9rem; }
+.terminal-hint { padding: 0 18px 10px; font-size: 0.62rem; letter-spacing: 0.04em; }
+.terminal-presets { padding: 0 18px 18px; gap: 6px; }
+.terminal-preset-btn {
+  padding: 5px 11px;
+  border: 1px solid var(--rule);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--color-text-tertiary);
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.terminal-preset-btn:hover {
+  background: rgba(139, 127, 245, 0.1);
+  border-color: var(--color-primary);
+  color: var(--color-text);
+  transform: none;
+}
+
+/* ---------- 17.18 Услуги: карточка на всю колонку ----------
+   Сетка из трёх плиток делила описание на узкие колонки, и длинные тексты
+   услуг читались как список мелких фактов. Теперь карточка занимает всю
+   ширину: иконка, название, описание и цена в одну строку, а между карточками —
+   только линейка. Это тот же приём, что у строк-направлений на референсе. */
+.cards-grid {
+  grid-template-columns: 1fr;
+  gap: 0;
+  border: 0;
+  border-top: 1px solid var(--rule);
+  border-radius: 0;
+  background: none;
+}
+.card {
+  display: grid;
+  grid-template-columns: 48px minmax(180px, 0.78fr) minmax(0, 1.22fr) auto;
+  grid-template-areas: "icon title text price";
+  align-items: start;
+  gap: 6px 32px;
+  padding: 28px 8px 30px;
+  border: 0;
+  border-bottom: 1px solid var(--rule);
+  border-radius: 0;
+  background: transparent;
+  transition: background var(--transition-fast);
+}
+.card:hover {
+  background: linear-gradient(90deg, rgba(139, 127, 245, 0.055), transparent 62%);
+  box-shadow: none;
+}
+.card-icon { grid-area: icon; margin: 5px 0 0; }
+.card-icon svg { width: 20px; height: 20px; }
+.card-title { grid-area: title; margin: 0; font-size: clamp(1.15rem, 1.7vw, 1.45rem); letter-spacing: -0.03em; }
+.card-text { grid-area: text; margin: 0; max-width: 64ch; font-size: 0.9rem; line-height: 1.6; }
+.card-price { grid-area: price; justify-self: end; margin: 6px 0 0; text-align: right; white-space: nowrap; }
+
+@media (max-width: 900px) {
+  .terminal-layout { grid-template-columns: 1fr; gap: 28px; }
+  .terminal-facts { margin-top: 26px; }
+  .card {
+    grid-template-columns: 30px minmax(0, 1fr);
+    grid-template-areas: "icon title" "icon text" ". price";
+    gap: 6px 18px;
+    padding: 22px 4px 24px;
+  }
+  .card-price { justify-self: start; margin-top: 10px; }
+  .card-icon { margin-top: 3px; }
+}
+
+/* На телефоне арт снова становится фоном на всю обложку: держать честный
+   кадр 16:9 на узком экране негде, а фигура нужна лишь как силуэт за текстом. */
+@media (max-width: 900px) {
+  .hero-art { left: 0; right: 0; height: 100%; aspect-ratio: auto; }
+  .hero-art-img { object-fit: cover; object-position: 66% 30%; opacity: 0.5; }
+}
 
 /* ---------- 15. Responsive ---------- */
 @media (max-width: 767px) {

@@ -186,14 +186,21 @@ pub fn Home() -> impl IntoView {
         // иллюстрацией за правую половину, а здесь у него своя полоса и
         // собственный заголовок. Маскот остаётся внутри окна (см. §7c/d).
         <section class="section section-terminal" id="terminal">
-            <div class="section-head">
-                <p class="eyebrow"><span class="eyebrow-dot" aria-hidden="true"></span>{"Терминал"}</p>
-                <h2>Спросите Кики</h2>
-                <p class="section-note">
-                    "Отвечает по услугам, срокам и стеку — без формы и ожидания письма."
-                </p>
+            <div class="terminal-layout">
+                <div class="terminal-intro">
+                    <p class="eyebrow"><span class="eyebrow-dot" aria-hidden="true"></span>{"Терминал"}</p>
+                    <h2>Спросите Кики</h2>
+                    <p class="section-note">
+                        "Она знает услуги, сроки и стек. Отвечает сразу — без формы и ожидания письма."
+                    </p>
+                    <ul class="terminal-facts">
+                        <li><span class="terminal-fact-num mono">01</span>{"Ответ по услугам, срокам и стеку"}</li>
+                        <li><span class="terminal-fact-num mono">02</span>{"Три ответа в час, без регистрации"}</li>
+                        <li><span class="terminal-fact-num mono">03</span>{"Не хватит ответа — оставите заявку"}</li>
+                    </ul>
+                </div>
+                <HeroTerminal/>
             </div>
-            <HeroTerminal/>
         </section>
 
         <section class="section section-services">
