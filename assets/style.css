@@ -3177,40 +3177,39 @@ a:hover { color: #fff; }
    Контраст с моно-метаданными (0.62rem) почти восьмикратный — это и даёт
    «эффектность» без декора: масштаб вместо украшений. */
 .hero-title {
-  margin: 18px 0 22px;
-  font-size: clamp(2.6rem, 5.6vw, 4.7rem);
-  font-weight: 500;
-  line-height: 0.94;
-  letter-spacing: -0.05em;
-}
-/* Первое слово — капсом и чуть меньше: это печать на плакате, а не крик.
-   Дальше строчные — так заголовок остаётся частью нового дизайн-кода. */
-.hero-line-caps {
-  text-transform: uppercase;
-  letter-spacing: -0.02em;
-  font-size: 0.82em;
+  margin: 24px 0 0;
+  font-size: clamp(2.7rem, 5.4vw, 4.6rem);
+  font-weight: 450;
+  line-height: 1;
+  letter-spacing: -0.058em;
 }
 .hero-line { display: block; }
 .hero-accent { color: var(--color-primary); }
-/* Метрики и статус в одну строку: статус стал частью мета-строки, а не
-   отдельным этажом с бейджем. */
-.hero-metrics {
+/* Мета-строка — рамка плаката: линейка во всю ширину колонки, цифры слева,
+   статус справа. Раньше всё висело одной строкой без опоры, и обложка
+   выглядела несобранной. */
+.hero-meta {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
-  gap: 10px;
-  margin: 22px 0 0;
-  font-size: 0.62rem;
-  letter-spacing: 0.14em;
+  justify-content: space-between;
+  gap: 24px;
+  max-width: 620px;
+  margin-top: 34px;
+  padding-top: 18px;
+  border-top: 1px solid var(--rule);
+}
+.hero-metrics {
+  margin: 0;
+  font-size: 0.64rem;
+  letter-spacing: 0.16em;
   color: var(--color-text-tertiary);
 }
-.hero-metrics-sep { opacity: 0.5; }
-/* На узком экране метрики и статус расходятся по строкам, и разделитель
-   остаётся висеть в конце первой. */
+/* В шапке у бейджа есть шеврон — здесь он лишний: это справка, не меню. */
+.hero-meta .status-badge { font-size: 0.64rem; letter-spacing: 0.14em; }
+.hero-meta .status-badge::after { display: none; }
 @media (max-width: 640px) {
-  .hero-metrics-sep { display: none; }
+  .hero-meta { flex-direction: column; align-items: flex-start; gap: 12px; }
 }
-.hero-metrics .status-badge { font-size: 0.66rem; letter-spacing: 0.1em; }
 /* Статус стоит отдельной строкой над CTA: в одну линию с кнопками он читался
    как третья кнопка и спорил с главным действием. */
 .hero-actions {
@@ -3596,7 +3595,7 @@ a:hover { color: #fff; }
       linear-gradient(90deg, rgba(8, 8, 13, 0.9) 0%, rgba(8, 8, 13, 0.55) 100%);
   }
   .hero-content { max-width: none; }
-  .hero-title { font-size: clamp(2.3rem, 9.6vw, 3.1rem); }
+  .hero-title { font-size: clamp(2.3rem, 9.4vw, 3rem); }
   .hero-actions { align-items: stretch; gap: 14px; margin-top: 24px; }
   .hero-actions .cta-buttons { display: grid; grid-template-columns: 1fr; gap: 10px; }
   .hero-actions .cta-buttons .btn { justify-content: center; }

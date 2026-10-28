@@ -188,18 +188,18 @@ pub fn Home() -> impl IntoView {
                     <p class="eyebrow"><span class="eyebrow-dot" aria-hidden="true"></span>{profile.location.clone()}</p>
                     <h1 class="hero-title" aria-label=HERO_TITLE>
                         {title_lines.into_iter().map(|line| view! {
-                            <span class=if line.caps { "hero-line hero-line-caps" } else { "hero-line" }>
+                            <span class="hero-line">
                                 {line.before}<span class="hero-accent">{line.accent}</span>{line.after}
                             </span>
                         }).collect::<Vec<_>>()}
                     </h1>
-                    // Метрики и статус — одна строка: раньше это были два
-                    // этажа, и обложка начиналась как анкета.
-                    <p class="hero-metrics mono">
-                        {metrics}
-                        <span class="hero-metrics-sep" aria-hidden="true">"·"</span>
+                    // Мета-строка отделена линейкой и разведена по краям:
+                    // цифры слева, статус справа. Это рамка плаката, а не
+                    // ещё одна строка текста.
+                    <div class="hero-meta">
+                        <span class="hero-metrics mono">{metrics}</span>
                         <StatusBadge/>
-                    </p>
+                    </div>
                     <div class="hero-actions">
                         <div class="cta-buttons">
                             <PrimaryButton text="Задать вопрос" href="/chat"/>
@@ -470,7 +470,6 @@ struct HeroLine {
     before: String,
     accent: String,
     after: String,
-    caps: bool,
 }
 
 impl HeroLine {
@@ -479,7 +478,6 @@ impl HeroLine {
             before: text.to_string(),
             accent: String::new(),
             after: String::new(),
-            caps: false,
         }
     }
 }
@@ -495,9 +493,6 @@ fn hero_title_lines(title: &str) -> Vec<HeroLine> {
     if words.len() < 3 {
         return vec![HeroLine::plain(title)];
     }
-
-    let mut first = HeroLine::plain(words[0]);
-    first.caps = true;
 
     let mut last = HeroLine::plain("");
     let mut before_parts: Vec<&str> = Vec::new();
@@ -524,5 +519,5 @@ fn hero_title_lines(title: &str) -> Vec<HeroLine> {
         last.before = words[2..].join(" ");
     }
 
-    vec![first, HeroLine::plain(words[1]), last]
+    vec![HeroLine::plain(words[0]), HeroLine::plain(words[1]), last]
 }
