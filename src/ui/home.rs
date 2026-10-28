@@ -13,6 +13,13 @@ use crate::ui::blog::LatestArticles;
 use crate::ui::github::GitHubStatsSection;
 use crate::ui::shared::{PrimaryButton, ProjectCard, SecondaryButton, ServiceCard, StatusBadge};
 
+/// Сколько кейсов крутить в слайдере на главной.
+///
+/// Четыре — компромисс: два слайда не дают повода листать, а все восемь
+/// превращали бы главную в копию `/projects` (ровно та дубликация, из-за которой
+/// страницы портфолио плохо индексируются).
+const SLIDER_COUNT: usize = 4;
+
 /// Интерактивный AI-терминал в hero-секции. Клиент может задать вопрос через
 /// CLI-интерфейс (как на /chat) и получить ответ от ИИ прямо на главной.
 #[component]
@@ -119,55 +126,151 @@ pub fn Home() -> impl IntoView {
     let profile = content.profile.clone();
     let skills = profile.skills.clone();
     let services_preview = content.services.iter().take(3).cloned().collect::<Vec<_>>();
-    let projects_preview = content.projects.iter().take(2).cloned().collect::<Vec<_>>();
-    let subtitle = format!(
-        "{} · {} лет опыта · {}+ проектов",
-        profile.title, profile.experience_years, profile.projects_completed
+    // Слайдер кейсов: четыре штуки — достаточно, чтобы листать, и меньше, чем
+    // весь портфолио на `/projects` (дублировать его целиком на главной незачем).
+    let slides = content
+        .projects
+        .iter()
+        .take(SLIDER_COUNT)
+        .cloned()
+        .collect::<Vec<_>>();
+    let slide_count = slides.len();
+    // Цифры вынесены в отдельную моно-строку: в подзаголовке они тонули в
+    // тексте, а в новом макете это метрика, а не часть описания.
+    let metrics = format!(
+        "{} лет опыта · {}+ проектов",
+        profile.experience_years, profile.projects_completed
     );
+    let hero_art = crate::api::assets::versioned(crate::api::assets::HERO_ART_PATH);
+    let hero_art_w = crate::api::assets::HERO_ART_WIDTH;
+    let hero_art_h = crate::api::assets::HERO_ART_HEIGHT;
     view! {
+        // Hero — обложка во всю ширину: слева текст, справа иллюстрация
+        // (Кики в левитации). Картинка уходит под левую колонку градиентной
+        // шторкой, поэтому заголовку не нужна подложка и он не спорит с
+        // фигурой. Пятна и сетка переехали на уровень страницы (`.site-bg`).
         <section class="hero">
-            <canvas id="hero-canvas" class="hero-canvas" aria-hidden="true"></canvas>
-            <div class="hero-blob hero-blob-1" aria-hidden="true"></div>
-            <div class="hero-blob hero-blob-2" aria-hidden="true"></div>
-            <div class="hero-blob hero-blob-3" aria-hidden="true"></div>
+            <div class="hero-art" aria-hidden="true">
+                <img
+                    class="hero-art-img"
+                    src=hero_art
+                    alt=""
+                    width=hero_art_w
+                    height=hero_art_h
+                    fetchpriority="high"
+                    decoding="async"
+                />
+            </div>
 
-            <div class="hero-grid">
-                // Маскот — внутри терминала (HeroTerminal): он сидит на черте
-                // строки ввода, а не на самом окне.
-                <HeroTerminal/>
-
+            <div class="hero-inner">
                 <div class="hero-content">
-                    <h1>{profile.name}</h1>
-                    <p class="subtitle">{subtitle}</p>
-                    <StatusBadge/>
-                    <div class="cta-buttons">
-                        <PrimaryButton text="Задать вопрос" href="/chat"/>
-                        <SecondaryButton text="Оставить заявку" href="/contact"/>
+                    <p class="eyebrow"><span class="eyebrow-dot" aria-hidden="true"></span>{profile.location.clone()}</p>
+                    <h1 class="hero-title">{profile.name}</h1>
+                    <p class="hero-role">{profile.title.clone()}</p>
+                    <p class="hero-metrics mono">{metrics}</p>
+                    <div class="hero-actions">
+                        <StatusBadge/>
+                        <div class="cta-buttons">
+                            <PrimaryButton text="Задать вопрос" href="/chat"/>
+                            <SecondaryButton text="Оставить заявку" href="/contact"/>
+                        </div>
                     </div>
-                    <div class="tech-pills">
-                        {skills.into_iter().map(|s| view! { <span class="tech-pill">{s}</span> }).collect::<Vec<_>>()}
-                    </div>
+                    <ul class="tech-pills" aria-label="Специализация">
+                        {skills.into_iter().map(|s| view! { <li class="tech-pill">{s}</li> }).collect::<Vec<_>>()}
+                    </ul>
                 </div>
             </div>
         </section>
 
-        <section class="section section-glow section-services">
+        // Терминал вынесен из hero в отдельную секцию: в обложке он спорил с
+        // иллюстрацией за правую половину, а здесь у него своя полоса и
+        // собственный заголовок. Маскот остаётся внутри окна (см. §7c/d).
+        <section class="section section-terminal" id="terminal">
             <div class="section-head">
+                <p class="eyebrow"><span class="eyebrow-dot" aria-hidden="true"></span>{"Терминал"}</p>
+                <h2>Спросите Кики</h2>
+                <p class="section-note">
+                    "Отвечает по услугам, срокам и стеку — без формы и ожидания письма."
+                </p>
+            </div>
+            <HeroTerminal/>
+        </section>
+
+        <section class="section section-services">
+            <div class="section-head">
+                <p class="eyebrow"><span class="eyebrow-dot" aria-hidden="true"></span>{"01 — Направления"}</p>
                 <h2>Услуги</h2>
-                <a class="section-link" href="/services">{"Все услуги →"}</a>
+                <a class="section-link" href="/services">{"Все услуги"}</a>
             </div>
             <div class="cards-grid">
                 {services_preview.into_iter().map(|s| view! { <ServiceCard service=s/> }).collect::<Vec<_>>()}
             </div>
         </section>
 
-        <section class="section section-glow section-results">
+        <section class="section section-results">
             <div class="section-head">
+                <p class="eyebrow"><span class="eyebrow-dot" aria-hidden="true"></span>{"02 — Кейсы"}</p>
                 <h2>Результаты</h2>
-                <a class="section-link" href="/projects">{"Все проекты →"}</a>
+                <div class="section-actions">
+                    // Стрелки приходят выключенными: без скрипта они бы ничего не
+                    // делали, а включённые `initProjectSlider` — работают. Свайп и
+                    // колесо работают и без них.
+                    <button
+                        type="button"
+                        class="slider-arrow"
+                        data-slider="prev"
+                        aria-label="Предыдущий кейс"
+                        disabled
+                    >
+                        <span aria-hidden="true">"←"</span>
+                    </button>
+                    <button
+                        type="button"
+                        class="slider-arrow"
+                        data-slider="next"
+                        aria-label="Следующий кейс"
+                        disabled
+                    >
+                        <span aria-hidden="true">"→"</span>
+                    </button>
+                    <a class="section-link" href="/projects">{"Все проекты"}</a>
+                </div>
             </div>
-            <div class="cards-grid cards-grid-2">
-                {projects_preview.into_iter().map(|p| view! { <ProjectCard project=p/> }).collect::<Vec<_>>()}
+
+            // Лента со снапом: одна карточка на экран. Прокручивается сама —
+            // стрелки и точки только помогают, но без них лента не ломается.
+            <div
+                class="project-slider"
+                id="project-slider"
+                role="region"
+                aria-label="Кейсы"
+                tabindex="0"
+            >
+                <ul class="project-slider-track">
+                    {slides
+                        .into_iter()
+                        .enumerate()
+                        .map(|(i, p)| view! {
+                            <li class="project-slide" id=format!("project-slide-{}", i + 1)>
+                                <ProjectCard project=p/>
+                            </li>
+                        })
+                        .collect::<Vec<_>>()}
+                </ul>
+            </div>
+
+            // Точки — ссылки, а не кнопки: без скрипта переход по якорю всё равно
+            // прокручивает ленту к нужному слайду.
+            <div class="project-slider-dots" role="group" aria-label="Выбор кейса">
+                {(1..=slide_count)
+                    .map(|i| view! {
+                        <a
+                            class="slider-dot"
+                            href=format!("#project-slide-{i}")
+                            aria-label=format!("Кейс {i} из {slide_count}")
+                        ></a>
+                    })
+                    .collect::<Vec<_>>()}
             </div>
         </section>
 
@@ -178,9 +281,10 @@ pub fn Home() -> impl IntoView {
         // Последние статьи. Блок сам себя скрывает, пока ничего не опубликовано.
         <LatestArticles/>
 
-        <section class="section section-glow section-cta cta-section">
+        <section class="section section-cta cta-section">
+            <p class="eyebrow"><span class="eyebrow-dot" aria-hidden="true"></span>{"04 — Контакт"}</p>
             <h2>Готовы обсудить ваш проект?</h2>
-            <p class="subtitle">{"Оставьте заявку — отвечу при наличии свободного окна."}</p>
+            <p class="section-note">{"Оставьте заявку — отвечу при наличии свободного окна."}</p>
             <div class="cta-buttons">
                 <PrimaryButton text="Оставить заявку" href="/contact"/>
                 <SecondaryButton text="Спросить в чате" href="/chat"/>

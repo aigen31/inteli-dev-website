@@ -26,6 +26,7 @@ pub fn Chat() -> impl IntoView {
     view! {
         <section class="section chat-section">
             <div class="section-head">
+                <p class="eyebrow"><span class="eyebrow-dot" aria-hidden="true"></span>{"Диалог с Кики"}</p>
                 <h1>Задайте вопрос</h1>
             </div>
             <p class="subtitle">Отвечу на вопросы об услугах, ценах и сроках.</p>

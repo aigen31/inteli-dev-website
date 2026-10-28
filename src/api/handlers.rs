@@ -868,6 +868,63 @@ pub async fn mascot_image(Path(file): Path<String>, raw: RawQuery) -> Result<Res
         .into_response())
 }
 
+/// Скриншот кейса: `/assets/projects/<файл>`.
+///
+/// WebP: скриншоты 1920×1080 в PNG весили по несколько мегабайт, а на сайте
+/// показываются шириной до 1600 px. Неизвестный файл — 404, а не пустая
+/// картинка: имена приходят из контента, и опечатка в `Project::image` должна
+/// быть видна сразу, а не превращаться в дыру в карточке.
+pub async fn project_image(Path(file): Path<String>, raw: RawQuery) -> Result<Response, ApiError> {
+    let image = assets::project_image(&file)
+        .ok_or_else(|| AppError::NotFound(format!("project image `{file}`")))?;
+
+    Ok((
+        [
+            (header::CONTENT_TYPE, "image/webp"),
+            (
+                header::CACHE_CONTROL,
+                asset_cache_control(query_version(raw.0.as_deref())),
+            ),
+        ],
+        image.image,
+    )
+        .into_response())
+}
+
+/// Шрифт: `/assets/fonts/<файл>`.
+///
+/// Кэш долгий и без версии в адресе: `@font-face` ссылается на файл из CSS, и
+/// подставить туда `?v=` нельзя. Имя файла — это и есть версия: при замене
+/// шрифта меняется имя, а старый адрес остаётся валидным для уже открытых вкладок.
+pub async fn font_file(Path(file): Path<String>) -> Result<Response, ApiError> {
+    let font = assets::font_file(&file)
+        .ok_or_else(|| AppError::NotFound(format!("font `{file}`")))?;
+
+    Ok((
+        [
+            (header::CONTENT_TYPE, "font/woff2"),
+            (header::CACHE_CONTROL, assets::CACHE_IMMUTABLE),
+        ],
+        font.bytes,
+    )
+        .into_response())
+}
+
+/// Иллюстрация hero: `/assets/hero/kiki-levitation.webp`.
+pub async fn hero_art(raw: RawQuery) -> Response {
+    (
+        [
+            (header::CONTENT_TYPE, "image/webp"),
+            (
+                header::CACHE_CONTROL,
+                asset_cache_control(query_version(raw.0.as_deref())),
+            ),
+        ],
+        assets::HERO_ART,
+    )
+        .into_response()
+}
+
 /// Обложка для соцсетей (`og:image`). Отдаётся как PNG: SVG не поддерживают
 /// ни Telegram, ни VK, ни Twitter.
 pub async fn og_image(raw: RawQuery) -> Response {

@@ -18,6 +18,7 @@ pub fn Contact() -> impl IntoView {
     view! {
         <section class="section">
             <div class="section-head">
+                <p class="eyebrow"><span class="eyebrow-dot" aria-hidden="true"></span>{"Связь"}</p>
                 <h1>Контакты</h1>
             </div>
             <p class="subtitle">{"Опишите проект — отвечу при наличии свободного окна."}</p>

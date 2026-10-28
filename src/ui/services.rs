@@ -13,9 +13,10 @@ pub fn Services() -> impl IntoView {
     view! {
         <section class="section">
             <div class="section-head">
+                <p class="eyebrow"><span class="eyebrow-dot" aria-hidden="true"></span>{"Направления и цены"}</p>
                 <h1>Услуги</h1>
             </div>
-            <p class="subtitle">Что я делаю и сколько это стоит (ориентировочно).</p>
+            <p class="subtitle">{"Что я делаю и сколько это стоит (ориентировочно)."}</p>
             <div class="cards-grid">
                 {services.into_iter().map(|s| view! { <ServiceCard service=s level=2/> }).collect::<Vec<_>>()}
             </div>

@@ -118,6 +118,155 @@ pub fn mascot_frame(emotion: &str) -> Option<&'static [u8]> {
         .map(|frame| frame.image)
 }
 
+/// Картинка кейса из портфолио: файл, содержимое и реальные размеры.
+///
+/// Скриншоты проектов лежат рядом с кодом, а не в базе медиа: портфолио — часть
+/// контента сайта, оно меняется вместе с ним, и `include_bytes!` не даёт
+/// картинке потеряться при переезде базы. `width`/`height` держим здесь же,
+/// чтобы браузер резервировал место до загрузки и карточки не прыгали.
+pub struct ProjectImage {
+    /// Имя файла — оно же последний сегмент адреса (`/assets/projects/x.webp`).
+    pub file: &'static str,
+    /// Содержимое WebP.
+    pub image: &'static [u8],
+    pub width: u32,
+    pub height: u32,
+}
+
+/// Скриншоты кейсов. Пересобираются из портфолио: исходники — PNG/JPEG 1920×1080,
+/// на сайте — WebP шириной до 1600 px (см. `RULES/ui-rules.md`).
+pub const PROJECT_IMAGES: [ProjectImage; 8] = [
+    ProjectImage {
+        file: "voice-ai-real-estate.webp",
+        image: include_bytes!("../../assets/projects/voice-ai-real-estate.webp"),
+        width: 1600,
+        height: 896,
+    },
+    ProjectImage {
+        file: "ai-browser-agent.webp",
+        image: include_bytes!("../../assets/projects/ai-browser-agent.webp"),
+        width: 1600,
+        height: 900,
+    },
+    ProjectImage {
+        file: "coffee-b2b-platform.webp",
+        image: include_bytes!("../../assets/projects/coffee-b2b-platform.webp"),
+        width: 1600,
+        height: 900,
+    },
+    ProjectImage {
+        file: "pdd-pro-maintenance.webp",
+        image: include_bytes!("../../assets/projects/pdd-pro-maintenance.webp"),
+        width: 1600,
+        height: 900,
+    },
+    ProjectImage {
+        file: "wordpress-devops-refactor.webp",
+        image: include_bytes!("../../assets/projects/wordpress-devops-refactor.webp"),
+        width: 1600,
+        height: 900,
+    },
+    ProjectImage {
+        file: "symfony-kimai-custom.webp",
+        image: include_bytes!("../../assets/projects/symfony-kimai-custom.webp"),
+        width: 1600,
+        height: 900,
+    },
+    ProjectImage {
+        file: "edu-platform-marketplace.webp",
+        image: include_bytes!("../../assets/projects/edu-platform-marketplace.webp"),
+        width: 1600,
+        height: 900,
+    },
+    ProjectImage {
+        file: "wordpress-woocommerce-plugins.webp",
+        image: include_bytes!("../../assets/projects/wordpress-woocommerce-plugins.webp"),
+        width: 1200,
+        height: 800,
+    },
+];
+
+/// Шрифт, встроенный в бинарник.
+///
+/// Inter и JetBrains Mono — вариативные (`wght 100–900`), с кириллицей. Раньше
+/// сайт полагался на системный `Inter`, и там, где его нет, весь набор съезжал
+/// на `system-ui`: заголовки теряли плотность, а моно-подписи — характер.
+/// Файлы отдаются с того же origin: `font-src 'self'` в CSP внешние шрифты
+/// запрещает.
+pub struct FontFile {
+    /// Имя файла в адресе `/assets/fonts/<файл>`.
+    pub file: &'static str,
+    /// Содержимое woff2.
+    pub bytes: &'static [u8],
+}
+
+pub static FONT_FILES: &[FontFile] = &[
+    FontFile {
+        file: "inter-cyrillic-wght-normal.woff2",
+        bytes: include_bytes!("../../assets/fonts/inter-cyrillic-wght-normal.woff2"),
+    },
+    FontFile {
+        file: "inter-cyrillic-ext-wght-normal.woff2",
+        bytes: include_bytes!("../../assets/fonts/inter-cyrillic-ext-wght-normal.woff2"),
+    },
+    FontFile {
+        file: "inter-latin-wght-normal.woff2",
+        bytes: include_bytes!("../../assets/fonts/inter-latin-wght-normal.woff2"),
+    },
+    FontFile {
+        file: "inter-latin-ext-wght-normal.woff2",
+        bytes: include_bytes!("../../assets/fonts/inter-latin-ext-wght-normal.woff2"),
+    },
+    FontFile {
+        file: "jetbrains-mono-cyrillic-wght-normal.woff2",
+        bytes: include_bytes!("../../assets/fonts/jetbrains-mono-cyrillic-wght-normal.woff2"),
+    },
+    FontFile {
+        file: "jetbrains-mono-cyrillic-ext-wght-normal.woff2",
+        bytes: include_bytes!(
+            "../../assets/fonts/jetbrains-mono-cyrillic-ext-wght-normal.woff2"
+        ),
+    },
+    FontFile {
+        file: "jetbrains-mono-latin-wght-normal.woff2",
+        bytes: include_bytes!("../../assets/fonts/jetbrains-mono-latin-wght-normal.woff2"),
+    },
+];
+
+/// Шрифт по имени файла: `None` — такого файла нет.
+pub fn font_file(file: &str) -> Option<&'static FontFile> {
+    FONT_FILES.iter().find(|font| font.file == file)
+}
+
+/// Префикс адресов шрифтов: `/assets/fonts/<файл>`.
+pub const FONT_PATH_PREFIX: &str = "/assets/fonts/";
+
+/// Иллюстрация hero — «левитация» Кики, 2560×1440 WebP.
+///
+/// Сгенерирована локально (ComfyUI, Qwen-Image 2.1), исходник лежит в
+/// `assets/hero/`. Встроена в бинарник по той же причине, что и скриншоты
+/// кейсов: страница не должна зависеть от файловой системы контейнера.
+pub const HERO_ART: &[u8] = include_bytes!("../../assets/hero/hero-kiki-levitation-16x9.webp");
+/// Адрес иллюстрации hero.
+pub const HERO_ART_PATH: &str = "/assets/hero/kiki-levitation.webp";
+/// Ширина иллюстрации hero в пикселях.
+pub const HERO_ART_WIDTH: u32 = 2560;
+/// Высота иллюстрации hero в пикселях.
+pub const HERO_ART_HEIGHT: u32 = 1440;
+
+/// Префикс адресов скриншотов кейсов: `/assets/projects/<файл>`.
+pub const PROJECT_IMAGE_PATH_PREFIX: &str = "/assets/projects/";
+
+/// Адрес скриншота кейса по имени файла.
+pub fn project_image_path(file: &str) -> String {
+    format!("{PROJECT_IMAGE_PATH_PREFIX}{file}")
+}
+
+/// Скриншот кейса по имени файла: `None` — такого файла нет.
+pub fn project_image(file: &str) -> Option<&'static ProjectImage> {
+    PROJECT_IMAGES.iter().find(|image| image.file == file)
+}
+
 /// Кэш версионированного ресурса: содержимое неизменяемо в пределах адреса.
 pub const CACHE_IMMUTABLE: &str = "public, max-age=31536000, immutable";
 
@@ -139,6 +288,9 @@ pub fn version() -> &'static str {
         hasher.update(OG_IMAGE);
         for frame in &MASCOT_FRAMES {
             hasher.update(frame.image);
+        }
+        for image in &PROJECT_IMAGES {
+            hasher.update(image.image);
         }
 
         hex::encode(hasher.finalize())[..8].to_string()
