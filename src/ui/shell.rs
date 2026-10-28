@@ -204,6 +204,8 @@ pub fn shell(_options: LeptosOptions) -> impl IntoView {
                 <link rel="stylesheet" href=style_css/>
                 <link rel="manifest" href=manifest/>
                 <link rel="icon" href=favicon type="image/svg+xml"/>
+                // iOS не умеет SVG в иконке «на домашний экран»: нужен PNG 180×180.
+                <link rel="apple-touch-icon" href="/apple-touch-icon.png"/>
                 <script src=main_js defer></script>
                 // Секции прячет CSS, показывает JS. Без скриптов показывать
                 // некому — снимаем скрытие, иначе страница остаётся пустой.

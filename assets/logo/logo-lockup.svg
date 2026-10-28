@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 380 72" role="img" aria-label="inteli.dev">
+  <title>inteli.dev</title>
+  <g transform="translate(2 10) scale(1.5)">
+  <g fill="#f4f2ef">
+    <path d="M2.4 15.7 C6.2 13.2 12.6 11.7 17.4 11.7 C19.4 11.7 20.7 12.1 21.4 12.9 C20.5 14.5 18.2 15.5 15.6 16 C11.4 16.9 6.8 17.2 4.2 16.9 C2.9 16.7 2.2 16.3 2.4 15.7 Z"/>
+    <path d="M9.8 13.6 C10.2 9.6 12.2 6 15.2 3.6 C15.6 6 16.2 7.9 17.5 9.4 C18.9 11 19.7 12.2 19.9 13.5 C16.6 12.8 12.6 13 9.8 13.6 Z"/>
+    <path d="M14 14.2 C15.7 14.2 17 15.4 17 16.9 C17 17.7 16.7 18.3 16.2 18.8 L10 18.8 C9.4 18.1 9.1 17.3 9.1 16.4 C9.1 14.9 10.6 14.2 14 14.2 Z"/>
+    <path d="M10.4 18.2 L16.5 18.2 L18.4 25 C15.5 26.2 11.8 26.1 9.3 24.9 Z"/>
+  </g>
+  <g fill="none" stroke="#f4f2ef" stroke-width="2.2" stroke-linecap="round">
+    <path d="M16.6 17.3 C19 16.1 21.8 15.5 24 15.9"/>
+    <path d="M12.6 25.6 L9.8 29"/>
+    <path d="M15.6 25.6 L16.7 29.2"/>
+  </g>
+  <g fill="#f4f2ef">
+    <path d="M9.8 29 C8.6 28.8 7.1 29.4 6.7 30.3 C8.2 31.1 10.3 31 11.3 30.2 L10.9 29.2 Z"/>
+    <path d="M16.7 29.2 C16.3 30.2 16.9 31 17.9 31 C18.9 31 19.8 30.4 19.8 29.6 L18.1 28.8 Z"/>
+  </g>
+  <circle cx="26.2" cy="15.3" r="1.4" fill="#8b7ff5"/>
+</g>
+  <text x="64" y="48" font-family="Inter Variable, Inter, system-ui, sans-serif" font-size="31" font-weight="500" letter-spacing="-0.7" fill="#f4f2ef">inteli.dev</text>
+</svg>

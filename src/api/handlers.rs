@@ -925,6 +925,33 @@ pub async fn hero_art(raw: RawQuery) -> Response {
         .into_response()
 }
 
+/// Иконка приложения: `/apple-touch-icon.png`, `/icon-192.png`, `/icon-512.png`.
+///
+/// Все три — PNG из одного SVG-тайла, отрендеренные заранее: iOS и Android не
+/// принимают SVG в качестве иконки установки.
+pub async fn apple_touch_icon() -> Response {
+    png_response(assets::APPLE_TOUCH_ICON)
+}
+
+pub async fn icon_192() -> Response {
+    png_response(assets::ICON_192)
+}
+
+pub async fn icon_512() -> Response {
+    png_response(assets::ICON_512)
+}
+
+fn png_response(body: &'static [u8]) -> Response {
+    (
+        [
+            (header::CONTENT_TYPE, "image/png"),
+            (header::CACHE_CONTROL, assets::CACHE_IMMUTABLE),
+        ],
+        body,
+    )
+        .into_response()
+}
+
 /// Обложка для соцсетей (`og:image`). Отдаётся как PNG: SVG не поддерживают
 /// ни Telegram, ни VK, ни Twitter.
 pub async fn og_image(raw: RawQuery) -> Response {

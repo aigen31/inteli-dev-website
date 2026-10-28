@@ -1,12 +1,17 @@
 {
-  "name": "inteli.dev — продвижение сайтов",
+  "name": "inteli.dev — Евгений Биль",
   "short_name": "inteli.dev",
-  "description": "Специалист по продвижению сайтов с 10-летним опытом. SEO-аудит, продвижение в Яндекс и Google.",
+  "description": "Fullstack-разработчик и архитектор приватных AI-систем: локальный инференс, MCP-серверы, разработка под ключ.",
+  "lang": "ru",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
-  "theme_color": "#0d6efd",
-  "background_color": "#ffffff",
+  "theme_color": "#08080d",
+  "background_color": "#08080d",
   "icons": [
-    { "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml" }
+    { "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
   ]
 }

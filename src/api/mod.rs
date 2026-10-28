@@ -33,6 +33,9 @@ pub const ROOT_ASSET_PATHS: &[&str] = &[
     "/feed.xml",
     "/favicon.svg",
     "/og.png",
+    "/apple-touch-icon.png",
+    "/icon-192.png",
+    "/icon-512.png",
 ];
 
 /// Регистрирует все API-маршруты (без `.with_state` — его задаёт `main`).
@@ -106,6 +109,9 @@ pub fn routes(seo: &SeoConfig) -> Router<AppState> {
         .route("/assets/projects/:file", get(handlers::project_image))
         .route("/assets/fonts/:file", get(handlers::font_file))
         .route("/assets/hero/kiki-levitation.webp", get(handlers::hero_art))
+        .route("/apple-touch-icon.png", get(handlers::apple_touch_icon))
+        .route("/icon-192.png", get(handlers::icon_192))
+        .route("/icon-512.png", get(handlers::icon_512))
         .route("/media/:name", get(handlers::media_file))
         .route("/robots.txt", get(handlers::robots))
         .route("/manifest.json", get(handlers::manifest))

@@ -254,6 +254,17 @@ pub const HERO_ART_WIDTH: u32 = 2560;
 /// Высота иллюстрации hero в пикселях.
 pub const HERO_ART_HEIGHT: u32 = 1440;
 
+/// Иконки приложения и знак бренда.
+///
+/// Логотип — редукция иллюстрации с Кики в полёте: сплошной силуэт вместо
+/// линии, потому что линия исчезает в 16 px. Тайл — тёмный квадрат со знаком:
+/// белый глиф на прозрачном фоне пропадал бы на светлой вкладке браузера.
+pub const APPLE_TOUCH_ICON: &[u8] = include_bytes!("../../assets/logo/apple-touch-icon.png");
+/// Иконка PWA 192×192.
+pub const ICON_192: &[u8] = include_bytes!("../../assets/logo/logo-tile-192.png");
+/// Иконка PWA 512×512.
+pub const ICON_512: &[u8] = include_bytes!("../../assets/logo/logo-tile-512.png");
+
 /// Префикс адресов скриншотов кейсов: `/assets/projects/<файл>`.
 pub const PROJECT_IMAGE_PATH_PREFIX: &str = "/assets/projects/";
 

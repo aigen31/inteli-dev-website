@@ -3756,6 +3756,19 @@ a:hover { color: #fff; }
   .hero-art-img { object-fit: cover; object-position: 66% 30%; opacity: 0.5; }
 }
 
+
+/* Знак бренда в шапке: силуэт Кики в полёте, 22 px. На мобильном остаётся
+   только он — места на слово «Евгений Биль» в 58 px шапки нет. */
+.navbar-brand { display: inline-flex; align-items: center; gap: 11px; min-width: 0; }
+.navbar-mark { width: 26px; height: 26px; flex: none; display: block; color: var(--color-text); }
+.navbar-brand:hover .navbar-mark { color: var(--color-primary); }
+.navbar-brand span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+@media (max-width: 560px) {
+  .navbar-brand span { display: none; }
+  .navbar-mark { width: 24px; height: 24px; }
+}
+
 /* ---------- 15. Responsive ---------- */
 @media (max-width: 767px) {
   :root {
