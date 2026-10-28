@@ -1273,7 +1273,7 @@ ul { margin: 0; padding: 0; list-style: none; }
 .project-list {
   display: flex;
   flex-direction: column;
-  gap: var(--space-lg);
+  gap: clamp(18px, 2vw, 28px);
   margin-top: var(--space-xl);
 }
 
@@ -3301,15 +3301,55 @@ a:hover { color: #fff; }
   color: var(--color-text-tertiary);
 }
 
-/* ---------- 17.9 Кейсы ---------- */
+/* ---------- 17.9 Кейсы: строка «экран + текст» ----------
+   Скриншот во всю ширину карточки весил больше, чем сам кейс: белый кадр
+   1920×1080 занимал два экрана и перебивал текст. Теперь кейс — строка:
+   слева экран в рамке на тёмной сцене, справа текст. Кадр виден целиком
+   (`contain`), но занимает около трети площади карточки. */
 .project-card {
+  display: grid;
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
   border: 1px solid var(--rule);
   border-radius: 10px;
   background: #0b0b12;
   overflow: hidden;
+  min-height: 340px;
 }
-.project-card-media { border-bottom: 1px solid var(--rule); }
-.project-card-body { padding: clamp(20px, 2.4vw, 32px); }
+.project-card-media {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: auto;
+  padding: clamp(16px, 2vw, 28px);
+  border-right: 1px solid var(--rule);
+  border-bottom: 0;
+  background: radial-gradient(120% 110% at 28% 0%, #13121f 0%, #0b0b12 68%);
+}
+.project-card-media::before { display: none; }
+.project-card-img {
+  width: 100%;
+  height: auto;
+  max-height: 100%;
+  object-fit: contain;
+  object-position: center;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 5px;
+  box-shadow: 0 24px 60px -34px #000;
+  filter: brightness(0.97) saturate(0.98);
+  transition: transform 0.4s ease, border-color 0.2s ease;
+}
+.project-card:hover .project-card-img {
+  border-color: rgba(139, 127, 245, 0.45);
+  transform: translateY(-2px);
+}
+.project-card-body {
+  display: grid;
+  grid-template-columns: 1fr;
+  align-content: start;
+  gap: 14px;
+  min-width: 0;
+  padding: clamp(22px, 2.4vw, 34px);
+}
 .project-card-meta,
 .project-card-stack,
 .project-card-outcome { font-family: var(--font-mono); }
@@ -3496,28 +3536,18 @@ a:hover { color: #fff; }
   box-shadow: 0 18px 40px -20px rgba(0, 0, 0, 0.8);
 }
 
-/* ---------- 17.14 Кейсы: компактнее ---------- */
-.project-card-media {
-  /* Ширина — вся колонка, высота — по пропорции кадра. Пока стоял `max-height`
-     вместе с `aspect-ratio`, бокс сужался до 672px и кадр уезжал влево; теперь
-     скриншот занимает колонку целиком и центрируется. */
-  width: 100%;
-  aspect-ratio: 16 / 9;
-  max-height: none;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: #07070b;
+/* Мобильный кейс: та же строка, но экран сверху и не выше 220 px. */
+@media (max-width: 999px) {
+  .project-card { grid-template-columns: 1fr; min-height: 0; }
+  .project-card-media {
+    border-right: 0;
+    border-bottom: 1px solid var(--rule);
+    padding: 16px;
+  }
+  .project-card-img { max-height: 220px; }
+  .project-card-body { padding: 20px; }
 }
-.project-card-img {
-  width: 100%;
-  height: 100%;
-  max-height: none;
-  object-fit: contain;
-  object-position: center;
-}
-.project-card-body { gap: 0; }
-.project-card-meta { margin-bottom: 10px; }
+.project-card-meta { margin-bottom: 0; }
 .project-card-title { margin-top: 0; }
 .project-card-link { margin-top: 18px; }
 
