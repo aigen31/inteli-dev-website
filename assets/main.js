@@ -1702,7 +1702,7 @@
     }, 0.6);
 
     // ---------- Отправка сообщения в API ----------
-    async function sendMessage(message, questionType) {
+    async function sendMessage(message, questionType, extra, silent) {
       if (isBusy) return;                          // предыдущий запрос ещё в полёте
       if (isTyping && skipTyping) skipTyping();    // недопечатанный ответ — допечатать мгновенно
 
@@ -1713,7 +1713,13 @@
       if (mascot) mascot.reading();
 
       try {
-        var res = await postChat({ message: message, question_type: questionType });
+        var payload = { message: message, question_type: questionType };
+        if (extra) {
+          for (var key in extra) {
+            if (Object.prototype.hasOwnProperty.call(extra, key)) payload[key] = extra[key];
+          }
+        }
+        var res = await postChat(payload);
 
         if (!res.ok) throw new Error(res.body.error || ('HTTP ' + res.status));
 
@@ -1721,7 +1727,7 @@
         loading(); // убрать лоадер
         markChatStarted();
 
-        appendLine('terminal-user', '$ > ' + message);
+        if (!silent) appendLine('terminal-user', '$ > ' + message);
 
         // Напечатать ответ от бота с анимацией
         var botLine = document.createElement('div');
@@ -1748,15 +1754,144 @@
       }
     }
 
+    // ---------- Команды ----------
+    // Команды живут в браузере: ни токенов, ни квоты, ни ожидания. Смысл —
+    // не пересказывать то, что уже есть на сайте, а вести туда или делать
+    // действие: открыть форму, скопировать почту, запустить аудит ссылки.
+    var contactEmail = terminal.getAttribute('data-email') || '';
+    var contactTelegram = terminal.getAttribute('data-telegram') || '';
+    var lastQuestion = '';
+
+    var HELP_LINES = [
+      'Команды — без обращения к модели:',
+      '  /brief          форма заявки, поле «задача» заполнится вопросом',
+      '  /audit <url>    разбор вашего сайта',
+      '  /status         свободен ли я сейчас',
+      '  /price          ориентиры по услугам',
+      '  /services /projects /blog /contact /chat   перейти на страницу',
+      '  /mail           скопировать почту',
+      '  /tg             открыть телеграм',
+      '  /clear          очистить ленту'
+    ].join('\n');
+
+    function appendBlock(text) {
+      text.split('\n').forEach(function (line) {
+        appendLine('terminal-command-result', line);
+      });
+    }
+
+    function go(path) {
+      appendLine('terminal-command-line', '$ > cd ' + path);
+      window.location.href = path;
+    }
+
+    function brief() {
+      // Вопрос, который человек не дописал словами, переносится в форму: ему
+      // не нужно вспоминать, о чём он спрашивал.
+      var topic = lastQuestion ? lastQuestion : '';
+      var href = '/contact?topic=' + encodeURIComponent(topic) + '#lead-form';
+      appendLine('terminal-command-line', '$ > ' + (topic ? 'brief --topic "' + topic + '"' : 'brief'));
+      window.location.href = href;
+    }
+
+    function copyEmail() {
+      if (!contactEmail) {
+        appendBlock('Почта не настроена. Форма заявки: /contact');
+        return;
+      }
+      function done() { appendBlock('Почта скопирована: ' + contactEmail + '\nИли сразу: /contact'); }
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(contactEmail).then(done, function () {
+          appendBlock(contactEmail);
+        });
+      } else {
+        appendBlock(contactEmail);
+      }
+    }
+
+    function runCommand(text) {
+      var parts = text.trim().split(/\s+/);
+      var cmd = parts[0].toLowerCase();
+      if (cmd.charAt(0) !== '/') return false;
+      var arg = parts.slice(1).join(' ');
+
+      switch (cmd) {
+        case '/help':
+        case '/?':
+          appendLine('terminal-command-line', '$ > help');
+          appendBlock(HELP_LINES);
+          return true;
+        case '/clear':
+          output.innerHTML = '';
+          return true;
+        case '/brief':
+          brief();
+          return true;
+        case '/status':
+          appendLine('terminal-command-line', '$ > status');
+          sendMessage('Когда свободны?', 'availability', { preset_index: 5 }, true);
+          return true;
+        case '/price':
+          appendLine('terminal-command-line', '$ > price');
+          sendMessage('Сколько стоит?', 'preset', { preset_index: 2 }, true);
+          return true;
+        case '/audit':
+          if (!arg) {
+            appendBlock('Нужна ссылка: /audit example.com');
+            return true;
+          }
+          appendLine('terminal-command-line', '$ > audit ' + arg);
+          sendMessage('Проверить мой сайт: ' + arg, 'analysis', { url: arg }, true);
+          return true;
+        case '/mail':
+          appendLine('terminal-command-line', '$ > mail');
+          copyEmail();
+          return true;
+        case '/tg':
+          appendLine('terminal-command-line', '$ > tg');
+          if (contactTelegram) {
+            window.open('https://t.me/' + contactTelegram.replace(/^@/, ''), '_blank', 'noopener');
+          } else {
+            appendBlock('Телеграм не настроен. Форма: /contact');
+          }
+          return true;
+        case '/services':
+          go('/services');
+          return true;
+        case '/projects':
+          go('/projects');
+          return true;
+        case '/blog':
+          go('/blog');
+          return true;
+        case '/contact':
+          go('/contact');
+          return true;
+        case '/chat':
+          go('/chat');
+          return true;
+        case '/home':
+          go('/');
+          return true;
+        default:
+          appendLine('terminal-command-line', '$ > ' + cmd);
+          appendBlock('Неизвестная команда: ' + cmd + '\nСписок: /help');
+          return true;
+      }
+    }
+
     // ---------- Обработчики событий ----------
     function handleSend() {
       var text = input.value.trim();
       if (!text) return;
+      // Команда выполняется сразу и не уходит в API: это действие, а не вопрос.
+      if (runCommand(text)) { input.value = ''; return; }
       var max = tooLong(input, text);
       if (max) {
         appendLine('terminal-line-warn', 'Вопрос длиннее ' + max + ' символов — сократите его, пожалуйста.');
         return;
       }
+      lastQuestion = text;
       sendMessage(text, 'free');
       input.value = '';
     }
@@ -1772,10 +1907,15 @@
         var index = btn.getAttribute('data-index');
         var message = btn.textContent.replace(/^["']|["']$/g, ''); // убрать кавычки из шаблона
 
+        if (kind === 'lead_request') {
+          // Кнопка ведёт к форме, а не рассказывает про неё.
+          brief();
+          return;
+        }
         if (kind === 'analysis') {
           var url = prompt('Введите ссылку на ваш сайт (например, example.com):');
           if (!url || !url.trim()) return;
-          sendMessage(message + ' (' + url.trim() + ')', 'analysis');
+          sendMessage(message + ' (' + url.trim() + ')', 'analysis', { url: url.trim() });
         } else {
           var payload = { message: message, question_type: kind };
           if (index) payload.preset_index = parseInt(index, 10);
@@ -2306,6 +2446,28 @@
     markZoomable();
   }
 
+  // Заявка из терминала: `/brief` (или кнопка «Оставить заявку») ведёт на
+  // /contact?topic=<вопрос>#lead-form. Вопрос подставляется в «задачу», чтобы
+  // человек не пересказывал то, что уже написал в терминале.
+  function initContactPrefill() {
+    var form = document.getElementById('lead-form');
+    if (!form) return;
+    var topic = '';
+    try {
+      topic = new URLSearchParams(window.location.search).get('topic') || '';
+    } catch (e) {
+      topic = '';
+    }
+    if (!topic) return;
+    var message = document.getElementById('message');
+    if (message && !message.value) message.value = topic;
+    if (window.location.hash === '#lead-form') {
+      form.scrollIntoView({ block: 'start' });
+    }
+    var name = document.getElementById('name');
+    if (name) name.focus({ preventScroll: true });
+  }
+
   initReveal();
   initMobileNav();
   initStatusBadge();
@@ -2313,8 +2475,10 @@
   initGoalClicks();
   initGoalRead();
   initHeroTerminal(initMascot());
+  initContactPrefill();
   initFloatingChat();
   initLightbox();
+  initProjectSlider();
   initHeroCanvas();
   initCardEffects();
   initButtonSpotlight();

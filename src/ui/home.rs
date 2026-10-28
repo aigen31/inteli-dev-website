@@ -26,6 +26,9 @@ const SLIDER_COUNT: usize = 4;
 pub fn HeroTerminal() -> impl IntoView {
     let max_chars = Limits::get().chat_message_max_chars;
     let chat_hint = Limits::get().chat_hint();
+    // Контакты нужны командам терминала (`/mail`, `/tg`): они не ходят на
+    // сервер, поэтому данные приходят вместе с разметкой.
+    let contacts = SiteContent::get().profile.contacts.clone();
     // Те же кнопки и те же индексы, что на странице /chat: список общий, иначе
     // подпись кнопки на главной могла бы означать другой вопрос.
     let presets = crate::services::chat::hero_presets()
@@ -48,7 +51,13 @@ pub fn HeroTerminal() -> impl IntoView {
         // `data-goal` — та же цель, что у чата на /chat: человек задал вопрос
         // (см. `services::goals`). Терминал отправляет её один раз, после
         // первого ответа сервера.
-        <div class="terminal-window" id="hero-terminal" data-goal=goals::CHAT_STARTED>
+        <div
+            class="terminal-window"
+            id="hero-terminal"
+            data-goal=goals::CHAT_STARTED
+            data-email=contacts.email.clone()
+            data-telegram=contacts.telegram.clone()
+        >
             <div class="terminal-bar">
                 <span class="dot dot-red"></span>
                 <span class="dot dot-yellow"></span>
@@ -101,6 +110,8 @@ pub fn HeroTerminal() -> impl IntoView {
 
             // Лимиты те же, что на /chat: числа берутся из общего Limits.
             <p class="field-hint terminal-hint" id="hero-terminal-hint">
+                <span>"Команды: /help · /brief · /audit"</span>
+                <span class="terminal-hint-sep" aria-hidden="true">"·"</span>
                 <span>{chat_hint}</span>
                 <span class="char-count" data-counter-for="hero-terminal-input" aria-hidden="true"></span>
             </p>

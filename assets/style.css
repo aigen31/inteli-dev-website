@@ -4072,3 +4072,24 @@ a:hover { color: #fff; }
   .card-text { font-size: 0.94rem; }
   .card-price { font-size: 0.62rem; }
 }
+
+/* ---------- 17.19 Команды терминала ----------
+   Команда — не реплика диалога, а действие: строка начинается с `$ >` и
+   отделяется цветом, результат — моно-текст без «пузыря» ответа модели. */
+.terminal-command-line {
+  color: var(--color-text-tertiary);
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+}
+.terminal-command-result {
+  color: var(--color-text-secondary);
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  line-height: 1.65;
+  white-space: pre-wrap;
+}
+.terminal-hint-sep { opacity: 0.5; }
+
+/* Форма заявки — цель команды `/brief`: при скролле к ней шапка не должна
+   накрывать поле имени. */
+#lead-form { scroll-margin-top: calc(var(--nav-offset) + 24px); }

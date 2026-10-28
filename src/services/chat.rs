@@ -149,7 +149,11 @@ pub const PRESETS: &[Preset] = &[
 ];
 
 /// Подмножество кнопок для hero-терминала на главной: там место под три.
-pub const HERO_PRESET_INDICES: &[usize] = &[0, 1, 2];
+///
+/// Только действия: проверка сайта, живой статус и заявка. «Кто вы» и «чем
+/// занимаетесь» дублируют hero и страницу услуг — в терминале они занимали
+/// место, ничего не добавляя.
+pub const HERO_PRESET_INDICES: &[usize] = &[4, 5, 6];
 
 /// Кнопки hero-терминала в порядке [`HERO_PRESET_INDICES`].
 pub fn hero_presets() -> impl Iterator<Item = &'static Preset> {
@@ -448,7 +452,7 @@ fn answer_who() -> String {
 /// подробности клиент читает на `/services`.
 fn answer_services() -> String {
     let c = crate::memory::content::SiteContent::get();
-    let mut out = String::from("Чем занимаюсь:");
+    let mut out = String::from("Коротко — направления, подробности на /services:");
     for s in &c.services {
         // Разделитель — двоеточие, а не тире: описания сами содержат тире
         // («ComfyUI Mass Production — Массовая генерация…»), и второе тире
@@ -469,7 +473,10 @@ fn answer_pricing() -> String {
     for s in &c.services {
         out.push_str(&format!("\n• {}: {}", s.title, price_range(s)));
     }
-    out.push_str("\n\nТочную стоимость считаю после описания задачи.");
+    out.push_str(
+        "\n\nЭто ориентир по прайсу сайта. Точную смету считаю после короткого брифа: \
+         задача, объём, сроки — присылайте на /contact или в телеграм.",
+    );
     out
 }
 
@@ -528,8 +535,8 @@ pub(crate) fn format_availability(a: &Availability) -> String {
 }
 
 fn answer_lead_request() -> String {
-    "Опишите задачу в форме заявки: имя, контакт и что нужно сделать. \
-     Отвечу при наличии свободного окна."
+    "Форма заявки: имя, контакт и пара строк о задаче. Отвечу, когда появится \
+     свободное окно — обычно в тот же день. Форма: /contact"
         .to_string()
 }
 
