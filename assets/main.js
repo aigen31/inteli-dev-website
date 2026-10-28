@@ -1761,6 +1761,9 @@
     var contactEmail = terminal.getAttribute('data-email') || '';
     var contactTelegram = terminal.getAttribute('data-telegram') || '';
     var lastQuestion = '';
+    // Кнопка «Проверить сайт» переводит строку ввода в режим ссылки: человек
+    // видит обычный вопрос, а не синтаксис команды.
+    var pendingAction = null;
 
     var HELP_LINES = [
       'Команды — без обращения к модели:',
@@ -1810,6 +1813,11 @@
     }
 
     function runCommand(text) {
+      // Любая другая команда или кнопка снимает режим ссылки.
+      if (pendingAction) {
+        pendingAction = null;
+        input.placeholder = 'Задайте вопрос...';
+      }
       var parts = text.trim().split(/\s+/);
       var cmd = parts[0].toLowerCase();
       if (cmd.charAt(0) !== '/') return false;
@@ -1884,6 +1892,19 @@
     function handleSend() {
       var text = input.value.trim();
       if (!text) return;
+      // Режим ссылки: кнопка «Проверить сайт» ждёт адрес, а не вопрос.
+      if (pendingAction === 'audit') {
+        // Похоже на адрес — разбираем сайт; иначе человек передумал и просто
+        // спрашивает, и вопрос уходит обычным путём.
+        var looksLikeUrl = !/\s/.test(text) && /[.]/.test(text);
+        pendingAction = null;
+        input.placeholder = 'Задайте вопрос...';
+        if (looksLikeUrl) {
+          input.value = '';
+          sendMessage('Проверить мой сайт: ' + text, 'analysis', { url: text }, true);
+          return;
+        }
+      }
       // Команда выполняется сразу и не уходит в API: это действие, а не вопрос.
       if (runCommand(text)) { input.value = ''; return; }
       var max = tooLong(input, text);
@@ -1898,6 +1919,22 @@
 
     input.addEventListener('keydown', function(e) {
       if (e.key === 'Enter') handleSend();
+    });
+
+    // Кнопки-действия: выполняют команду сразу, без вопроса к модели.
+    terminal.querySelectorAll('[data-terminal-action]').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        var action = btn.getAttribute('data-terminal-action');
+        if (action === 'audit') {
+          pendingAction = 'audit';
+          input.value = '';
+          input.placeholder = 'Адрес сайта — например example.com';
+          input.focus({ preventScroll: true });
+          appendLine('terminal-command-line', '→ проверка сайта: вставьте ссылку и нажмите Enter');
+          return;
+        }
+        runCommand('/' + action);
+      });
     });
 
     // Preset-кнопки

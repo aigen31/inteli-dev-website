@@ -4093,3 +4093,46 @@ a:hover { color: #fff; }
 /* Форма заявки — цель команды `/brief`: при скролле к ней шапка не должна
    накрывать поле имени. */
 #lead-form { scroll-margin-top: calc(var(--nav-offset) + 24px); }
+
+/* ---------- 17.20 Кнопки-действия в терминале ----------
+   Команда осталась для тех, кто любит клавиатуру, но интерфейс говорит
+   кнопками: «Оставить заявку», «Проверить сайт», «Почта». */
+.terminal-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  padding: 0 18px 10px;
+}
+.terminal-action {
+  padding: 5px 10px;
+  border: 1px solid var(--rule-strong);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--color-text-secondary);
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: color var(--transition-fast), border-color var(--transition-fast),
+    background var(--transition-fast);
+}
+.terminal-action:hover {
+  color: var(--color-text);
+  border-color: rgba(255, 255, 255, 0.22);
+  background: rgba(255, 255, 255, 0.04);
+}
+.terminal-action:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+/* Заявка — главное действие, поэтому единственная кнопка с акцентом. */
+.terminal-action-primary {
+  color: var(--color-text);
+  border-color: rgba(139, 127, 245, 0.55);
+  background: rgba(139, 127, 245, 0.12);
+}
+.terminal-action-primary:hover {
+  background: rgba(139, 127, 245, 0.2);
+  border-color: var(--color-primary);
+}

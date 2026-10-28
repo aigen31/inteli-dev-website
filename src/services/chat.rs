@@ -109,11 +109,17 @@ impl QuestionKind {
     /// Неизвестный индекс уходит в LLM (`Free`), а не отвечает наугад:
     /// лучше потратить токены, чем отдать ответ не на тот вопрос.
     fn from_preset(index: usize) -> Self {
+        // Кнопки 4–6 приходят со своим `question_type`, но индекс тоже должен
+        // значить то же самое: иначе «Оставить заявку» уходила в свободный
+        // ответ модели и рассказывала о человеке вместо формы.
         match index {
             0 => Self::Who,
             1 => Self::Services,
             2 => Self::Pricing,
             3 => Self::LocalInference,
+            4 => Self::Analysis,
+            5 => Self::Availability,
+            6 => Self::LeadRequest,
             _ => Self::Free,
         }
     }

@@ -29,11 +29,6 @@ pub fn HeroTerminal() -> impl IntoView {
     // Контакты нужны командам терминала (`/mail`, `/tg`): они не ходят на
     // сервер, поэтому данные приходят вместе с разметкой.
     let contacts = SiteContent::get().profile.contacts.clone();
-    // Те же кнопки и те же индексы, что на странице /chat: список общий, иначе
-    // подпись кнопки на главной могла бы означать другой вопрос.
-    let presets = crate::services::chat::hero_presets()
-        .map(|p| (p.label.to_string(), p.index))
-        .collect::<Vec<_>>();
     // Версия в адресе обязательна: кадры кэшируются на год (см. assets.rs).
     // Все пять кадров лежат в разметке сразу: смена эмоции — это атрибут, а не
     // загрузка картинки, иначе в момент ответа ведьма мигала бы пустым местом.
@@ -110,22 +105,36 @@ pub fn HeroTerminal() -> impl IntoView {
 
             // Лимиты те же, что на /chat: числа берутся из общего Limits.
             <p class="field-hint terminal-hint" id="hero-terminal-hint">
-                <span>"Команды: /help · /brief · /audit"</span>
-                <span class="terminal-hint-sep" aria-hidden="true">"·"</span>
                 <span>{chat_hint}</span>
+                <span class="terminal-hint-sep" aria-hidden="true">"·"</span>
+                <span>"/help — все команды"</span>
                 <span class="char-count" data-counter-for="hero-terminal-input" aria-hidden="true"></span>
             </p>
 
-            <div class="terminal-presets" role="group" aria-label="Частые вопросы">
-                {presets.into_iter().map(|(label, index)| view! {
-                    <button
-                        type="button"
-                        class="preset-button terminal-preset-btn"
-                        data-kind="preset"
-                        data-index=index.to_string()
-                    >{label}</button>
-                }).collect::<Vec<_>>()}
+            // Кнопки-действия: то, что человек может сделать сам, без вопроса к
+            // модели. Команды остались как ускоритель (`/brief`), но интерфейс
+            // говорит на языке клиента, а не консоли.
+            <div class="terminal-actions" role="group" aria-label="Действия">
+                <button type="button" class="terminal-action terminal-action-primary" data-terminal-action="brief">
+                    "Оставить заявку"
+                </button>
+                <button type="button" class="terminal-action" data-terminal-action="status">
+                    "Свободен?"
+                </button>
+                <button type="button" class="terminal-action" data-terminal-action="audit">
+                    "Проверить сайт"
+                </button>
+                <button type="button" class="terminal-action" data-terminal-action="services">
+                    "Услуги"
+                </button>
+                <button type="button" class="terminal-action" data-terminal-action="mail">
+                    "Почта"
+                </button>
+                <button type="button" class="terminal-action" data-terminal-action="tg">
+                    "Телеграм"
+                </button>
             </div>
+
             </div>
         </div>
     }
