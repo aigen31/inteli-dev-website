@@ -1,8 +1,8 @@
-//! Чатбот: маршрутизация вопросов (preset / free / analysis / lead_request).
+//! Чатбот: маршрутизация вопросов (preset / free / availability / lead_request).
 //!
 //! Источники ответа (см. chatbot.md):
 //! - preset/availability → прямой ответ из контента (без LLM, <50ms)
-//! - free/analysis → LLM (DeepSeek) с семантическим контекстом из OpenViking
+//! - free → LLM (DeepSeek) с семантическим контекстом из OpenViking
 //! - при недоступности LLM → fallback-ответ с контактами
 
 use std::sync::Arc;
@@ -16,7 +16,7 @@ use crate::cache::InMemoryCache;
 use crate::error::{AppError, AppResult};
 use crate::limits::Limits;
 use crate::llm::prompt::{
-    analysis_prompt, build_context_string, chatbot_system_prompt, fallback_answer, ContextSettings,
+    build_context_string, chatbot_system_prompt, fallback_answer, ContextSettings,
 };
 use crate::llm::ChatProvider;
 use crate::memory::{Availability, OpenVikingClient};
@@ -29,7 +29,7 @@ pub struct ChatRequest {
     #[serde(default)]
     pub session_id: Option<String>,
     #[serde(default)]
-    pub question_type: Option<String>, // preset | free | analysis | lead_request | availability
+    pub question_type: Option<String>, // preset | free | lead_request | availability
     #[serde(default)]
     pub preset_index: Option<usize>,
     #[serde(default)]
@@ -97,7 +97,6 @@ enum QuestionKind {
     Services,
     Pricing,
     LocalInference,
-    Analysis,
     Availability,
     LeadRequest,
     Free,
@@ -117,7 +116,6 @@ impl QuestionKind {
             1 => Self::Services,
             2 => Self::Pricing,
             3 => Self::LocalInference,
-            4 => Self::Analysis,
             5 => Self::Availability,
             6 => Self::LeadRequest,
             _ => Self::Free,
@@ -139,7 +137,7 @@ pub struct Preset {
     pub index: usize,
     /// Текст на кнопке. Он же уходит в `message`.
     pub label: &'static str,
-    /// `question_type` в запросе: preset | analysis | availability | lead_request.
+    /// `question_type` в запросе: preset | availability | lead_request.
     pub kind: &'static str,
 }
 
@@ -149,24 +147,9 @@ pub const PRESETS: &[Preset] = &[
     Preset { index: 1, label: "Чем занимаетесь?", kind: "preset" },
     Preset { index: 2, label: "Сколько стоит?", kind: "preset" },
     Preset { index: 3, label: "Локальный инференс — что это?", kind: "preset" },
-    Preset { index: 4, label: "Проанализируйте мой сайт", kind: "analysis" },
     Preset { index: 5, label: "Когда свободны?", kind: "availability" },
     Preset { index: 6, label: "Оставить заявку", kind: "lead_request" },
 ];
-
-/// Подмножество кнопок для hero-терминала на главной: там место под три.
-///
-/// Только действия: проверка сайта, живой статус и заявка. «Кто вы» и «чем
-/// занимаетесь» дублируют hero и страницу услуг — в терминале они занимали
-/// место, ничего не добавляя.
-pub const HERO_PRESET_INDICES: &[usize] = &[4, 5, 6];
-
-/// Кнопки hero-терминала в порядке [`HERO_PRESET_INDICES`].
-pub fn hero_presets() -> impl Iterator<Item = &'static Preset> {
-    HERO_PRESET_INDICES
-        .iter()
-        .filter_map(|index| PRESETS.iter().find(|p| p.index == *index))
-}
 
 /// Сервис чата.
 pub struct ChatService {
@@ -236,7 +219,6 @@ impl ChatService {
             QuestionKind::LocalInference => (answer_local_inference(), "openviking_direct".to_string()),
             QuestionKind::Availability => (answer_availability(), "openviking_direct".to_string()),
             QuestionKind::LeadRequest => (answer_lead_request(), "openviking_direct".to_string()),
-            QuestionKind::Analysis => self.answer_analysis(&req).await?,
             QuestionKind::Free => self.answer_free(&req).await?,
         };
 
@@ -251,42 +233,6 @@ impl ChatService {
             .await?;
 
         Ok(response)
-    }
-
-    /// Анализ сайта: требует URL, иначе просит его прислать.
-    async fn answer_analysis(&self, req: &ChatRequest) -> AppResult<(String, String)> {
-        let url = req.url.as_deref().filter(|u| !u.trim().is_empty());
-        let Some(url) = url else {
-            return Ok((
-                "Чтобы я проанализировал ваш сайт, пришлите ссылку на него (например, example.com)."
-                    .to_string(),
-                "openviking_direct".to_string(),
-            ));
-        };
-
-        if !crate::utils::validator::looks_like_url(url) {
-            return Ok((
-                "Похоже, ссылка некорректна. Пришлите адрес вида example.com или https://example.com."
-                    .to_string(),
-                "openviking_direct".to_string(),
-            ));
-        }
-
-        let content = crate::memory::content::SiteContent::get();
-        match self
-            .llm
-            .chat_with_system(analysis_prompt(url), url.to_string())
-            .await
-        {
-            Ok(answer) => Ok((answer, "llm".to_string())),
-            Err(e) => {
-                tracing::warn!("analysis LLM failed: {e}");
-                Ok((
-                    fallback_answer(&content.profile),
-                    "llm_fallback".to_string(),
-                ))
-            }
-        }
     }
 
     /// Свободный вопрос: кэш → семантический поиск → LLM → кэш.
@@ -376,7 +322,7 @@ fn normalized_type(req: &ChatRequest) -> String {
 pub fn requires_llm(req: &ChatRequest) -> bool {
     matches!(
         resolve_kind(req),
-        QuestionKind::Analysis | QuestionKind::Free
+        QuestionKind::Free
     )
 }
 
@@ -395,7 +341,6 @@ fn cache_key(message: &str) -> String {
 
 fn resolve_kind(req: &ChatRequest) -> QuestionKind {
     match req.question_type.as_deref() {
-        Some("analysis") => QuestionKind::Analysis,
         Some("availability") => QuestionKind::Availability,
         Some("lead_request") => QuestionKind::LeadRequest,
         Some("preset") => QuestionKind::from_preset(req.preset_index.unwrap_or(0)),
@@ -667,13 +612,6 @@ mod tests {
 
     /// Кнопки hero-терминала должны существовать в общем списке: иначе на
     /// главной снова появится кнопка, которой сервер не знает.
-    #[test]
-    fn hero_presets_are_a_subset_of_all_presets() {
-        let hero: Vec<usize> = hero_presets().map(|p| p.index).collect();
-        assert_eq!(hero, HERO_PRESET_INDICES.to_vec());
-        assert!(hero.len() >= 3);
-    }
-
     /// Каждая кнопка из общего списка обязана иметь прямой ответ (или явно
     /// уходить в LLM). Тест ловит добавление кнопки без обработки в роутере.
     #[test]
@@ -697,7 +635,6 @@ mod tests {
                     preset.index,
                     preset.label
                 ),
-                "analysis" => assert_eq!(kind, QuestionKind::Analysis),
                 "availability" => assert_eq!(kind, QuestionKind::Availability),
                 "lead_request" => assert_eq!(kind, QuestionKind::LeadRequest),
                 other => panic!("неизвестный question_type «{other}» у кнопки «{}»", preset.label),
@@ -787,21 +724,6 @@ mod tests {
         let resp = svc.answer(free_req(), None).await.unwrap();
         assert_eq!(resp.source, "llm_fallback");
         assert!(resp.answer.contains("Telegram"));
-    }
-
-    #[tokio::test]
-    async fn analysis_without_url_asks_for_url() {
-        ensure_content();
-        let svc = service(false).await;
-        let req = ChatRequest {
-            message: "анализ".into(),
-            session_id: None,
-            question_type: Some("analysis".into()),
-            preset_index: None,
-            url: None,
-        };
-        let resp = svc.answer(req, None).await.unwrap();
-        assert!(resp.answer.contains("ссылку"));
     }
 
     #[tokio::test]
@@ -897,12 +819,7 @@ mod tests {
         // free — в модель.
         assert!(requires_llm(&free_req()));
 
-        // analysis — в модель.
-        let mut analysis = free_req();
-        analysis.question_type = Some("analysis".into());
-        assert!(requires_llm(&analysis));
-
-        // Кнопки без ИИ не должны тратить токены, а кнопка анализа — должна.
+        // Все кнопки отвечают из контента и не тратят токены.
         for preset in PRESETS {
             let req = ChatRequest {
                 message: preset.label.into(),
@@ -911,7 +828,7 @@ mod tests {
                 preset_index: Some(preset.index),
                 url: Some("example.com".into()),
             };
-            let spends = matches!(preset.kind, "analysis");
+            let spends = false;
             assert_eq!(
                 requires_llm(&req),
                 spends,

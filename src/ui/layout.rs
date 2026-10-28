@@ -63,10 +63,11 @@ pub fn Layout(children: Children) -> impl IntoView {
     // скриншот кейса. Остальным страницам панель не нужна.
     let article_page = request_path()
         .is_some_and(|path| path.starts_with("/blog/") || path.starts_with("/projects/"));
-    // Кнопки в компактной панели — то же подмножество, что в терминале на
-    // главной: список общий с /chat, поэтому подпись и индекс кнопки не могут
-    // разойтись с тем, как их обрабатывает сервер.
-    let presets_fab = crate::services::chat::hero_presets()
+    // Кнопки в компактной панели — те же, что на /chat: список общий, поэтому
+    // подпись и индекс кнопки не могут разойтись с тем, как их обрабатывает
+    // сервер. Аудит сайта из списка убран: он требует ссылки и ходит в модель.
+    let presets_fab = crate::services::chat::PRESETS
+        .iter()
         .map(|p| (p.label.to_string(), p.kind.to_string(), p.index))
         .collect::<Vec<_>>();
     // Лимит поля тот же, что у терминала и /chat: серверная валидация одна.

@@ -405,15 +405,9 @@
         var index = btn.getAttribute('data-index');
         addMessage(btn.textContent, 'user');
 
-        if (kind === 'analysis') {
-          var url = window.prompt('Введите ссылку на ваш сайт (например, example.com):');
-          if (!url || !url.trim()) return;
-          send({ message: btn.textContent, question_type: 'analysis', url: url.trim() });
-        } else {
-          var payload = { message: btn.textContent, question_type: kind };
-          if (index) payload.preset_index = parseInt(index, 10);
-          send(payload);
-        }
+        var payload = { message: btn.textContent, question_type: kind };
+        if (index) payload.preset_index = parseInt(index, 10);
+        send(payload);
       });
     });
   }
@@ -1761,14 +1755,10 @@
     var contactEmail = terminal.getAttribute('data-email') || '';
     var contactTelegram = terminal.getAttribute('data-telegram') || '';
     var lastQuestion = '';
-    // Кнопка «Проверить сайт» переводит строку ввода в режим ссылки: человек
-    // видит обычный вопрос, а не синтаксис команды.
-    var pendingAction = null;
 
     var HELP_LINES = [
       'Команды — без обращения к модели:',
       '  /brief          форма заявки, поле «задача» заполнится вопросом',
-      '  /audit <url>    разбор вашего сайта',
       '  /status         свободен ли я сейчас',
       '  /price          ориентиры по услугам',
       '  /services /projects /blog /contact /chat   перейти на страницу',
@@ -1813,11 +1803,6 @@
     }
 
     function runCommand(text) {
-      // Любая другая команда или кнопка снимает режим ссылки.
-      if (pendingAction) {
-        pendingAction = null;
-        input.placeholder = 'Задайте вопрос...';
-      }
       var parts = text.trim().split(/\s+/);
       var cmd = parts[0].toLowerCase();
       if (cmd.charAt(0) !== '/') return false;
@@ -1842,14 +1827,6 @@
         case '/price':
           appendLine('terminal-command-line', '$ > price');
           sendMessage('Сколько стоит?', 'preset', { preset_index: 2 }, true);
-          return true;
-        case '/audit':
-          if (!arg) {
-            appendBlock('Нужна ссылка: /audit example.com');
-            return true;
-          }
-          appendLine('terminal-command-line', '$ > audit ' + arg);
-          sendMessage('Проверить мой сайт: ' + arg, 'analysis', { url: arg }, true);
           return true;
         case '/mail':
           appendLine('terminal-command-line', '$ > mail');
@@ -1892,19 +1869,6 @@
     function handleSend() {
       var text = input.value.trim();
       if (!text) return;
-      // Режим ссылки: кнопка «Проверить сайт» ждёт адрес, а не вопрос.
-      if (pendingAction === 'audit') {
-        // Похоже на адрес — разбираем сайт; иначе человек передумал и просто
-        // спрашивает, и вопрос уходит обычным путём.
-        var looksLikeUrl = !/\s/.test(text) && /[.]/.test(text);
-        pendingAction = null;
-        input.placeholder = 'Задайте вопрос...';
-        if (looksLikeUrl) {
-          input.value = '';
-          sendMessage('Проверить мой сайт: ' + text, 'analysis', { url: text }, true);
-          return;
-        }
-      }
       // Команда выполняется сразу и не уходит в API: это действие, а не вопрос.
       if (runCommand(text)) { input.value = ''; return; }
       var max = tooLong(input, text);
@@ -1925,14 +1889,6 @@
     terminal.querySelectorAll('[data-terminal-action]').forEach(function(btn) {
       btn.addEventListener('click', function() {
         var action = btn.getAttribute('data-terminal-action');
-        if (action === 'audit') {
-          pendingAction = 'audit';
-          input.value = '';
-          input.placeholder = 'Адрес сайта — например example.com';
-          input.focus({ preventScroll: true });
-          appendLine('terminal-command-line', '→ проверка сайта: вставьте ссылку и нажмите Enter');
-          return;
-        }
         runCommand('/' + action);
       });
     });
@@ -1949,15 +1905,9 @@
           brief();
           return;
         }
-        if (kind === 'analysis') {
-          var url = prompt('Введите ссылку на ваш сайт (например, example.com):');
-          if (!url || !url.trim()) return;
-          sendMessage(message + ' (' + url.trim() + ')', 'analysis', { url: url.trim() });
-        } else {
-          var payload = { message: message, question_type: kind };
-          if (index) payload.preset_index = parseInt(index, 10);
-          sendMessage(message, kind);
-        }
+        var payload = { message: message, question_type: kind };
+        if (index) payload.preset_index = parseInt(index, 10);
+        sendMessage(message, kind);
       });
     });
   }
@@ -2154,15 +2104,9 @@
           hideGreeting();
           addMessage(btn.textContent, 'user');
 
-          if (kind === 'analysis') {
-            var url = window.prompt('Введите ссылку на ваш сайт (например, example.com):');
-            if (!url || !url.trim()) return;
-            send({ message: btn.textContent, question_type: 'analysis', url: url.trim() });
-          } else {
-            var payload = { message: btn.textContent, question_type: kind };
-            if (index) payload.preset_index = parseInt(index, 10);
-            send(payload);
-          }
+          var payload = { message: btn.textContent, question_type: kind };
+          if (index) payload.preset_index = parseInt(index, 10);
+          send(payload);
         });
       });
     }

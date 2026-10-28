@@ -121,9 +121,6 @@ pub fn HeroTerminal() -> impl IntoView {
                 <button type="button" class="terminal-action" data-terminal-action="status">
                     "Свободен?"
                 </button>
-                <button type="button" class="terminal-action" data-terminal-action="audit">
-                    "Проверить сайт"
-                </button>
                 <button type="button" class="terminal-action" data-terminal-action="services">
                     "Услуги"
                 </button>
