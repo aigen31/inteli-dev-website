@@ -400,29 +400,59 @@ fn score_project(project: &Project, tokens: &[String]) -> usize {
 /// вопроса, затем всегда добавляем прайс и карту сайта. Модель получает факты
 /// до генерации, поэтому не выдумывает кейсы и цены.
 pub async fn context_for(db: &sqlx::SqlitePool, question: &str) -> String {
-    let tokens = tokenize(question);
+    let q = question.to_lowercase();
     let mut parts: Vec<String> = Vec::new();
 
-    if !tokens.is_empty() {
+    // Кейсы подключаем только когда они действительно нашлись: иначе модель
+    // получает пример «на всякий случай» и начинает рассказывать о проектах
+    // вместо ответа.
+    if !tokenize(question).is_empty() {
         let cases = find_cases(&json!({ "query": question }));
         if !cases.is_error && !cases.text.contains("Кейсов по") {
-            parts.push(cases.text);
+            parts.push(limit_chars(cases.text, 1200));
         }
     }
 
-    if let Ok(items) = price::load_active(db).await {
-        if !items.is_empty() {
-            parts.push(format_price_list(&items));
+    // Цены и статус — только по своему поводу. Раньше прайс подмешивался в
+    // каждый вопрос, и ответ на «можно ли обучить модель на наших данных»
+    // начинался с перечня услуг.
+    if has_any(&q, &["цен", "стоит", "стоимост", "бюджет", "прайс", "сколько", "дорого", "дешев"]) {
+        if let Ok(items) = price::load_active(db).await {
+            if !items.is_empty() {
+                parts.push(limit_chars(format_price_list(&items), 900));
+            }
         }
     }
 
-    parts.push(availability_text());
-
-    if parts.is_empty() {
-        String::new()
-    } else {
-        parts.join("\n\n")
+    if has_any(&q, &["свобод", "занят", "срок", "когда", "очеред", "слот", "старт", "успе"]) {
+        parts.push(availability_text());
     }
+
+    parts.join("\n\n")
+}
+
+/// Есть ли в вопросе хоть одно из слов-маркеров.
+fn has_any(haystack: &str, needles: &[&str]) -> bool {
+    needles.iter().any(|needle| haystack.contains(needle))
+}
+
+/// Обрезает контекст по границе строки: рвать фразу посередине хуже, чем
+/// потерять последний факт.
+fn limit_chars(text: String, max: usize) -> String {
+    if text.chars().count() <= max {
+        return text;
+    }
+    let mut out = String::new();
+    for line in text.lines() {
+        if out.chars().count() + line.chars().count() + 1 > max {
+            break;
+        }
+        if !out.is_empty() {
+            out.push('\n');
+        }
+        out.push_str(line);
+    }
+    out
 }
 
 /// JSON-RPC 2.0 ответ на `tools/list`.
@@ -541,6 +571,21 @@ mod tests {
         assert!(score > 0, "ни один кейс не совпал по WordPress");
         let project = project.unwrap();
         assert!(project.stack.iter().any(|s| s.to_lowercase().contains("wordpress")));
+    }
+
+    #[test]
+    fn limit_chars_cuts_on_line_boundary() {
+        let text = "первая строка\nвторая строка\nтретья строка".to_string();
+        let cut = limit_chars(text, 30);
+        assert!(cut.starts_with("первая строка"));
+        assert!(!cut.contains("третья"));
+    }
+
+    #[test]
+    fn intent_markers_match_russian_forms() {
+        assert!(has_any("сколько это стоит?", &["стоит", "цен"]));
+        assert!(has_any("когда сможете начать", &["когда", "срок"]));
+        assert!(!has_any("можно ли обучить модель", &["цен", "срок"]));
     }
 
     #[test]
