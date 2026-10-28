@@ -3309,46 +3309,102 @@ a:hover { color: #fff; }
   max-width: 56ch;
 }
 
-/* ---------- 17.8 Карточки услуг ---------- */
-.cards-grid { gap: 16px; background: none; border: 0; }
+/* ---------- 17.8 Услуги: крупный набор ----------
+   Услуг немного, и каждая — отдельное направление, а не плитка в сетке.
+   Поэтому услуга занимает треть экрана: номер и цена в строке метаданных,
+   огромный заголовок, описание под ним. Два блока — экран. */
+.cards-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0;
+  counter-reset: service;
+  background: none;
+  border: 0;
+}
 .card {
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.022), rgba(255, 255, 255, 0) 60%), #0b0b12;
-  border: 1px solid var(--rule);
-  border-radius: 10px;
-  padding: clamp(22px, 2.4vw, 32px);
-  transform: none !important;
+  counter-increment: service;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  /* Цена уходит в правый нижний угол, на базовую линию описания: так блок
+     читается как «направление + стоимость», а не как прайс-лист сверху. */
+  grid-template-areas:
+    "icon icon"
+    "title title"
+    "text price";
+  align-items: end;
+  align-content: start;
+  gap: 18px 32px;
+  min-height: clamp(280px, 38vh, 360px);
+  padding: 32px 0 36px;
+  border: 0;
+  border-top: 1px solid var(--rule);
+  border-radius: 0;
+  background: transparent;
   box-shadow: none;
+  transform: none !important;
 }
+.card:last-child { border-bottom: 1px solid var(--rule); }
 .card::before { display: none; }
-.card:hover { box-shadow: none; background: #0d0d15; }
-.card-icon { margin-bottom: 18px; }
-.card-icon svg {
-  width: 22px;
-  height: 22px;
-  stroke-width: 1.25;
-  color: var(--color-primary);
-  opacity: 0.85;
+.card:hover { background: transparent; box-shadow: none; }
+/* Номер — часть метаданных, поэтому живёт рядом с иконкой, а не отдельной
+   колонкой: он не должен спорить с заголовком за внимание. */
+.card-icon {
+  grid-area: icon;
+  align-self: start;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin: 0;
 }
+.card-icon::before {
+  content: counter(service, decimal-leading-zero);
+  font-family: var(--font-mono);
+  font-size: 0.66rem;
+  letter-spacing: 0.12em;
+  color: var(--color-text-tertiary);
+  transition: color var(--transition-fast);
+}
+.card-icon svg {
+  width: 18px;
+  height: 18px;
+  stroke-width: 1.1;
+  color: var(--color-text-tertiary);
+  opacity: 1;
+  transition: color var(--transition-fast);
+}
+.card:hover .card-icon::before,
+.card:hover .card-icon svg { color: var(--color-primary); }
 .card-title {
+  grid-area: title;
+  align-self: start;
+  margin: 0;
   font-family: var(--font-heading);
-  font-size: 1.15rem;
+  font-size: clamp(2rem, 3.8vw, 3.2rem);
   font-weight: 500;
-  letter-spacing: -0.02em;
-  margin-bottom: 10px;
+  line-height: 1.02;
+  letter-spacing: -0.045em;
+  max-width: 22ch;
+  text-wrap: balance;
   color: var(--color-text);
 }
 .card-text {
-  color: var(--color-text-secondary);
-  font-size: 0.92rem;
+  grid-area: text;
+  align-self: end;
+  margin: 0;
+  max-width: 62ch;
+  font-size: 0.98rem;
   line-height: 1.6;
-  margin-bottom: 20px;
+  color: var(--color-text-secondary);
 }
 .card-price {
-  margin-top: 0;
+  grid-area: price;
+  align-self: end;
+  margin: 0 0 3px;
+  justify-self: end;
   font-family: var(--font-mono);
-  font-size: 0.7rem;
+  font-size: 0.66rem;
   font-weight: 400;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--color-text-tertiary);
 }
@@ -3782,53 +3838,10 @@ a:hover { color: #fff; }
   transform: none;
 }
 
-/* ---------- 17.18 Услуги: карточка на всю колонку ----------
-   Сетка из трёх плиток делила описание на узкие колонки, и длинные тексты
-   услуг читались как список мелких фактов. Теперь карточка занимает всю
-   ширину: иконка, название, описание и цена в одну строку, а между карточками —
-   только линейка. Это тот же приём, что у строк-направлений на референсе. */
-.cards-grid {
-  grid-template-columns: 1fr;
-  gap: 0;
-  border: 0;
-  border-top: 1px solid var(--rule);
-  border-radius: 0;
-  background: none;
-}
-.card {
-  display: grid;
-  grid-template-columns: 48px minmax(180px, 0.78fr) minmax(0, 1.22fr) auto;
-  grid-template-areas: "icon title text price";
-  align-items: start;
-  gap: 6px 32px;
-  padding: 28px 8px 30px;
-  border: 0;
-  border-bottom: 1px solid var(--rule);
-  border-radius: 0;
-  background: transparent;
-  transition: background var(--transition-fast);
-}
-.card:hover {
-  background: linear-gradient(90deg, rgba(139, 127, 245, 0.055), transparent 62%);
-  box-shadow: none;
-}
-.card-icon { grid-area: icon; margin: 5px 0 0; }
-.card-icon svg { width: 20px; height: 20px; }
-.card-title { grid-area: title; margin: 0; font-size: clamp(1.15rem, 1.7vw, 1.45rem); letter-spacing: -0.03em; }
-.card-text { grid-area: text; margin: 0; max-width: 64ch; font-size: 0.9rem; line-height: 1.6; }
-.card-price { grid-area: price; justify-self: end; margin: 6px 0 0; text-align: right; white-space: nowrap; }
-
+/* Терминал на планшете — в одну колонку; блок услуг теперь задаётся в 17.8. */
 @media (max-width: 900px) {
   .terminal-layout { grid-template-columns: 1fr; gap: 28px; }
   .terminal-facts { margin-top: 26px; }
-  .card {
-    grid-template-columns: 30px minmax(0, 1fr);
-    grid-template-areas: "icon title" "icon text" ". price";
-    gap: 6px 18px;
-    padding: 22px 4px 24px;
-  }
-  .card-price { justify-self: start; margin-top: 10px; }
-  .card-icon { margin-top: 3px; }
 }
 
 /* На телефоне арт снова становится фоном на всю обложку: держать честный
@@ -4041,4 +4054,21 @@ a:hover { color: #fff; }
     max-width: calc(100vw - 34px);
   }
   .status-popover::before { left: 20px; right: auto; }
+}
+
+/* ---------- 17.17 Услуги на телефоне ----------
+   Крупный кегль остаётся, но блок перестаёт держать экранную высоту: на
+   телефоне важнее ритм прокрутки, чем «два на экран». */
+@media (max-width: 767px) {
+  .card {
+    grid-template-columns: 1fr;
+    grid-template-areas: "icon" "title" "text" "price";
+    min-height: 0;
+    gap: 14px;
+    padding: 26px 0 30px;
+  }
+  .card-price { justify-self: start; margin: 2px 0 0; }
+  .card-title { font-size: clamp(1.75rem, 8.4vw, 2.4rem); max-width: none; }
+  .card-text { font-size: 0.94rem; }
+  .card-price { font-size: 0.62rem; }
 }
