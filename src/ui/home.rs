@@ -159,9 +159,9 @@ pub fn Home() -> impl IntoView {
     );
     // Заголовок hero — роль, а не имя. Имя живёт в шапке и подвале, а имя
     // человека в 72 px ничего не объясняло новому посетителю.
-    // Разбивка на строки — по смыслу, а не по ширине: «и» с архитектором
-    // читается как продолжение, а не как отдельное утверждение.
-    let (title_line_1, title_line_2, title_line_3) = split_hero_title(&profile.title);
+    // Каждое слово — своя строка: на крупном кегле это даёт плакатную
+    // вертикаль и позволяет держать размер, не наезжая на иллюстрацию.
+    let title_lines = hero_title_lines(&profile.title);
     let hero_art = crate::api::assets::versioned(crate::api::assets::HERO_ART_PATH);
     let hero_art_w = crate::api::assets::HERO_ART_WIDTH;
     let hero_art_h = crate::api::assets::HERO_ART_HEIGHT;
@@ -187,17 +187,12 @@ pub fn Home() -> impl IntoView {
                 <div class="hero-content">
                     <p class="eyebrow"><span class="eyebrow-dot" aria-hidden="true"></span>{profile.location.clone()}</p>
                     <h1 class="hero-title" aria-label=profile.title.clone()>
-                        <span class="hero-line">{title_line_1}</span>
-                        {title_line_2.map(|line| view! { <span class="hero-line">{line}</span> })}
-                        {title_line_3.map(|line| view! {
-                            <span class="hero-line">
-                                {line}<span class="hero-accent">"AI-систем"</span>
+                        {title_lines.into_iter().map(|(text, accent)| view! {
+                            <span class=if accent { "hero-line hero-accent" } else { "hero-line" }>
+                                {text}
                             </span>
-                        })}
+                        }).collect::<Vec<_>>()}
                     </h1>
-                    <p class="hero-lead">
-                        "Локальный инференс, MCP и веб-разработка под ключ."
-                    </p>
                     // Метрики и статус — одна строка: раньше это были два
                     // этажа, и обложка начиналась как анкета.
                     <p class="hero-metrics mono">
@@ -466,27 +461,41 @@ mod tests {
     }
 }
 
-/// Разбивает роль на три строки для hero.
+/// Разбивает роль на строки плакатом: каждое смысловое слово — отдельная
+/// строка, последняя («AI-систем») — акцентным цветом.
 ///
-/// `Fullstack-разработчик и архитектор приватных AI-систем` → три строки, где
-/// третья приходит без «AI-систем»: это слово рендерится акцентным span-ом.
+/// `Fullstack-разработчик и архитектор приватных AI-систем` →
+/// `Fullstack-` / `разработчик` / `и архитектор` / `приватных` / `AI-систем`.
 /// Если формулировка из контента изменится и маркеры пропадут, заголовок
 /// останется одной строкой — без пустых span-ов и битой вёрстки.
-fn split_hero_title(title: &str) -> (String, Option<String>, Option<String>) {
+fn hero_title_lines(title: &str) -> Vec<(String, bool)> {
+    let fallback = || vec![(title.to_string(), false)];
+
     if !title.contains("AI-систем") {
-        return (title.to_string(), None, None);
+        return fallback();
     }
     let Some((first, rest)) = title.split_once(" и ") else {
-        return (title.to_string(), None, None);
+        return fallback();
+    };
+    let Some((head, tail)) = first.split_once('-') else {
+        return fallback();
     };
     let Some((second, third)) = rest.split_once(' ') else {
-        return (title.to_string(), None, None);
+        return fallback();
     };
-    let (prefix, _) = third.split_once("AI-систем").unwrap_or((third, ""));
 
-    (
-        first.to_string(),
-        Some(format!("и {second}")),
-        Some(prefix.to_string()),
-    )
+    let mut lines = vec![
+        (format!("{head}-"), false),
+        (tail.to_string(), false),
+        (format!("и {second}"), false),
+    ];
+
+    // Всё, что стоит перед «AI-систем», — отдельная строка («приватных»).
+    let prefix = third.trim_end_matches("AI-систем").trim();
+    if !prefix.is_empty() {
+        lines.push((prefix.to_string(), false));
+    }
+    lines.push(("AI-систем".to_string(), true));
+
+    lines
 }

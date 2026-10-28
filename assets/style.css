@@ -3136,7 +3136,9 @@ a:hover { color: #fff; }
      непрозрачная, и её 64 px срезали верх шляпы. */
   position: absolute;
   top: var(--nav-height, 64px);
-  right: 0;
+  /* Крупный заголовок доходит до середины экрана, поэтому фигура сдвинута
+     вправо: иначе последняя строка ложилась на руку и колено. */
+  right: -6%;
   height: calc(100% - var(--nav-height, 64px));
   aspect-ratio: 16 / 9;
   z-index: 0;
@@ -3171,26 +3173,18 @@ a:hover { color: #fff; }
   margin: 0 auto;
 }
 .hero-content { max-width: 620px; }
-/* Заголовок hero — роль, а не имя: три смысловые строки, последняя с
-   акцентом на «AI-систем». Размер меньше прежнего display-кегля: три строки
-   того же кегля, что имя, заняли бы всю левую колонку и спорили с фигурой. */
+/* Заголовок hero — роль плакатом: слово на строку, кегль до 5.2rem.
+   Контраст с моно-метаданными (0.62rem) почти восьмикратный — это и даёт
+   «эффектность» без декора: масштаб вместо украшений. */
 .hero-title {
-  margin: 16px 0 18px;
-  font-size: clamp(2.1rem, 3.6vw, 3.25rem);
+  margin: 18px 0 22px;
+  font-size: clamp(3rem, 6.2vw, 5.2rem);
   font-weight: 500;
-  line-height: 0.98;
-  letter-spacing: -0.05em;
+  line-height: 0.9;
+  letter-spacing: -0.055em;
 }
 .hero-line { display: block; }
 .hero-accent { color: var(--color-primary); }
-.hero-lead {
-  margin: 0;
-  max-width: none;
-  font-size: clamp(0.98rem, 1.2vw, 1.1rem);
-  line-height: 1.5;
-  color: var(--color-text-secondary);
-  letter-spacing: -0.01em;
-}
 /* Метрики и статус в одну строку: статус стал частью мета-строки, а не
    отдельным этажом с бейджем. */
 .hero-metrics {
@@ -3198,7 +3192,9 @@ a:hover { color: #fff; }
   align-items: center;
   flex-wrap: wrap;
   gap: 10px;
-  margin: 18px 0 0;
+  margin: 22px 0 0;
+  font-size: 0.62rem;
+  letter-spacing: 0.14em;
   color: var(--color-text-tertiary);
 }
 .hero-metrics-sep { opacity: 0.5; }
@@ -3593,7 +3589,7 @@ a:hover { color: #fff; }
       linear-gradient(90deg, rgba(8, 8, 13, 0.9) 0%, rgba(8, 8, 13, 0.55) 100%);
   }
   .hero-content { max-width: none; }
-  .hero-title { font-size: clamp(1.8rem, 7.8vw, 2.5rem); }
+  .hero-title { font-size: clamp(2.6rem, 11vw, 3.4rem); }
   .hero-actions { align-items: stretch; gap: 14px; margin-top: 24px; }
   .hero-actions .cta-buttons { display: grid; grid-template-columns: 1fr; gap: 10px; }
   .hero-actions .cta-buttons .btn { justify-content: center; }
