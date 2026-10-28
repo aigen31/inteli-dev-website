@@ -88,7 +88,9 @@ pub fn Layout(children: Children) -> impl IntoView {
                         height="26"
                         decoding="async"
                     />
-                    <span>{name}</span>
+                    // В шапке стоит имя продукта, а не человека: «Евгений Биль»
+                    // повторяло заголовок hero и занимало строку целиком.
+                    <span>"Inteli Dev"</span>
                 </a>
 
                 // Бургер виден только на мобильном (см. RULES/ui-rules.md:
