@@ -3170,19 +3170,24 @@ a:hover { color: #fff; }
   max-width: var(--container-max);
   margin: 0 auto;
 }
-.hero-content { max-width: 640px; }
+.hero-content { max-width: 620px; }
+/* Заголовок hero — роль, а не имя: три смысловые строки, последняя с
+   акцентом на «AI-систем». Размер меньше прежнего display-кегля: три строки
+   того же кегля, что имя, заняли бы всю левую колонку и спорили с фигурой. */
 .hero-title {
-  margin: 20px 0 18px;
-  font-size: var(--text-display);
+  margin: 18px 0 20px;
+  font-size: clamp(2.2rem, 3.9vw, 3.5rem);
   font-weight: 500;
-  line-height: 0.94;
-  letter-spacing: -0.052em;
+  line-height: 0.98;
+  letter-spacing: -0.05em;
 }
-.hero-role {
+.hero-line { display: block; }
+.hero-accent { color: var(--color-primary); }
+.hero-lead {
   margin: 0;
-  max-width: 34ch;
-  font-size: clamp(1.02rem, 1.3vw, 1.22rem);
-  line-height: 1.45;
+  max-width: 44ch;
+  font-size: clamp(0.98rem, 1.2vw, 1.1rem);
+  line-height: 1.5;
   color: var(--color-text-secondary);
   letter-spacing: -0.01em;
 }
@@ -3557,7 +3562,7 @@ a:hover { color: #fff; }
       linear-gradient(90deg, rgba(8, 8, 13, 0.9) 0%, rgba(8, 8, 13, 0.55) 100%);
   }
   .hero-content { max-width: none; }
-  .hero-title { font-size: clamp(2.6rem, 10vw, 3.6rem); }
+  .hero-title { font-size: clamp(1.9rem, 8.2vw, 2.7rem); }
   .hero-actions { align-items: stretch; gap: 14px; margin-top: 24px; }
   .hero-actions .cta-buttons { display: grid; grid-template-columns: 1fr; gap: 10px; }
   .hero-actions .cta-buttons .btn { justify-content: center; }
