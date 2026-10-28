@@ -4136,3 +4136,55 @@ a:hover { color: #fff; }
   background: rgba(139, 127, 245, 0.2);
   border-color: var(--color-primary);
 }
+
+/* ---------- 17.21 Прайс в админке ----------
+   Таблица правки на месте: поля без рамок, линейка только под строкой —
+   иначе семь инпутов в ряд превращаются в форму, а не в прайс. */
+.admin-prices td { padding: 8px 10px; vertical-align: middle; }
+.admin-prices .admin-input {
+  width: 100%;
+  min-width: 90px;
+  padding: 7px 9px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--color-text);
+  font-family: var(--font-body);
+  font-size: 0.9rem;
+}
+.admin-prices .admin-input:hover { border-color: var(--rule); }
+.admin-prices .admin-input:focus {
+  outline: none;
+  border-color: var(--color-primary);
+  background: #0b0b12;
+}
+.admin-prices .admin-price { font-family: var(--font-mono); font-size: 0.78rem; }
+.admin-prices .admin-input::placeholder { color: var(--color-text-tertiary); opacity: 0.6; }
+.admin-prices .admin-switch { display: inline-flex; }
+.admin-prices .admin-switch input { width: 16px; height: 16px; accent-color: var(--color-primary); }
+.admin-row-remove {
+  padding: 5px 10px;
+  border: 1px solid var(--rule);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--color-text-tertiary);
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.admin-row-remove:hover { color: var(--color-danger, #ff6b6b); border-color: currentColor; }
+.admin-empty { color: var(--color-text-tertiary); text-align: center; padding: 28px 12px; }
+
+/* Колонки прайса: название и описание — широкие, цены — узкие. Без явных
+   ширин `table-layout: auto` отдаёт всё место описанию и режет названия. */
+.admin-prices { table-layout: fixed; width: 100%; }
+.admin-prices th:nth-child(1) { width: 24%; }
+.admin-prices th:nth-child(2) { width: 28%; }
+.admin-prices th:nth-child(3) { width: 12%; }
+.admin-prices th:nth-child(4) { width: 11%; }
+.admin-prices th:nth-child(5) { width: 10%; }
+.admin-prices th:nth-child(6) { width: 6%; }
+.admin-prices th:nth-child(7) { width: 9%; }
+.admin-prices-toolbar { justify-content: flex-start; }

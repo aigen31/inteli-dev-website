@@ -18,6 +18,7 @@ pub mod config;
 pub mod error;
 pub mod limits;
 pub mod llm;
+pub mod mcp;
 pub mod memory;
 pub mod notification;
 pub mod security;

@@ -253,6 +253,17 @@ impl ChatService {
             }
         };
 
+        // Факты сайта через тот же реестр, что отдаёт MCP внешним агентам:
+        // кейсы под задачу, прайс из админки, живой статус. Без этого модель
+        // отвечала «делали ли вы такое» общими словами.
+        let site = crate::mcp::context_for(&self.db, &req.message).await;
+        let context = match (context.is_empty(), site.is_empty()) {
+            (true, true) => String::new(),
+            (true, false) => site,
+            (false, true) => context,
+            (false, false) => format!("{context}\n\n{site}"),
+        };
+
         let system = chatbot_system_prompt(&content.profile);
         let user = if context.is_empty() {
             req.message.clone()

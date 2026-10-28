@@ -472,7 +472,7 @@
     if (!app) return;
 
     var login = document.getElementById('admin-login');
-    var dashboard = document.getElementById('admin-dashboard');
+    var shell = document.getElementById('admin-shell');
     var tokenInput = document.getElementById('admin-token');
     var loginBtn = document.getElementById('admin-login-btn');
     var loginStatus = document.getElementById('admin-login-status');
@@ -495,38 +495,51 @@
 
     function showLogin(message) {
       login.hidden = false;
-      dashboard.hidden = true;
+      shell.hidden = true;
       if (message) { loginStatus.textContent = message; loginStatus.className = 'form-status error'; }
     }
 
     function showDashboard() {
       login.hidden = true;
-      dashboard.hidden = false;
+      shell.hidden = false;
     }
 
-    async function loadDashboard() {
+    // Раздел просит только свои данные: таблицы, которой нет на странице, не
+    // грузим. Статистика нужна всем — по ней же проверяется токен.
+    async function loadAdmin() {
       var stats = await api('/api/admin/stats');
       if (stats.status === 401) { showLogin('Неверный или пустой токен.'); return; }
 
-      var [leads, chats] = await Promise.all([
-        api('/api/admin/leads?limit=100'),
-        api('/api/admin/chats?limit=100')
-      ]);
-
       renderKpi(stats.body);
-      renderLeads(leads.body);
-      renderChats(chats.body);
-      await Promise.all([loadArticles(), loadOutbox(), loadSettings()]);
+      renderBars('admin-lead-sources', stats.body.lead_sources);
+      renderBars('admin-question-types', stats.body.question_types);
+
+      var tasks = [];
+      if (document.getElementById('admin-leads-table')) {
+        tasks.push(api('/api/admin/leads?limit=100').then(function (r) { renderLeads(r.body); }));
+      }
+      if (document.getElementById('admin-chats-table')) {
+        tasks.push(api('/api/admin/chats?limit=100').then(function (r) { renderChats(r.body); }));
+      }
+      if (document.getElementById('admin-articles-table')) tasks.push(loadArticles());
+      if (document.getElementById('admin-outbox-table')) tasks.push(loadOutbox());
+      if (document.getElementById('admin-prices-table')) tasks.push(loadPrices());
+      if (document.getElementById('admin-settings')) tasks.push(loadSettings());
+
+      await Promise.all(tasks);
       showDashboard();
     }
 
     function renderKpi(s) {
       var el = document.getElementById('admin-kpi');
-      var avg = s.avg_response_time_ms == null ? '—' : Math.round(s.avg_response_time_ms) + 'ms';
+      if (!el) return;
+      // Без emoji: в интерфейсе админки они читаются как случайные значки, а
+      // на части систем рисуются пустыми прямоугольниками.
+      var avg = s.avg_response_time_ms == null ? '—' : Math.round(s.avg_response_time_ms) + ' мс';
       var cards = [
-        ['📩 Заявки сегодня', s.leads_today != null ? s.leads_today : '—'],
-        ['💬 Чатов сегодня', s.chats_today != null ? s.chats_today : '—'],
-        ['⚡ Ср. время ответа', avg]
+        ['Заявки сегодня', s.leads_today != null ? s.leads_today : '—'],
+        ['Чатов сегодня', s.chats_today != null ? s.chats_today : '—'],
+        ['Среднее время ответа', avg]
       ];
       el.innerHTML = cards.map(function (c) {
         return '<div class="kpi-card"><div class="kpi-value">' + escapeHtml(c[1]) +
@@ -534,8 +547,32 @@
       }).join('');
     }
 
+    // Разбивка «значение → число»: горизонтальные полосы. Таблица из двух
+    // колонок сравнивать доли не помогает — полосы показывают их глазами.
+    function renderBars(id, rows) {
+      var el = document.getElementById(id);
+      if (!el) return;
+      if (!Array.isArray(rows) || !rows.length) {
+        el.innerHTML = '<p class="admin-hint">Пока нет данных.</p>';
+        return;
+      }
+      var total = rows.reduce(function (sum, row) { return sum + (row[1] || 0); }, 0) || 1;
+      var max = rows.reduce(function (m, row) { return Math.max(m, row[1] || 0); }, 0) || 1;
+      el.innerHTML = rows.map(function (row) {
+        var count = row[1] || 0;
+        var share = Math.round((count / total) * 100);
+        var width = Math.max(4, Math.round((count / max) * 100));
+        return '<div class="admin-bar">' +
+          '<div class="admin-bar-head"><span>' + escapeHtml(String(row[0] || '—')) + '</span>' +
+          '<span class="admin-bar-value">' + count + ' · ' + share + '%</span></div>' +
+          '<div class="admin-bar-track"><span style="width:' + width + '%"></span></div>' +
+          '</div>';
+      }).join('');
+    }
+
     function renderLeads(leads) {
       var table = document.getElementById('admin-leads-table');
+      if (!table) return;
       if (!Array.isArray(leads) || !leads.length) {
         table.innerHTML = '<tbody><tr><td colspan="6">Заявок пока нет.</td></tr></tbody>';
         return;
@@ -569,6 +606,7 @@
 
     function renderChats(chats) {
       var table = document.getElementById('admin-chats-table');
+      if (!table) return;
       if (!Array.isArray(chats) || !chats.length) {
         table.innerHTML = '<tbody><tr><td colspan="5">Чатов пока нет.</td></tr></tbody>';
         return;
@@ -588,7 +626,7 @@
       var value = tokenInput.value.trim();
       if (!value) { loginStatus.textContent = 'Введите токен.'; loginStatus.className = 'form-status error'; return; }
       localStorage.setItem(STORAGE_KEY, value);
-      await loadDashboard();
+      await loadAdmin();
     });
     tokenInput.addEventListener('keydown', function (e) {
       if (e.key === 'Enter') loginBtn.click();
@@ -608,6 +646,7 @@
     }
 
     function renderSettings(s) {
+      if (!field('admin-status-select')) return;
       field('admin-status-select').value = s.status || 'available';
       field('admin-projects').value = s.current_projects == null ? 0 : s.current_projects;
       field('admin-slot').value = s.next_free_slot || '';
@@ -676,10 +715,157 @@
       setSettingsMessage('Сохранено: ' + res.body.label + ' · ' + (res.body.facts || []).join(' · '), 'success');
     }
 
-    field('admin-settings-save').addEventListener('click', saveSettings);
-    field('admin-slot').addEventListener('keydown', function (e) {
-      if (e.key === 'Enter') saveSettings();
-    });
+    if (field('admin-settings-save')) {
+      field('admin-settings-save').addEventListener('click', saveSettings);
+    }
+    if (field('admin-slot')) {
+      field('admin-slot').addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') saveSettings();
+      });
+    }
+
+    // ---------- Прайс-лист ----------
+    //
+    // Строки правятся в таблице и сохраняются целиком: админка присылает весь
+    // список, а сервер заменяет его одной транзакцией. Поэтому удаление —
+    // это отсутствие строки, отдельная ручка не нужна.
+    var priceRows = [];
+
+    function priceInput(row, key, cls, placeholder) {
+      var input = document.createElement('input');
+      input.type = 'text';
+      input.className = 'admin-input ' + (cls || '');
+      input.value = row[key] || '';
+      input.placeholder = placeholder || '';
+      input.dataset.key = key;
+      input.addEventListener('input', function () {
+        row[key] = input.value;
+      });
+      return input;
+    }
+
+    function priceCell(child) {
+      var td = document.createElement('td');
+      if (child) td.appendChild(child);
+      return td;
+    }
+
+    function renderPrices() {
+      var table = document.getElementById('admin-prices-table');
+      if (!table) return;
+      table.textContent = '';
+
+      var head = document.createElement('tr');
+      ['Название', 'Описание', 'От', 'До', 'Единица', 'Показ', ''].forEach(function (label) {
+        var th = document.createElement('th');
+        th.textContent = label;
+        head.appendChild(th);
+      });
+      table.appendChild(head);
+
+      if (!priceRows.length) {
+        var empty = document.createElement('tr');
+        var td = document.createElement('td');
+        td.colSpan = 7;
+        td.className = 'admin-empty';
+        td.textContent = 'Прайс пуст. Добавьте строку — ассистент перестанет говорить «цен нет».';
+        empty.appendChild(td);
+        table.appendChild(empty);
+        return;
+      }
+
+      priceRows.forEach(function (row, index) {
+        var tr = document.createElement('tr');
+        tr.appendChild(priceCell(priceInput(row, 'title', '')));
+        tr.appendChild(priceCell(priceInput(row, 'description', '')));
+        tr.appendChild(priceCell(priceInput(row, 'price_from', 'admin-price')));
+        tr.appendChild(priceCell(priceInput(row, 'price_to', 'admin-price')));
+        tr.appendChild(priceCell(priceInput(row, 'unit', 'admin-price')));
+        tr.appendChild(priceCell(priceToggle(row)));
+        tr.appendChild(priceCell(priceRemove(index)));
+        table.appendChild(tr);
+      });
+    }
+
+    function priceToggle(row) {
+      var label = document.createElement('label');
+      label.className = 'admin-switch';
+      var input = document.createElement('input');
+      input.type = 'checkbox';
+      input.checked = row.is_active !== false;
+      input.addEventListener('change', function () { row.is_active = input.checked; });
+      label.appendChild(input);
+      return label;
+    }
+
+    function priceRemove(index) {
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'admin-row-remove';
+      btn.textContent = 'Удалить';
+      btn.addEventListener('click', function () {
+        priceRows.splice(index, 1);
+        renderPrices();
+      });
+      return btn;
+    }
+
+    async function loadPrices() {
+      var res = await api('/api/admin/prices');
+      if (!res.ok) return;
+      priceRows = Array.isArray(res.body) ? res.body : [];
+      renderPrices();
+    }
+
+    function setPriceStatus(text, kind) {
+      var el = document.getElementById('price-status');
+      if (!el) return;
+      el.textContent = text;
+      el.className = 'form-status ' + (kind || '');
+    }
+
+    async function savePrices() {
+      var button = document.getElementById('price-save-btn');
+      if (button) button.disabled = true;
+      setPriceStatus('Сохраняю…', '');
+
+      var res = await api('/api/admin/prices', {
+        method: 'PUT',
+        body: JSON.stringify(priceRows)
+      });
+
+      if (button) button.disabled = false;
+
+      if (!res.ok) {
+        setPriceStatus(res.body.error || ('Ошибка ' + res.status), 'error');
+        return;
+      }
+
+      priceRows = Array.isArray(res.body) ? res.body : [];
+      renderPrices();
+      setPriceStatus('Сохранено: строк — ' + priceRows.length, 'success');
+    }
+
+    if (document.getElementById('price-add-btn')) {
+      document.getElementById('price-add-btn').addEventListener('click', function () {
+        priceRows.push({
+          slug: 'item-' + (priceRows.length + 1) + '-' + Date.now().toString(36),
+          title: '',
+          description: '',
+          price_from: '',
+          price_to: '',
+          unit: 'проект',
+          sort: priceRows.length,
+          is_active: true,
+          updated_at: ''
+        });
+        renderPrices();
+        setPriceStatus('', '');
+      });
+    }
+    if (document.getElementById('price-save-btn')) {
+      document.getElementById('price-save-btn').addEventListener('click', savePrices);
+    }
 
     // ---------- Статьи блога ----------
     //
@@ -1263,7 +1449,7 @@
     });
 
     // Автовход, если токен уже сохранён.
-    if (token()) { loadDashboard(); }
+    if (token()) { loadAdmin(); }
   }
 
   // ---------- Интерактивные карточки: tilt + radial spotlight ----------
@@ -2224,6 +2410,101 @@
     });
   }
 
+  // ---------- Слайдер кейсов на главной ----------
+  // Лента со scroll-snap листается сама: свайп, колесо и клавиши работают без
+  // скрипта. Скрипт добавляет только стрелки, точки и состояние — поэтому без
+  // него слайдер остаётся рабочим, просто менее очевидным.
+  function initProjectSlider() {
+    var slider = document.getElementById('project-slider');
+    if (!slider) return;
+
+    var track = slider.querySelector('.project-slider-track');
+    var slides = track ? Array.prototype.slice.call(track.children) : [];
+    if (slides.length < 2) return;
+
+    var prev = document.querySelector('[data-slider="prev"]');
+    var next = document.querySelector('[data-slider="next"]');
+    var dots = Array.prototype.slice.call(document.querySelectorAll('.project-slider-dots .slider-dot'));
+    var reduceMotion = !!(window.matchMedia &&
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+
+    // Позицию слайда считаем от первого: `gap` между слайдами добавляет к
+    // ширине свою долю, и «ширина контейнера × индекс» разъезжается с реальной
+    // прокруткой.
+    function offsetOf(index) {
+      return slides[index].offsetLeft - slides[0].offsetLeft;
+    }
+
+    function currentIndex() {
+      var x = slider.scrollLeft;
+      var best = 0;
+      var bestDistance = Infinity;
+      for (var i = 0; i < slides.length; i++) {
+        var distance = Math.abs(offsetOf(i) - x);
+        if (distance < bestDistance) { bestDistance = distance; best = i; }
+      }
+      return best;
+    }
+
+    function goTo(index) {
+      var target = Math.max(0, Math.min(slides.length - 1, index));
+      slider.scrollTo({
+        left: offsetOf(target),
+        behavior: reduceMotion ? 'auto' : 'smooth'
+      });
+    }
+
+    function sync() {
+      var index = currentIndex();
+      if (prev) prev.disabled = index <= 0;
+      if (next) next.disabled = index >= slides.length - 1;
+      dots.forEach(function (dot, i) {
+        if (i === index) dot.setAttribute('aria-current', 'true');
+        else dot.removeAttribute('aria-current');
+      });
+    }
+
+    if (prev) {
+      prev.disabled = false;
+      prev.addEventListener('click', function () { goTo(currentIndex() - 1); });
+    }
+    if (next) {
+      next.disabled = false;
+      next.addEventListener('click', function () { goTo(currentIndex() + 1); });
+    }
+
+    // Точка — ссылка на якорь: без скрипта она честно прокручивает ленту, со
+    // скриптом — делает то же плавно и без прыжка страницы.
+    dots.forEach(function (dot, i) {
+      dot.addEventListener('click', function (e) {
+        e.preventDefault();
+        goTo(i);
+      });
+    });
+
+    // Стрелки на клавиатуре листают слайды целиком: встроенная прокрутка
+    // сдвигает ленту на десятки пикселей, и снап возвращает её назад.
+    slider.addEventListener('keydown', function (e) {
+      if (e.key === 'ArrowRight') { e.preventDefault(); goTo(currentIndex() + 1); }
+      else if (e.key === 'ArrowLeft') { e.preventDefault(); goTo(currentIndex() - 1); }
+      else if (e.key === 'Home') { e.preventDefault(); goTo(0); }
+      else if (e.key === 'End') { e.preventDefault(); goTo(slides.length - 1); }
+    });
+
+    var ticking = false;
+    slider.addEventListener('scroll', function () {
+      if (ticking) return;
+      ticking = true;
+      window.requestAnimationFrame(function () {
+        ticking = false;
+        sync();
+      });
+    }, { passive: true });
+
+    window.addEventListener('resize', sync);
+    sync();
+  }
+
   // ---------- Подсказка статуса занятости ----------
   // Бейдж — кнопка с постоянным подлежащим («Приём заявок: открыт») и
   // подсказкой с подробностями. На десктопе подсказку показывает сам CSS
@@ -2282,12 +2563,12 @@
     // клавиатурный читатель теряет место, на котором остановился.
     var lastFocus = null;
 
-    // Что вообще можно увеличить: картинки статьи и её обложка. Картинку внутри
-    // ссылки не трогаем — автор уже назначил ей действие (`[![…](…)](…)`), и клик
-    // должен вести по ссылке.
+    // Что вообще можно увеличить: картинки статьи, её обложка и скриншот кейса.
+    // Картинку внутри ссылки не трогаем — автор уже назначил ей действие
+    // (`[![…](…)](…)`), и клик должен вести по ссылке.
     function zoomable() {
       return Array.prototype.filter.call(
-        document.querySelectorAll('.prose img, .post-cover'),
+        document.querySelectorAll('.prose img, .post-cover, .project-shot'),
         function (img) {
           return !img.closest('a') && !img.closest('.lightbox') && img.getAttribute('src');
         }

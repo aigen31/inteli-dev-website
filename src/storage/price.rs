@@ -1,0 +1,216 @@
+//! Прайс-лист: строки, которые владелец правит в админке.
+//!
+//! Почему отдельная таблица, а не поля услуг в контенте: услуги приходят из
+//! OpenViking и описывают направление («приватные AI-системы»), а прайс — это
+//! то, что продаётся и меняется чаще: пакеты, часы поддержки, аудит, обучение.
+//! Один и тот же пункт может не совпадать с услугой.
+//!
+//! Источник правды для ассистента — эта таблица. Если она пуста (первый
+//! запуск), она заполняется диапазонами из контента, чтобы ИИ не отвечал
+//! «цен нет» на вопрос о цене.
+
+use sqlx::sqlite::SqlitePool;
+
+use crate::error::AppResult;
+
+/// Строка прайса.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct PriceItem {
+    /// Стабильный идентификатор строки (используется в правках из админки).
+    pub slug: String,
+    pub title: String,
+    pub description: String,
+    /// Цена «от», строка: в прайсе встречается и «по запросу».
+    pub price_from: String,
+    /// Цена «до», пустая — открытая вилка.
+    pub price_to: String,
+    /// Единица: проект, месяц, час, аудит.
+    pub unit: String,
+    /// Порядок показа.
+    pub sort: i64,
+    /// Скрытые строки не попадают ни в прайс на сайте, ни в ответы ИИ.
+    pub is_active: bool,
+    pub updated_at: String,
+}
+
+impl PriceItem {
+    /// Одна строка для промпта и MCP: «Название — от X до Y ₽, единица».
+    pub fn line(&self) -> String {
+        let range = match (self.price_from.trim(), self.price_to.trim()) {
+            ("", "") => "по запросу".to_string(),
+            (from, "") => format!("от {from}"),
+            ("", to) => format!("до {to}"),
+            (from, to) => format!("{from} – {to}"),
+        };
+
+        let unit = if self.unit.trim().is_empty() {
+            String::new()
+        } else {
+            format!(" / {}", self.unit.trim())
+        };
+
+        if self.description.trim().is_empty() {
+            format!("{} — {range}{unit}", self.title)
+        } else {
+            format!("{} ({}) — {range}{unit}", self.title, self.description)
+        }
+    }
+}
+
+/// Все строки прайса, включая скрытые: админка должна их видеть.
+pub async fn load_all(pool: &SqlitePool) -> AppResult<Vec<PriceItem>> {
+    let rows = sqlx::query_as::<_, (String, String, String, String, String, String, i64, i64, String)>(
+        r#"SELECT slug, title, description, price_from, price_to, unit, sort, is_active, updated_at
+           FROM price_items ORDER BY sort, slug"#,
+    )
+    .fetch_all(pool)
+    .await?;
+
+    Ok(rows
+        .into_iter()
+        .map(|(slug, title, description, price_from, price_to, unit, sort, is_active, updated_at)| {
+            PriceItem {
+                slug,
+                title,
+                description,
+                price_from,
+                price_to,
+                unit,
+                sort,
+                is_active: is_active != 0,
+                updated_at,
+            }
+        })
+        .collect())
+}
+
+/// Только активные строки — для сайта и MCP.
+pub async fn load_active(pool: &SqlitePool) -> AppResult<Vec<PriceItem>> {
+    Ok(load_all(pool).await?.into_iter().filter(|item| item.is_active).collect())
+}
+
+/// Полная замена прайса: админка присылает весь список, сервер пишет его целиком.
+///
+/// Удаление и вставка — в одной транзакции: половина прайса не должна попасть
+/// в ответы ассистента, пока вторая ещё пишется.
+pub async fn replace_all(
+    pool: &SqlitePool,
+    items: &[PriceItem],
+    updated_at: &str,
+) -> AppResult<()> {
+    let mut tx = pool.begin().await?;
+
+    sqlx::query("DELETE FROM price_items").execute(&mut *tx).await?;
+
+    for (index, item) in items.iter().enumerate() {
+        sqlx::query(
+            r#"INSERT INTO price_items
+               (slug, title, description, price_from, price_to, unit, sort, is_active, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"#,
+        )
+        .bind(&item.slug)
+        .bind(&item.title)
+        .bind(&item.description)
+        .bind(&item.price_from)
+        .bind(&item.price_to)
+        .bind(&item.unit)
+        .bind(if item.sort == 0 { index as i64 } else { item.sort })
+        .bind(if item.is_active { 1 } else { 0 })
+        .bind(updated_at)
+        .execute(&mut *tx)
+        .await?;
+    }
+
+    tx.commit().await?;
+    Ok(())
+}
+
+/// Первый запуск: прайс собирается из услуг контента.
+pub async fn seed_if_empty(pool: &SqlitePool, updated_at: &str) -> AppResult<bool> {
+    let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM price_items")
+        .fetch_one(pool)
+        .await?;
+    if count > 0 {
+        return Ok(false);
+    }
+
+    let content = crate::memory::content::SiteContent::get();
+    let items: Vec<PriceItem> = content
+        .services
+        .iter()
+        .enumerate()
+        .map(|(index, service)| PriceItem {
+            slug: service.slug.clone(),
+            title: service.title.clone(),
+            description: String::new(),
+            price_from: service.price_from.clone().unwrap_or_default(),
+            price_to: service.price_to.clone().unwrap_or_default(),
+            unit: "проект".to_string(),
+            sort: index as i64,
+            is_active: true,
+            updated_at: updated_at.to_string(),
+        })
+        .collect();
+
+    replace_all(pool, &items, updated_at).await?;
+    Ok(true)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::storage::init_memory_pool;
+
+    fn item(slug: &str, from: &str, to: &str) -> PriceItem {
+        PriceItem {
+            slug: slug.into(),
+            title: "Проверка".into(),
+            description: String::new(),
+            price_from: from.into(),
+            price_to: to.into(),
+            unit: "проект".into(),
+            sort: 0,
+            is_active: true,
+            updated_at: String::new(),
+        }
+    }
+
+    #[tokio::test]
+    async fn replace_then_load_roundtrips() {
+        let pool = init_memory_pool().await.unwrap();
+        replace_all(&pool, &[item("a", "100", "200"), item("b", "300", "")], "now")
+            .await
+            .unwrap();
+
+        let loaded = load_all(&pool).await.unwrap();
+        assert_eq!(loaded.len(), 2);
+        assert_eq!(loaded[0].slug, "a");
+
+        replace_all(&pool, &[item("c", "", "500")], "later").await.unwrap();
+        let loaded = load_all(&pool).await.unwrap();
+        assert_eq!(loaded.len(), 1, "замена должна удалять старые строки");
+        assert_eq!(loaded[0].updated_at, "later");
+    }
+
+    #[tokio::test]
+    async fn hidden_rows_are_skipped_for_public() {
+        let pool = init_memory_pool().await.unwrap();
+        let mut hidden = item("hidden", "1", "2");
+        hidden.is_active = false;
+        replace_all(&pool, &[item("shown", "1", "2"), hidden], "now")
+            .await
+            .unwrap();
+
+        assert_eq!(load_all(&pool).await.unwrap().len(), 2);
+        let active = load_active(&pool).await.unwrap();
+        assert_eq!(active.len(), 1);
+        assert_eq!(active[0].slug, "shown");
+    }
+
+    #[test]
+    fn line_formats_ranges() {
+        assert_eq!(item("a", "100", "200").line(), "Проверка — 100 – 200 / проект");
+        assert_eq!(item("a", "100", "").line(), "Проверка — от 100 / проект");
+        assert_eq!(item("a", "", "").line(), "Проверка — по запросу / проект");
+    }
+}

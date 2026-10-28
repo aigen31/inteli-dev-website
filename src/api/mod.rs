@@ -46,6 +46,8 @@ pub fn routes(seo: &SeoConfig) -> Router<AppState> {
         .route("/api/status", get(handlers::status))
         .route("/api/status.json", get(handlers::status))
         .route("/api/chat", post(handlers::chat))
+        // MCP-сервер сайта: JSON-RPC 2.0, только чтение публичных данных.
+        .route("/mcp", post(handlers::mcp))
         .route("/api/lead", post(handlers::lead))
         .route("/api/telegram/webhook", post(handlers::telegram_webhook))
         // Бот настроек сайта: Telegram стучится сюда (секрет — в заголовке).
@@ -61,6 +63,11 @@ pub fn routes(seo: &SeoConfig) -> Router<AppState> {
         .route("/api/admin/leads", get(handlers::admin_leads))
         .route("/api/admin/chats", get(handlers::admin_chats))
         .route("/api/admin/leads/:id", patch(handlers::admin_update_lead))
+        // Прайс-лист: его читает ассистент через MCP, правит владелец здесь.
+        .route(
+            "/api/admin/prices",
+            get(handlers::admin_prices).put(handlers::admin_update_prices),
+        )
         // Настройки сайта: статус «Приём заявок», число проектов и слот.
         .route(
             "/api/admin/settings",
