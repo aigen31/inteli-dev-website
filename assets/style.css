@@ -3178,10 +3178,17 @@ a:hover { color: #fff; }
    «эффектность» без декора: масштаб вместо украшений. */
 .hero-title {
   margin: 18px 0 22px;
-  font-size: clamp(3rem, 6.2vw, 5.2rem);
+  font-size: clamp(2.6rem, 5.6vw, 4.7rem);
   font-weight: 500;
-  line-height: 0.9;
-  letter-spacing: -0.055em;
+  line-height: 0.94;
+  letter-spacing: -0.05em;
+}
+/* Первое слово — капсом и чуть меньше: это печать на плакате, а не крик.
+   Дальше строчные — так заголовок остаётся частью нового дизайн-кода. */
+.hero-line-caps {
+  text-transform: uppercase;
+  letter-spacing: -0.02em;
+  font-size: 0.82em;
 }
 .hero-line { display: block; }
 .hero-accent { color: var(--color-primary); }
@@ -3589,7 +3596,7 @@ a:hover { color: #fff; }
       linear-gradient(90deg, rgba(8, 8, 13, 0.9) 0%, rgba(8, 8, 13, 0.55) 100%);
   }
   .hero-content { max-width: none; }
-  .hero-title { font-size: clamp(2.6rem, 11vw, 3.4rem); }
+  .hero-title { font-size: clamp(2.3rem, 9.6vw, 3.1rem); }
   .hero-actions { align-items: stretch; gap: 14px; margin-top: 24px; }
   .hero-actions .cta-buttons { display: grid; grid-template-columns: 1fr; gap: 10px; }
   .hero-actions .cta-buttons .btn { justify-content: center; }

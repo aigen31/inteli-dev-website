@@ -237,7 +237,7 @@ fn contacts_text() -> String {
 }
 
 /// Поиск по всем текстам сайта: услуги, кейсы, статьи.
-async fn search(state: &AppState, arguments: &Value) -> ToolResult {
+async fn search(_state: &AppState, arguments: &Value) -> ToolResult {
     let query = arguments
         .get("query")
         .and_then(Value::as_str)

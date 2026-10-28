@@ -161,7 +161,7 @@ pub fn Home() -> impl IntoView {
     // человека в 72 px ничего не объясняло новому посетителю.
     // Каждое слово — своя строка: на крупном кегле это даёт плакатную
     // вертикаль и позволяет держать размер, не наезжая на иллюстрацию.
-    let title_lines = hero_title_lines(&profile.title);
+    let title_lines = hero_title_lines(HERO_TITLE);
     let hero_art = crate::api::assets::versioned(crate::api::assets::HERO_ART_PATH);
     let hero_art_w = crate::api::assets::HERO_ART_WIDTH;
     let hero_art_h = crate::api::assets::HERO_ART_HEIGHT;
@@ -186,10 +186,10 @@ pub fn Home() -> impl IntoView {
             <div class="hero-inner">
                 <div class="hero-content">
                     <p class="eyebrow"><span class="eyebrow-dot" aria-hidden="true"></span>{profile.location.clone()}</p>
-                    <h1 class="hero-title" aria-label=profile.title.clone()>
-                        {title_lines.into_iter().map(|(text, accent)| view! {
-                            <span class=if accent { "hero-line hero-accent" } else { "hero-line" }>
-                                {text}
+                    <h1 class="hero-title" aria-label=HERO_TITLE>
+                        {title_lines.into_iter().map(|line| view! {
+                            <span class=if line.caps { "hero-line hero-line-caps" } else { "hero-line" }>
+                                {line.before}<span class="hero-accent">{line.accent}</span>{line.after}
                             </span>
                         }).collect::<Vec<_>>()}
                     </h1>
@@ -461,41 +461,68 @@ mod tests {
     }
 }
 
-/// Разбивает роль на строки плакатом: каждое смысловое слово — отдельная
-/// строка, последняя («AI-систем») — акцентным цветом.
+/// Заголовок hero. Отдельно от `profile.title`: профиль — для мета-описаний,
+/// hero — позиционирование, и они могут расходиться.
+const HERO_TITLE: &str = "Fullstack разработчик и ML инженер";
+
+/// Строка заголовка: до акцента, акцент, после акцента.
+struct HeroLine {
+    before: String,
+    accent: String,
+    after: String,
+    caps: bool,
+}
+
+impl HeroLine {
+    fn plain(text: &str) -> Self {
+        Self {
+            before: text.to_string(),
+            accent: String::new(),
+            after: String::new(),
+            caps: false,
+        }
+    }
+}
+
+/// Разбивает заголовок на строки-слова: `Fullstack` / `разработчик` /
+/// `и ML инженер`. Первое слово уходит в капс — это печать, а не реплика;
+/// «ML» подкрашено: это то, что отличает от обычного fullstack.
 ///
-/// `Fullstack-разработчик и архитектор приватных AI-систем` →
-/// `Fullstack-` / `разработчик` / `и архитектор` / `приватных` / `AI-систем`.
-/// Если формулировка из контента изменится и маркеры пропадут, заголовок
-/// останется одной строкой — без пустых span-ов и битой вёрстки.
-fn hero_title_lines(title: &str) -> Vec<(String, bool)> {
-    let fallback = || vec![(title.to_string(), false)];
-
-    if !title.contains("AI-систем") {
-        return fallback();
+/// Если формулировка изменится и «ML» в ней не окажется, останется три
+/// строки без акцента; если слов меньше трёх — одна строка.
+fn hero_title_lines(title: &str) -> Vec<HeroLine> {
+    let words: Vec<&str> = title.split_whitespace().collect();
+    if words.len() < 3 {
+        return vec![HeroLine::plain(title)];
     }
-    let Some((first, rest)) = title.split_once(" и ") else {
-        return fallback();
-    };
-    let Some((head, tail)) = first.split_once('-') else {
-        return fallback();
-    };
-    let Some((second, third)) = rest.split_once(' ') else {
-        return fallback();
-    };
 
-    let mut lines = vec![
-        (format!("{head}-"), false),
-        (tail.to_string(), false),
-        (format!("и {second}"), false),
-    ];
+    let mut first = HeroLine::plain(words[0]);
+    first.caps = true;
 
-    // Всё, что стоит перед «AI-систем», — отдельная строка («приватных»).
-    let prefix = third.trim_end_matches("AI-систем").trim();
-    if !prefix.is_empty() {
-        lines.push((prefix.to_string(), false));
+    let mut last = HeroLine::plain("");
+    let mut before_parts: Vec<&str> = Vec::new();
+    let mut after_parts: Vec<&str> = Vec::new();
+    let mut seen_accent = false;
+
+    for word in &words[2..] {
+        if !seen_accent && word.eq_ignore_ascii_case("ml") {
+            seen_accent = true;
+            last.accent = (*word).to_string();
+        } else if seen_accent {
+            after_parts.push(word);
+        } else {
+            before_parts.push(word);
+        }
     }
-    lines.push(("AI-систем".to_string(), true));
 
-    lines
+    if seen_accent {
+        // Неразрывные пробелы: обычные Leptos срезает в текстовых узлах, и
+        // «и ML инженер» склеивался в «иMLинженер».
+        last.before = format!("{}\u{00A0}", before_parts.join(" "));
+        last.after = format!("\u{00A0}{}", after_parts.join(" "));
+    } else {
+        last.before = words[2..].join(" ");
+    }
+
+    vec![first, HeroLine::plain(words[1]), last]
 }
