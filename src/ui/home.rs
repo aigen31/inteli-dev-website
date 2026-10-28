@@ -141,7 +141,6 @@ pub fn HeroTerminal() -> impl IntoView {
 pub fn Home() -> impl IntoView {
     let content = SiteContent::get();
     let profile = content.profile.clone();
-    let skills = profile.skills.clone();
     let services_preview = content.services.iter().take(3).cloned().collect::<Vec<_>>();
     // Слайдер кейсов: четыре штуки — достаточно, чтобы листать, и меньше, чем
     // весь портфолио на `/projects` (дублировать его целиком на главной незачем).
@@ -197,19 +196,26 @@ pub fn Home() -> impl IntoView {
                         })}
                     </h1>
                     <p class="hero-lead">
-                        "Локальный инференс, MCP-серверы и веб-разработка: от прототипа до продакшена."
+                        "Локальный инференс, MCP и веб-разработка под ключ."
                     </p>
-                    <p class="hero-metrics mono">{metrics}</p>
-                    <div class="hero-actions">
+                    // Метрики и статус — одна строка: раньше это были два
+                    // этажа, и обложка начиналась как анкета.
+                    <p class="hero-metrics mono">
+                        {metrics}
+                        <span class="hero-metrics-sep" aria-hidden="true">"·"</span>
                         <StatusBadge/>
+                    </p>
+                    <div class="hero-actions">
                         <div class="cta-buttons">
                             <PrimaryButton text="Задать вопрос" href="/chat"/>
-                            <SecondaryButton text="Оставить заявку" href="/contact"/>
+                            // Второе действие — текстовая ссылка: две кнопки
+                            // одинакового веса спорили за внимание.
+                            <a class="hero-cta-link" href="/contact">
+                                "Оставить заявку"
+                                <span aria-hidden="true">"→"</span>
+                            </a>
                         </div>
                     </div>
-                    <ul class="tech-pills" aria-label="Специализация">
-                        {skills.into_iter().map(|s| view! { <li class="tech-pill">{s}</li> }).collect::<Vec<_>>()}
-                    </ul>
                 </div>
             </div>
         </section>

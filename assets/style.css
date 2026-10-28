@@ -3175,8 +3175,8 @@ a:hover { color: #fff; }
    акцентом на «AI-систем». Размер меньше прежнего display-кегля: три строки
    того же кегля, что имя, заняли бы всю левую колонку и спорили с фигурой. */
 .hero-title {
-  margin: 18px 0 20px;
-  font-size: clamp(2.2rem, 3.9vw, 3.5rem);
+  margin: 16px 0 18px;
+  font-size: clamp(2.1rem, 3.6vw, 3.25rem);
   font-weight: 500;
   line-height: 0.98;
   letter-spacing: -0.05em;
@@ -3185,13 +3185,29 @@ a:hover { color: #fff; }
 .hero-accent { color: var(--color-primary); }
 .hero-lead {
   margin: 0;
-  max-width: 44ch;
+  max-width: none;
   font-size: clamp(0.98rem, 1.2vw, 1.1rem);
   line-height: 1.5;
   color: var(--color-text-secondary);
   letter-spacing: -0.01em;
 }
-.hero-metrics { margin: 22px 0 0; color: var(--color-text-tertiary); }
+/* Метрики и статус в одну строку: статус стал частью мета-строки, а не
+   отдельным этажом с бейджем. */
+.hero-metrics {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 18px 0 0;
+  color: var(--color-text-tertiary);
+}
+.hero-metrics-sep { opacity: 0.5; }
+/* На узком экране метрики и статус расходятся по строкам, и разделитель
+   остаётся висеть в конце первой. */
+@media (max-width: 640px) {
+  .hero-metrics-sep { display: none; }
+}
+.hero-metrics .status-badge { font-size: 0.66rem; letter-spacing: 0.1em; }
 /* Статус стоит отдельной строкой над CTA: в одну линию с кнопками он читался
    как третья кнопка и спорил с главным действием. */
 .hero-actions {
@@ -3203,7 +3219,22 @@ a:hover { color: #fff; }
   margin-top: 30px;
 }
 .hero-actions .cta-buttons { margin: 0; }
-.hero-content .tech-pills { margin-top: 40px; }
+/* Второе действие — ссылка, а не вторая кнопка: у обложки должен быть один
+   главный вход, иначе человек выбирает между равными. */
+.hero-cta-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 4px;
+  color: var(--color-text-secondary);
+  font-size: 0.9rem;
+  font-weight: 500;
+  text-decoration: none;
+  transition: color var(--transition-fast);
+}
+.hero-cta-link span { transition: transform var(--transition-fast); }
+.hero-cta-link:hover { color: var(--color-text); }
+.hero-cta-link:hover span { transform: translateX(3px); }
 
 /* ---------- 17.6 Кнопки ---------- */
 .btn {
@@ -3562,7 +3593,7 @@ a:hover { color: #fff; }
       linear-gradient(90deg, rgba(8, 8, 13, 0.9) 0%, rgba(8, 8, 13, 0.55) 100%);
   }
   .hero-content { max-width: none; }
-  .hero-title { font-size: clamp(1.9rem, 8.2vw, 2.7rem); }
+  .hero-title { font-size: clamp(1.8rem, 7.8vw, 2.5rem); }
   .hero-actions { align-items: stretch; gap: 14px; margin-top: 24px; }
   .hero-actions .cta-buttons { display: grid; grid-template-columns: 1fr; gap: 10px; }
   .hero-actions .cta-buttons .btn { justify-content: center; }
