@@ -255,25 +255,59 @@ pub const HERO_ART_HEIGHT: u32 = 1440;
 
 /// Логотип и иконки приложения.
 ///
-/// Знак — шляпа Кики, сгенерирована в той же one-line манере, что и hero-арт:
-/// одна линия, тёмный фон, фиолетовый акцент только в точке. Вектора здесь нет
-/// намеренно — знак живёт как растр в фиксированных размерах, от 16 до 1024.
+/// Знак — шляпа Кики, сгенерирована в той же one-line манере, что и hero-арт,
+/// и переведена в вектор: контур трассирован по генерации. Правило размеров:
+/// до 48 px — белая заливка (контур там исчезает), от 180 px — тонкий контур.
 pub struct LogoFile {
     /// Имя файла в адресе `/assets/logo/<файл>`.
     pub file: &'static str,
-    /// Содержимое PNG.
+    /// Содержимое файла.
     pub bytes: &'static [u8],
+    /// MIME-тип: PNG для иконок, SVG для знака в интерфейсе.
+    pub mime: &'static str,
 }
 
 pub static LOGO_FILES: &[LogoFile] = &[
-    LogoFile { file: "hat-tile-16.png", bytes: include_bytes!("../../assets/logo/hat-tile-16.png") },
-    LogoFile { file: "hat-tile-32.png", bytes: include_bytes!("../../assets/logo/hat-tile-32.png") },
-    LogoFile { file: "hat-tile-48.png", bytes: include_bytes!("../../assets/logo/hat-tile-48.png") },
-    LogoFile { file: "hat-tile-180.png", bytes: include_bytes!("../../assets/logo/hat-tile-180.png") },
-    LogoFile { file: "hat-tile-192.png", bytes: include_bytes!("../../assets/logo/hat-tile-192.png") },
-    LogoFile { file: "hat-tile-512.png", bytes: include_bytes!("../../assets/logo/hat-tile-512.png") },
-    LogoFile { file: "hat-mark-64.png", bytes: include_bytes!("../../assets/logo/hat-mark-64.png") },
-    LogoFile { file: "hat-mark-512.png", bytes: include_bytes!("../../assets/logo/hat-mark-512.png") },
+    LogoFile {
+        file: "hat-icon-fill-16.png",
+        bytes: include_bytes!("../../assets/logo/hat-icon-fill-16.png"),
+        mime: "image/png",
+    },
+    LogoFile {
+        file: "hat-icon-fill-32.png",
+        bytes: include_bytes!("../../assets/logo/hat-icon-fill-32.png"),
+        mime: "image/png",
+    },
+    LogoFile {
+        file: "hat-icon-fill-48.png",
+        bytes: include_bytes!("../../assets/logo/hat-icon-fill-48.png"),
+        mime: "image/png",
+    },
+    LogoFile {
+        file: "hat-icon-line-180.png",
+        bytes: include_bytes!("../../assets/logo/hat-icon-line-180.png"),
+        mime: "image/png",
+    },
+    LogoFile {
+        file: "hat-icon-line-192.png",
+        bytes: include_bytes!("../../assets/logo/hat-icon-line-192.png"),
+        mime: "image/png",
+    },
+    LogoFile {
+        file: "hat-icon-line-512.png",
+        bytes: include_bytes!("../../assets/logo/hat-icon-line-512.png"),
+        mime: "image/png",
+    },
+    LogoFile {
+        file: "hat-fill.svg",
+        bytes: include_bytes!("../../assets/logo/hat-fill-light.svg"),
+        mime: "image/svg+xml",
+    },
+    LogoFile {
+        file: "hat-line.svg",
+        bytes: include_bytes!("../../assets/logo/hat-line-thin-light.svg"),
+        mime: "image/svg+xml",
+    },
 ];
 
 /// Логотип по имени файла: `None` — такого файла нет.
@@ -283,6 +317,12 @@ pub fn logo_file(file: &str) -> Option<&'static LogoFile> {
 
 /// Префикс адресов логотипа: `/assets/logo/<файл>`.
 pub const LOGO_PATH_PREFIX: &str = "/assets/logo/";
+
+/// Favicon в SVG: белая заливка на тёмном тайле.
+///
+/// Отдельно от [`LOGO_FILES`], потому что адрес у него корневой — `/favicon.svg`,
+/// и на него рассчитывают браузеры, а не разметка сайта.
+pub const FAVICON_SVG: &str = include_str!("../../assets/favicon.svg");
 
 /// Префикс адресов скриншотов кейсов: `/assets/projects/<файл>`.
 pub const PROJECT_IMAGE_PATH_PREFIX: &str = "/assets/projects/";
@@ -312,7 +352,7 @@ pub fn version() -> &'static str {
 
     VERSION.get_or_init(|| {
         let mut hasher = Sha256::new();
-        for part in [STYLE_CSS, MAIN_JS, MANIFEST_JSON, HABR_SVG] {
+        for part in [STYLE_CSS, MAIN_JS, MANIFEST_JSON, FAVICON_SVG, HABR_SVG] {
             hasher.update(part.as_bytes());
         }
         hasher.update(OG_IMAGE);

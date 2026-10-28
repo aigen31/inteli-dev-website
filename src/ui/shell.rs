@@ -153,6 +153,7 @@ pub fn shell(_options: LeptosOptions) -> impl IntoView {
     let style_css = assets::versioned("/assets/style.css");
     let main_js = assets::versioned("/assets/main.js");
     let manifest = assets::versioned("/manifest.json");
+    let favicon = assets::versioned("/favicon.svg");
 
     let title = meta.title().to_string();
     let description = meta.description().to_string();
@@ -204,9 +205,9 @@ pub fn shell(_options: LeptosOptions) -> impl IntoView {
                 <link rel="manifest" href=manifest/>
                 // Знак — растр одной генерации в фиксированных размерах. 32 px
                 // хватает браузеру на вкладку, 180 — иконке на домашнем экране.
-                <link rel="icon" type="image/png" sizes="32x32" href="/assets/logo/hat-tile-32.png"/>
-                <link rel="icon" type="image/png" sizes="192x192" href="/assets/logo/hat-tile-192.png"/>
-                <link rel="apple-touch-icon" sizes="180x180" href="/assets/logo/hat-tile-180.png"/>
+                <link rel="icon" href=favicon type="image/svg+xml"/>
+                <link rel="icon" type="image/png" sizes="32x32" href="/assets/logo/hat-icon-fill-32.png"/>
+                <link rel="apple-touch-icon" sizes="180x180" href="/assets/logo/hat-icon-line-180.png"/>
                 <script src=main_js defer></script>
                 // Секции прячет CSS, показывает JS. Без скриптов показывать
                 // некому — снимаем скрытие, иначе страница остаётся пустой.

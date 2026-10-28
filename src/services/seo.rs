@@ -44,7 +44,7 @@ pub const RESERVED_ROOT_NAMES: &[&str] = &[
     "sitemap.xml",
     "rss.xml",
     "feed.xml",
-    "favicon.ico",
+    "favicon.svg",
     "og.png",
 ];
 

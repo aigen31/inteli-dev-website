@@ -82,7 +82,7 @@ pub fn Layout(children: Children) -> impl IntoView {
                     // Растр, а не инлайн-SVG: знак живёт в фиксированных размерах.
                     <img
                         class="navbar-mark"
-                        src="/assets/logo/hat-mark-64.png"
+                        src="/assets/logo/hat-fill.svg"
                         alt=""
                         width="26"
                         height="26"

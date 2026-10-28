@@ -823,6 +823,15 @@ pub async fn rss(State(state): State<AppState>) -> impl IntoResponse {
     )
 }
 
+/// Favicon: `/favicon.svg`. Белая заливка на тёмном тайле.
+pub async fn favicon(raw: RawQuery) -> Response {
+    asset_response(
+        "image/svg+xml",
+        assets::FAVICON_SVG,
+        query_version(raw.0.as_deref()),
+    )
+}
+
 /// Знак Habr — ссылка на профиль в шапке: `/assets/habr.svg`.
 ///
 /// Отдельным файлом, а не инлайн-`<svg>` рядом со знаком GitHub: фигура весит
@@ -929,7 +938,7 @@ pub async fn logo_asset(Path(file): Path<String>) -> Result<Response, ApiError> 
 
     Ok((
         [
-            (header::CONTENT_TYPE, "image/png"),
+            (header::CONTENT_TYPE, logo.mime),
             (header::CACHE_CONTROL, assets::CACHE_IMMUTABLE),
         ],
         logo.bytes,

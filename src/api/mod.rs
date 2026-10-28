@@ -32,7 +32,7 @@ pub const ROOT_ASSET_PATHS: &[&str] = &[
     "/rss.xml",
     "/feed.xml",
     "/og.png",
-    "/favicon.ico",
+    "/favicon.svg",
 ];
 
 /// Регистрирует все API-маршруты (без `.with_state` — его задаёт `main`).
@@ -107,6 +107,7 @@ pub fn routes(seo: &SeoConfig) -> Router<AppState> {
         .route("/assets/fonts/:file", get(handlers::font_file))
         .route("/assets/hero/kiki-levitation.webp", get(handlers::hero_art))
         .route("/assets/logo/:file", get(handlers::logo_asset))
+        .route("/favicon.svg", get(handlers::favicon))
         .route("/media/:name", get(handlers::media_file))
         .route("/robots.txt", get(handlers::robots))
         .route("/manifest.json", get(handlers::manifest))
