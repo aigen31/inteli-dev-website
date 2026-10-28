@@ -26,7 +26,6 @@ use sha2::{Digest, Sha256};
 pub const STYLE_CSS: &str = include_str!("../../assets/style.css");
 pub const MAIN_JS: &str = include_str!("../../assets/main.js");
 pub const MANIFEST_JSON: &str = include_str!("../../assets/manifest.json");
-pub const FAVICON_SVG: &str = include_str!("../../assets/favicon.svg");
 
 /// Знак Habr (`/assets/habr.svg`) — ссылка на профиль в шапке.
 ///
@@ -254,16 +253,36 @@ pub const HERO_ART_WIDTH: u32 = 2560;
 /// Высота иллюстрации hero в пикселях.
 pub const HERO_ART_HEIGHT: u32 = 1440;
 
-/// Иконки приложения и знак бренда.
+/// Логотип и иконки приложения.
 ///
-/// Логотип — редукция иллюстрации с Кики в полёте: сплошной силуэт вместо
-/// линии, потому что линия исчезает в 16 px. Тайл — тёмный квадрат со знаком:
-/// белый глиф на прозрачном фоне пропадал бы на светлой вкладке браузера.
-pub const APPLE_TOUCH_ICON: &[u8] = include_bytes!("../../assets/logo/apple-touch-icon.png");
-/// Иконка PWA 192×192.
-pub const ICON_192: &[u8] = include_bytes!("../../assets/logo/logo-tile-192.png");
-/// Иконка PWA 512×512.
-pub const ICON_512: &[u8] = include_bytes!("../../assets/logo/logo-tile-512.png");
+/// Знак — шляпа Кики, сгенерирована в той же one-line манере, что и hero-арт:
+/// одна линия, тёмный фон, фиолетовый акцент только в точке. Вектора здесь нет
+/// намеренно — знак живёт как растр в фиксированных размерах, от 16 до 1024.
+pub struct LogoFile {
+    /// Имя файла в адресе `/assets/logo/<файл>`.
+    pub file: &'static str,
+    /// Содержимое PNG.
+    pub bytes: &'static [u8],
+}
+
+pub static LOGO_FILES: &[LogoFile] = &[
+    LogoFile { file: "hat-tile-16.png", bytes: include_bytes!("../../assets/logo/hat-tile-16.png") },
+    LogoFile { file: "hat-tile-32.png", bytes: include_bytes!("../../assets/logo/hat-tile-32.png") },
+    LogoFile { file: "hat-tile-48.png", bytes: include_bytes!("../../assets/logo/hat-tile-48.png") },
+    LogoFile { file: "hat-tile-180.png", bytes: include_bytes!("../../assets/logo/hat-tile-180.png") },
+    LogoFile { file: "hat-tile-192.png", bytes: include_bytes!("../../assets/logo/hat-tile-192.png") },
+    LogoFile { file: "hat-tile-512.png", bytes: include_bytes!("../../assets/logo/hat-tile-512.png") },
+    LogoFile { file: "hat-mark-64.png", bytes: include_bytes!("../../assets/logo/hat-mark-64.png") },
+    LogoFile { file: "hat-mark-512.png", bytes: include_bytes!("../../assets/logo/hat-mark-512.png") },
+];
+
+/// Логотип по имени файла: `None` — такого файла нет.
+pub fn logo_file(file: &str) -> Option<&'static LogoFile> {
+    LOGO_FILES.iter().find(|logo| logo.file == file)
+}
+
+/// Префикс адресов логотипа: `/assets/logo/<файл>`.
+pub const LOGO_PATH_PREFIX: &str = "/assets/logo/";
 
 /// Префикс адресов скриншотов кейсов: `/assets/projects/<файл>`.
 pub const PROJECT_IMAGE_PATH_PREFIX: &str = "/assets/projects/";
@@ -293,7 +312,7 @@ pub fn version() -> &'static str {
 
     VERSION.get_or_init(|| {
         let mut hasher = Sha256::new();
-        for part in [STYLE_CSS, MAIN_JS, MANIFEST_JSON, FAVICON_SVG, HABR_SVG] {
+        for part in [STYLE_CSS, MAIN_JS, MANIFEST_JSON, HABR_SVG] {
             hasher.update(part.as_bytes());
         }
         hasher.update(OG_IMAGE);

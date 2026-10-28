@@ -27,6 +27,7 @@
 use std::sync::RwLock;
 use std::time::Duration;
 
+use crate::api::assets;
 use crate::memory::content::SiteContent;
 use crate::services::article::Article;
 
@@ -43,7 +44,7 @@ pub const RESERVED_ROOT_NAMES: &[&str] = &[
     "sitemap.xml",
     "rss.xml",
     "feed.xml",
-    "favicon.svg",
+    "favicon.ico",
     "og.png",
 ];
 
@@ -670,6 +671,29 @@ pub fn page_meta(path: &str, site_url: &str, article: Option<&Article>) -> PageM
         };
     }
 
+    // Страница кейса: заголовок, описание и картинка — из самого кейса.
+    // Заголовок начинается с названия проекта, а не с имени автора: в выдаче
+    // ищут «голосовой бот для недвижимости», а не фамилию.
+    if let Some(slug) = path.strip_prefix("/projects/") {
+        let Some(project) = content.projects.iter().find(|p| p.slug == slug) else {
+            return not_found(base, name);
+        };
+        return PageMeta {
+            // Как у статей: «название — имя». «Кейс» в заголовке не приживается:
+            // имя автора стоит в именительном падеже, и «кейс Евгений Биль»
+            // читается как ошибка согласования.
+            title: format!("{} — {}", project.title.trim(), name),
+            description: clamp_description(&project.summary, DESCRIPTION_MAX),
+            canonical: absolute(base, &path),
+            og_type: OgType::Article,
+            image: Some(absolute(
+                base,
+                &assets::versioned(&assets::project_image_path(&project.image)),
+            )),
+            noindex: false,
+        };
+    }
+
     let skills = joined(&content.profile.skills, 70);
     let services = joined(
         &content
@@ -706,8 +730,8 @@ pub fn page_meta(path: &str, site_url: &str, article: Option<&Article>) -> PageM
             Some(default_og_image(base)),
         ),
         "/projects" => PageMeta::new(
-            format!("Проекты и кейсы «было → стало» — {name}"),
-            format!("Кейсы с цифрами: {projects}."),
+            format!("Проекты и кейсы — {name}"),
+            format!("Кейсы: {projects}. Задача, что сделано и что получилось — на странице каждого проекта."),
             absolute(base, "/projects"),
             OgType::Website,
             Some(default_og_image(base)),
@@ -735,12 +759,15 @@ pub fn page_meta(path: &str, site_url: &str, article: Option<&Article>) -> PageM
         ),
         // Админку закрывает и robots.txt, но `noindex` надёжнее: он сработает,
         // даже если страницу откроют по прямой ссылке из чужого индекса.
-        "/admin" => PageMeta {
+        // Админка целиком, вместе с разделами (`/admin/leads`, `/admin/articles`…).
+        // Один `noindex` на весь префикс: иначе раздел получал заголовок
+        // «Страница не найдена» — страница работает, а вкладка пугает.
+        other if other == "/admin" || other.starts_with("/admin/") => PageMeta {
             noindex: true,
             ..PageMeta::new(
                 format!("Админка — {name}"),
                 "Служебная страница: заявки, чаты, статьи и настройки сайта.".to_string(),
-                absolute(base, "/admin"),
+                absolute(base, other),
                 OgType::Website,
                 None,
             )

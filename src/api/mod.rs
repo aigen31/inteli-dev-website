@@ -31,11 +31,8 @@ pub const ROOT_ASSET_PATHS: &[&str] = &[
     "/sitemap.xml",
     "/rss.xml",
     "/feed.xml",
-    "/favicon.svg",
     "/og.png",
-    "/apple-touch-icon.png",
-    "/icon-192.png",
-    "/icon-512.png",
+    "/favicon.ico",
 ];
 
 /// Регистрирует все API-маршруты (без `.with_state` — его задаёт `main`).
@@ -109,16 +106,13 @@ pub fn routes(seo: &SeoConfig) -> Router<AppState> {
         .route("/assets/projects/:file", get(handlers::project_image))
         .route("/assets/fonts/:file", get(handlers::font_file))
         .route("/assets/hero/kiki-levitation.webp", get(handlers::hero_art))
-        .route("/apple-touch-icon.png", get(handlers::apple_touch_icon))
-        .route("/icon-192.png", get(handlers::icon_192))
-        .route("/icon-512.png", get(handlers::icon_512))
+        .route("/assets/logo/:file", get(handlers::logo_asset))
         .route("/media/:name", get(handlers::media_file))
         .route("/robots.txt", get(handlers::robots))
         .route("/manifest.json", get(handlers::manifest))
         .route("/sitemap.xml", get(handlers::sitemap))
         .route("/rss.xml", get(handlers::rss))
         .route("/feed.xml", get(handlers::rss))
-        .route("/favicon.svg", get(handlers::favicon))
         .route("/og.png", get(handlers::og_image));
 
     with_root_files(router, seo)

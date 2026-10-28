@@ -814,19 +814,12 @@ pub async fn sitemap(State(state): State<AppState>) -> impl IntoResponse {
     )
 }
 
+
 /// RSS-лента блога — канал для n8n RSS Feed Trigger.
 pub async fn rss(State(state): State<AppState>) -> impl IntoResponse {
     (
         [(header::CONTENT_TYPE, "application/rss+xml; charset=utf-8")],
         crate::services::feed::current_rss(state.articles.public_url()),
-    )
-}
-
-pub async fn favicon(raw: RawQuery) -> Response {
-    asset_response(
-        "image/svg+xml",
-        assets::FAVICON_SVG,
-        query_version(raw.0.as_deref()),
     )
 }
 
@@ -925,31 +918,23 @@ pub async fn hero_art(raw: RawQuery) -> Response {
         .into_response()
 }
 
-/// Иконка приложения: `/apple-touch-icon.png`, `/icon-192.png`, `/icon-512.png`.
+/// Логотип: `/assets/logo/<файл>`.
 ///
-/// Все три — PNG из одного SVG-тайла, отрендеренные заранее: iOS и Android не
-/// принимают SVG в качестве иконки установки.
-pub async fn apple_touch_icon() -> Response {
-    png_response(assets::APPLE_TOUCH_ICON)
-}
+/// Знак и иконки — PNG, отрендеренные из одной генерации в фиксированных
+/// размерах. Неизвестный файл — 404, а не пустая картинка: имена приходят из
+/// разметки, и опечатка должна быть видна сразу.
+pub async fn logo_asset(Path(file): Path<String>) -> Result<Response, ApiError> {
+    let logo = assets::logo_file(&file)
+        .ok_or_else(|| AppError::NotFound(format!("logo `{file}`")))?;
 
-pub async fn icon_192() -> Response {
-    png_response(assets::ICON_192)
-}
-
-pub async fn icon_512() -> Response {
-    png_response(assets::ICON_512)
-}
-
-fn png_response(body: &'static [u8]) -> Response {
-    (
+    Ok((
         [
             (header::CONTENT_TYPE, "image/png"),
             (header::CACHE_CONTROL, assets::CACHE_IMMUTABLE),
         ],
-        body,
+        logo.bytes,
     )
-        .into_response()
+        .into_response())
 }
 
 /// Обложка для соцсетей (`og:image`). Отдаётся как PNG: SVG не поддерживают
