@@ -369,9 +369,9 @@
       if (term) {
         var surface = surfaceFor(term);
         var answer = term.getAttribute('data-answer') || '';
+        // Подсказка остаётся на месте: человек может посмотреть второй термин,
+        // не перезагружая страницу. Раньше ряд исчезал после первого клика.
         if (surface && surface.reply) surface.reply(answer);
-        var group = term.closest('.assistant-terms');
-        if (group) group.hidden = true;
       }
     });
   }
@@ -2187,11 +2187,9 @@
     // Приглашение и кнопки-подсказки уступают место переписке после первого
     // вопроса: в компактной панели дорога каждая строка.
     function hideGreeting() {
+      // Термины и действия остаются: к ним возвращаются и после первого
+      // вопроса. Скрываем только приветствие.
       if (intro) intro.hidden = true;
-      // Термины в компактной панели уступают место переписке; действия — нет:
-      // «Оставить заявку» нужна в любой момент.
-      var terms = panel ? panel.querySelector('.assistant-terms') : null;
-      if (terms) terms.hidden = true;
     }
 
     function scrollMessages() {
