@@ -3473,7 +3473,7 @@ a:hover { color: #fff; }
    читается как видоискатель, а не как карточка, и не мешает фигуре выходить
    за её пределы. */
 .card-with-art {
-  grid-template-columns: minmax(0, 1fr) clamp(240px, 20vw, 300px);
+  grid-template-columns: minmax(0, 1fr) clamp(300px, 26vw, 390px);
   grid-template-areas:
     "icon aside"
     "title aside"
@@ -3564,7 +3564,7 @@ a:hover { color: #fff; }
 
 @media (max-width: 1023px) {
   .card-with-art {
-    grid-template-columns: minmax(0, 1fr) clamp(190px, 26vw, 260px);
+    grid-template-columns: minmax(0, 1fr) clamp(230px, 27vw, 280px);
     gap: 18px 28px;
   }
   .card-aside { padding-left: 20px; }
