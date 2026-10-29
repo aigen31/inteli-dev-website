@@ -349,19 +349,19 @@ pub const SERVICE_ART: [ServiceArt; 19] = [
     ServiceArt {
         slug: "ai-assistants",
         image: include_bytes!("../../assets/services/ai-assistants.png"),
-        width: 360,
+        width: 362,
         height: 760,
     },
     ServiceArt {
         slug: "ai-automation",
         image: include_bytes!("../../assets/services/ai-automation.png"),
-        width: 531,
+        width: 533,
         height: 760,
     },
     ServiceArt {
         slug: "ai-bots",
         image: include_bytes!("../../assets/services/ai-bots.png"),
-        width: 392,
+        width: 393,
         height: 760,
     },
     ServiceArt {
@@ -373,19 +373,19 @@ pub const SERVICE_ART: [ServiceArt; 19] = [
     ServiceArt {
         slug: "ai-vision",
         image: include_bytes!("../../assets/services/ai-vision.png"),
-        width: 312,
+        width: 313,
         height: 760,
     },
     ServiceArt {
         slug: "comfyui-media",
         image: include_bytes!("../../assets/services/comfyui-media.png"),
-        width: 338,
+        width: 340,
         height: 760,
     },
     ServiceArt {
         slug: "design-figma",
         image: include_bytes!("../../assets/services/design-figma.png"),
-        width: 325,
+        width: 326,
         height: 760,
     },
     ServiceArt {
@@ -397,19 +397,19 @@ pub const SERVICE_ART: [ServiceArt; 19] = [
     ServiceArt {
         slug: "email-campaigns",
         image: include_bytes!("../../assets/services/email-campaigns.png"),
-        width: 558,
+        width: 559,
         height: 760,
     },
     ServiceArt {
         slug: "fullstack-any",
         image: include_bytes!("../../assets/services/fullstack-any.png"),
-        width: 403,
+        width: 404,
         height: 760,
     },
     ServiceArt {
         slug: "legacy-refactor",
         image: include_bytes!("../../assets/services/legacy-refactor.png"),
-        width: 399,
+        width: 400,
         height: 760,
     },
     ServiceArt {
@@ -421,43 +421,43 @@ pub const SERVICE_ART: [ServiceArt; 19] = [
     ServiceArt {
         slug: "mobile-apps",
         image: include_bytes!("../../assets/services/mobile-apps.png"),
-        width: 323,
+        width: 324,
         height: 760,
     },
     ServiceArt {
         slug: "qa-testing",
         image: include_bytes!("../../assets/services/qa-testing.png"),
-        width: 477,
+        width: 478,
         height: 760,
     },
     ServiceArt {
         slug: "small-fixes",
         image: include_bytes!("../../assets/services/small-fixes.png"),
-        width: 380,
+        width: 382,
         height: 760,
     },
     ServiceArt {
         slug: "support",
         image: include_bytes!("../../assets/services/support.png"),
-        width: 333,
+        width: 335,
         height: 760,
     },
     ServiceArt {
         slug: "sysadmin-devops",
         image: include_bytes!("../../assets/services/sysadmin-devops.png"),
-        width: 456,
+        width: 457,
         height: 760,
     },
     ServiceArt {
         slug: "voice-ai",
         image: include_bytes!("../../assets/services/voice-ai.png"),
-        width: 320,
+        width: 321,
         height: 760,
     },
     ServiceArt {
         slug: "web-any",
         image: include_bytes!("../../assets/services/web-any.png"),
-        width: 464,
+        width: 461,
         height: 760,
     },
 ];
