@@ -4134,48 +4134,99 @@ a:hover { color: #fff; }
    должна накрывать поле имени. */
 #lead-form { scroll-margin-top: calc(var(--nav-offset) + 24px); }
 
-/* ---------- 17.20 Кнопки-действия в терминале ----------
-   Интерфейс говорит кнопками: «Оставить заявку», «Свободен?», «Услуги»,
-   «Почта», «Телеграм». Слэш-команд в интерфейсе нет. */
-.terminal-actions {
+/* ---------- 17.20 Быстрые действия и термины ----------
+   Подсказки внутри окна — не пилюли, а тихая строка: термин подчёркнут,
+   действия разделены точками. Пилюли в футере терминала весили больше самого
+   окна и спорили с полем ввода. */
+.terminal-suggest {
   display: flex;
   flex-wrap: wrap;
-  gap: 5px;
+  align-items: baseline;
+  gap: 4px 12px;
   padding: 0 18px 10px;
+  /* Не заезжать под маскота: он сидит на кромке футера справа. */
+  padding-right: calc(var(--mascot-w, 120px) * 0.9 + 18px);
 }
-.terminal-action {
-  padding: 5px 10px;
-  border: 1px solid var(--rule-strong);
-  border-radius: 999px;
+.terminal-suggest[hidden] { display: none; }
+.terminal-suggest-label {
+  font-family: var(--font-mono);
+  font-size: 0.58rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--color-text-tertiary);
+}
+.terminal-suggest-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  min-width: 0;
+}
+.terminal-question {
+  padding: 2px 0;
+  border: 0;
   background: transparent;
   color: var(--color-text-secondary);
   font-family: var(--font-mono);
+  font-size: 0.6rem;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-color: rgba(139, 127, 245, 0.45);
+  text-underline-offset: 3px;
+  transition: color var(--transition-fast);
+}
+.terminal-question:hover {
+  color: var(--color-text);
+  text-decoration-color: var(--color-primary);
+}
+.terminal-question:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+.terminal-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0;
+  padding: 0 18px 12px;
+}
+/* На телефоне строка действий переносится, и точка-разделитель оказывается в
+   начале второй строки. Меняем её на обычный отступ. */
+@media (max-width: 767px) {
+  .terminal-actions { gap: 10px; }
+  .terminal-action + .terminal-action::before { content: none; }
+  .terminal-suggest { padding-right: calc(var(--mascot-w, 96px) * 0.55 + 12px); }
+  .terminal-input { padding-right: calc(var(--mascot-w, 96px) * 0.8); }
+}
+.terminal-action {
+  padding: 2px 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--color-text-tertiary);
+  font-family: var(--font-mono);
   font-size: 0.62rem;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
   cursor: pointer;
-  transition: color var(--transition-fast), border-color var(--transition-fast),
-    background var(--transition-fast);
+  transition: color var(--transition-fast);
 }
-.terminal-action:hover {
-  color: var(--color-text);
-  border-color: rgba(255, 255, 255, 0.22);
-  background: rgba(255, 255, 255, 0.04);
+.terminal-action + .terminal-action::before {
+  content: "·";
+  margin: 0 9px;
+  opacity: 0.5;
 }
+.terminal-action:hover { color: var(--color-text); }
 .terminal-action:focus-visible {
   outline: 2px solid var(--color-primary);
   outline-offset: 2px;
 }
-/* Заявка — главное действие, поэтому единственная кнопка с акцентом. */
-.terminal-action-primary {
-  color: var(--color-text);
-  border-color: rgba(139, 127, 245, 0.55);
-  background: rgba(139, 127, 245, 0.12);
-}
-.terminal-action-primary:hover {
-  background: rgba(139, 127, 245, 0.2);
-  border-color: var(--color-primary);
-}
+/* Заявка — единственное действие с акцентом, и то без заливки. */
+.terminal-action-primary { color: var(--color-text); }
+.terminal-action-primary:hover { color: var(--color-primary); }
 
 /* Кнопка «Спросить» теперь видна всегда: на телефоне она перекрывает нижнюю
    строку контента, поэтому под подвалом оставляем место под неё. */
@@ -4234,3 +4285,10 @@ a:hover { color: #fff; }
 .admin-prices th:nth-child(6) { width: 6%; }
 .admin-prices th:nth-child(7) { width: 9%; }
 .admin-prices-toolbar { justify-content: flex-start; }
+
+/* Телефон: строка действий переносится — точка-разделитель в начале второй
+   строки читается как опечатка. Правило стоит после базового, иначе
+   `content: "·"` перебивает его. */
+@media (max-width: 767px) {
+  .terminal-action + .terminal-action::before { content: none; }
+}

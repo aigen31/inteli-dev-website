@@ -73,7 +73,7 @@ pub fn HeroTerminal() -> impl IntoView {
                     id="hero-terminal-input"
                     type="text"
                     class="terminal-input"
-                    placeholder="Спросите о проектах, статьях или ценах"
+                    placeholder="О проектах и ценах"
                     autocomplete="off"
                     maxlength=max_chars
                     aria-describedby="hero-terminal-hint"
@@ -111,6 +111,19 @@ pub fn HeroTerminal() -> impl IntoView {
 
             // Быстрые действия: то, что человек может сделать сам, без вопроса
             // к модели. Слэш-команд в интерфейсе нет — только эти кнопки.
+            // Термины сайта: человек не обязан знать, что такое MCP или
+            // локальный инференс, — кнопка сразу задаёт этот вопрос.
+            <div class="terminal-suggest" id="hero-terminal-suggest" role="group" aria-label="О терминах">
+                <span class="terminal-suggest-label">"О терминах"</span>
+                <div class="terminal-suggest-list">
+                    <button type="button" class="terminal-question" data-question="Что такое MCP и зачем он нужен?">"MCP"</button>
+                    <button type="button" class="terminal-question" data-question="Что такое AI Skills?">"AI Skills"</button>
+                    <button type="button" class="terminal-question" data-question="Что такое локальный инференс?">"Локальный инференс"</button>
+                    <button type="button" class="terminal-question" data-question="Что значит приватная AI-система?">"Приватная AI-система"</button>
+                    <button type="button" class="terminal-question" data-question="Что такое ComfyUI?">"ComfyUI"</button>
+                </div>
+            </div>
+
             <div class="terminal-actions" role="group" aria-label="Действия">
                 <button type="button" class="terminal-action terminal-action-primary" data-terminal-action="brief">
                     "Оставить заявку"

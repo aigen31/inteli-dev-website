@@ -2013,6 +2013,17 @@
       });
     });
 
+    // Термины: кнопка отправляет готовый вопрос и убирает подсказку, чтобы она
+    // не висела над перепиской.
+    var suggest = document.getElementById('hero-terminal-suggest');
+    terminal.querySelectorAll('.terminal-question').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        var question = btn.getAttribute('data-question') || btn.textContent;
+        if (suggest) suggest.hidden = true;
+        sendMessage(question, 'free');
+      });
+    });
+
     // Preset-кнопки
     terminal.querySelectorAll('.terminal-preset-btn').forEach(function(btn) {
       btn.addEventListener('click', function() {
@@ -2069,11 +2080,30 @@
     }
 
     // ---------- Видимость кнопки ----------
-    // Кнопка фиксированная и видна всегда: на главной, на внутренних страницах
-    // и до прокрутки. Раньше она появлялась только после обложки (или после
-    // первого открытия) — то есть её приходилось искать.
-    function showFab() {
-      fab.hidden = false;
+    // Кнопка фиксированная, но появляется только после обложки: в первом экране
+    // уже есть «Задать вопрос», и второй такой же вход — шум. На внутренних
+    // страницах обложки нет, там кнопка видна сразу.
+    var hero = document.getElementById('hero-terminal')
+      ? document.querySelector('.hero')
+      : null;
+
+    function heroPassed() {
+      return !hero || hero.getBoundingClientRect().bottom <= 0;
+    }
+
+    function syncFab() {
+      // Открытую панель прокрутка прятать не должна: человек сам её открыл.
+      fab.hidden = panel.hidden ? !heroPassed() : false;
+    }
+
+    var ticking = false;
+    function onScroll() {
+      if (ticking) return;
+      ticking = true;
+      window.requestAnimationFrame(function () {
+        ticking = false;
+        syncFab();
+      });
     }
 
     // ---------- Открытие и закрытие ----------
@@ -2082,7 +2112,7 @@
       fab.hidden = false;
       fab.classList.add('is-open');
       toggle.setAttribute('aria-expanded', 'true');
-      showFab();
+      syncFab();
       input.focus();
     }
 
@@ -2090,7 +2120,7 @@
       panel.hidden = true;
       fab.classList.remove('is-open');
       toggle.setAttribute('aria-expanded', 'false');
-      showFab();
+      syncFab();
       toggle.focus();
     }
 
@@ -2202,7 +2232,9 @@
       if (e.key === 'Escape' && !panel.hidden) closePanel();
     });
 
-    showFab();
+    window.addEventListener('scroll', onScroll, { passive: true });
+    window.addEventListener('resize', onScroll);
+    syncFab();
   }
 
   // ---------- Кнопки: radial spotlight под курсором (без box-shadow) ----------
