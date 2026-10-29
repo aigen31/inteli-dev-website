@@ -26,8 +26,8 @@ const SLIDER_COUNT: usize = 4;
 pub fn HeroTerminal() -> impl IntoView {
     let max_chars = Limits::get().chat_message_max_chars;
     let chat_hint = Limits::get().chat_hint();
-    // Контакты нужны командам терминала (`/mail`, `/tg`): они не ходят на
-    // сервер, поэтому данные приходят вместе с разметкой.
+    // Контакты нужны кнопкам «Почта» и «Телеграм»: они не ходят на сервер,
+    // поэтому данные приходят вместе с разметкой.
     let contacts = SiteContent::get().profile.contacts.clone();
     // Версия в адресе обязательна: кадры кэшируются на год (см. assets.rs).
     // Все пять кадров лежат в разметке сразу: смена эмоции — это атрибут, а не
@@ -73,7 +73,7 @@ pub fn HeroTerminal() -> impl IntoView {
                     id="hero-terminal-input"
                     type="text"
                     class="terminal-input"
-                    placeholder="Задайте вопрос..."
+                    placeholder="Спросите о проектах, статьях или ценах"
                     autocomplete="off"
                     maxlength=max_chars
                     aria-describedby="hero-terminal-hint"
@@ -106,14 +106,11 @@ pub fn HeroTerminal() -> impl IntoView {
             // Лимиты те же, что на /chat: числа берутся из общего Limits.
             <p class="field-hint terminal-hint" id="hero-terminal-hint">
                 <span>{chat_hint}</span>
-                <span class="terminal-hint-sep" aria-hidden="true">"·"</span>
-                <span>"/help — все команды"</span>
                 <span class="char-count" data-counter-for="hero-terminal-input" aria-hidden="true"></span>
             </p>
 
-            // Кнопки-действия: то, что человек может сделать сам, без вопроса к
-            // модели. Команды остались как ускоритель (`/brief`), но интерфейс
-            // говорит на языке клиента, а не консоли.
+            // Быстрые действия: то, что человек может сделать сам, без вопроса
+            // к модели. Слэш-команд в интерфейсе нет — только эти кнопки.
             <div class="terminal-actions" role="group" aria-label="Действия">
                 <button type="button" class="terminal-action terminal-action-primary" data-terminal-action="brief">
                     "Оставить заявку"
@@ -224,10 +221,10 @@ pub fn Home() -> impl IntoView {
                     <p class="eyebrow"><span class="eyebrow-dot" aria-hidden="true"></span>{"Терминал"}</p>
                     <h2>Спросите Кики</h2>
                     <p class="section-note">
-                        "Она знает услуги, сроки и стек. Отвечает сразу — без формы и ожидания письма."
+                        "Она знает проекты, статьи и цены из прайс-листа. Отвечает сразу — без формы и ожидания письма."
                     </p>
                     <ul class="terminal-facts">
-                        <li><span class="terminal-fact-num mono">01</span>{"Ответ по услугам, срокам и стеку"}</li>
+                        <li><span class="terminal-fact-num mono">01</span>{"Ответ по кейсам, статьям и ценам"}</li>
                         <li><span class="terminal-fact-num mono">02</span>{"Три ответа в час, без регистрации"}</li>
                         <li><span class="terminal-fact-num mono">03</span>{"Не хватит ответа — оставите заявку"}</li>
                     </ul>

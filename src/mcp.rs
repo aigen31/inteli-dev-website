@@ -73,6 +73,13 @@ pub const TOOLS: &[Tool] = &[
         schema: search_schema,
     },
     Tool {
+        name: "find_articles",
+        description: "Статьи блога сайта: разборы задач, решений и технологий. \
+                      Использовать, когда спрашивают «писали ли вы об этом» или просят \
+                      материал по теме.",
+        schema: search_schema,
+    },
+    Tool {
         name: "get_prices",
         description: "Актуальный прайс-лист с сайта. Его ведёт владелец в админке, \
                       поэтому это единственный правильный источник цен.",
@@ -139,6 +146,7 @@ pub async fn call(state: &AppState, name: &str, arguments: &Value) -> ToolResult
         "search_site" => search(state, arguments).await,
         "list_services" => ToolResult::ok(list_services()),
         "find_cases" => find_cases(arguments),
+        "find_articles" => find_articles(&state.db, arguments).await,
         "get_prices" => get_prices(state).await,
         "get_availability" => ToolResult::ok(availability_text()),
         "get_contacts" => ToolResult::ok(contacts_text()),
@@ -330,6 +338,64 @@ fn find_cases(arguments: &Value) -> ToolResult {
     ToolResult::ok(lines.join("\n"))
 }
 
+/// Статьи блога по тексту запроса: заголовок, теги и краткое описание.
+async fn find_articles(db: &sqlx::SqlitePool, arguments: &Value) -> ToolResult {
+    let query = arguments
+        .get("query")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .trim();
+
+    let articles = match crate::storage::article::list_published_full(db).await {
+        Ok(rows) => rows,
+        Err(e) => return ToolResult::err(format!("Не удалось прочитать статьи: {e}")),
+    };
+
+    if articles.is_empty() {
+        return ToolResult::ok("На сайте пока нет опубликованных статей.".to_string());
+    }
+
+    let tokens = tokenize(query);
+    let mut scored: Vec<(usize, &crate::storage::article::ArticleRow)> = articles
+        .iter()
+        .map(|article| {
+            let haystack = format!(
+                "{} {} {}",
+                article.title, article.summary, article.tags
+            );
+            let base = score(&haystack, &tokens);
+            let title = score(&article.title, &tokens);
+            (base + title * 2, article)
+        })
+        .filter(|(score, _)| *score > 0 || tokens.is_empty())
+        .collect();
+    scored.sort_by(|a, b| b.0.cmp(&a.0));
+
+    if scored.is_empty() {
+        return ToolResult::ok(format!(
+            "Статей по «{query}» нет. Скажи прямо и предложи посмотреть /blog."
+        ));
+    }
+
+    let mut lines = vec!["# Статьи блога".to_string()];
+    for (_, article) in scored.iter().take(3) {
+        let published = article
+            .published_at
+            .as_deref()
+            .map(|date| date.chars().take(10).collect::<String>())
+            .unwrap_or_default();
+        lines.push(format!(
+            "\n- {} ({}) — /blog/{}\n  {}",
+            article.title,
+            published,
+            article.slug,
+            first_sentence(&article.summary)
+        ));
+    }
+
+    ToolResult::ok(lines.join("\n"))
+}
+
 fn project_block(project: &Project) -> String {
     let stack = if project.stack.is_empty() {
         String::new()
@@ -428,6 +494,16 @@ pub async fn context_for(db: &sqlx::SqlitePool, question: &str) -> String {
         parts.push(availability_text());
     }
 
+    // Статьи — по своему поводу: иначе модель пересказывает блог вместо ответа.
+    if has_any(&q, &["стат", "блог", "читал", "написал", "разбор", "материал", "текст"]) {
+        let articles = find_articles(db, &json!({ "query": question })).await;
+        // В контекст идут только реальные статьи (у них есть адрес /blog/…):
+        // «статей нет» — тоже ответ, но модели он не нужен.
+        if !articles.is_error && articles.text.contains("/blog/") {
+            parts.push(limit_chars(articles.text, 900));
+        }
+    }
+
     parts.join("\n\n")
 }
 
@@ -477,9 +553,10 @@ pub fn initialize_result() -> Value {
         "protocolVersion": PROTOCOL_VERSION,
         "capabilities": { "tools": { "listChanged": false } },
         "serverInfo": { "name": SERVER_NAME, "version": env!("CARGO_PKG_VERSION") },
-        "instructions": "Инструменты сайта inteli.dev: кейсы, услуги, прайс, занятость, \
-                         контакты. Сначала ищи кейс под задачу через find_cases или \
-                         search_site, цены бери только из get_prices."
+        "instructions": "Инструменты сайта inteli.dev: кейсы, статьи блога, услуги, прайс, \
+                         занятость, контакты. Кейс под задачу ищи через find_cases или \
+                         search_site, материалы — через find_articles, цены бери только из \
+                         get_prices."
     })
 }
 

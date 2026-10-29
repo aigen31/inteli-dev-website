@@ -1875,7 +1875,7 @@
     welcomeLine.className = 'terminal-line terminal-welcome';
     output.appendChild(welcomeLine);
     // Маскота зовут Кики — приветствие знакомит с ней до первого вопроса.
-    typeText(welcomeLine, '> Привет! Я Кики. Спрашивайте о задачах, услугах, ценах или оставьте заявку.', function() {
+    typeText(welcomeLine, '> Привет! Я Кики. Расскажу о проектах, статьях и ценах из прайса. Или оставьте заявку.', function() {
       // Фокус на загрузке больше не забираем: терминал стоит отдельной секцией
       // ниже обложки, и автофокус уводил страницу вниз мимо hero. Фокус
       // приходит по клику в поле или по кнопке-пресету.
@@ -1934,129 +1934,63 @@
       }
     }
 
-    // ---------- Команды ----------
-    // Команды живут в браузере: ни токенов, ни квоты, ни ожидания. Смысл —
-    // не пересказывать то, что уже есть на сайте, а вести туда или делать
-    // действие: открыть форму, скопировать почту, запустить аудит ссылки.
+    // ---------- Быстрые действия ----------
+    // Всё живёт в браузере: ни токенов, ни квоты, ни ожидания. Смысл — не
+    // пересказывать то, что уже есть на сайте, а вести туда или делать
+    // действие: открыть форму, скопировать почту, написать в телеграм.
     var contactEmail = terminal.getAttribute('data-email') || '';
     var contactTelegram = terminal.getAttribute('data-telegram') || '';
     var lastQuestion = '';
 
-    var HELP_LINES = [
-      'Команды — без обращения к модели:',
-      '  /brief          форма заявки, поле «задача» заполнится вопросом',
-      '  /status         свободен ли я сейчас',
-      '  /price          ориентиры по услугам',
-      '  /services /projects /blog /contact /chat   перейти на страницу',
-      '  /mail           скопировать почту',
-      '  /tg             открыть телеграм',
-      '  /clear          очистить ленту'
-    ].join('\n');
-
-    function appendBlock(text) {
-      text.split('\n').forEach(function (line) {
-        appendLine('terminal-command-result', line);
-      });
-    }
-
-    function go(path) {
-      appendLine('terminal-command-line', '$ > cd ' + path);
-      window.location.href = path;
+    // Короткая служебная строка в ленте — для подтверждений, не для ответов.
+    function note(text) {
+      appendLine('terminal-note', text);
     }
 
     function brief() {
-      // Вопрос, который человек не дописал словами, переносится в форму: ему
-      // не нужно вспоминать, о чём он спрашивал.
+      // Вопрос, который человек уже написал, переносится в форму: ему не нужно
+      // вспоминать, о чём он спрашивал.
       var topic = lastQuestion ? lastQuestion : '';
-      var href = '/contact?topic=' + encodeURIComponent(topic) + '#lead-form';
-      appendLine('terminal-command-line', '$ > ' + (topic ? 'brief --topic "' + topic + '"' : 'brief'));
-      window.location.href = href;
+      window.location.href = '/contact?topic=' + encodeURIComponent(topic) + '#lead-form';
     }
 
     function copyEmail() {
       if (!contactEmail) {
-        appendBlock('Почта не настроена. Форма заявки: /contact');
+        note('Почта не настроена — оставьте заявку через форму.');
         return;
       }
-      function done() { appendBlock('Почта скопирована: ' + contactEmail + '\nИли сразу: /contact'); }
+      function done() { note('Почта скопирована: ' + contactEmail); }
       if (navigator.clipboard && navigator.clipboard.writeText) {
         navigator.clipboard.writeText(contactEmail).then(done, function () {
-          appendBlock(contactEmail);
+          note(contactEmail);
         });
       } else {
-        appendBlock(contactEmail);
+        note(contactEmail);
       }
     }
 
-    function runCommand(text) {
-      var parts = text.trim().split(/\s+/);
-      var cmd = parts[0].toLowerCase();
-      if (cmd.charAt(0) !== '/') return false;
-      var arg = parts.slice(1).join(' ');
-
-      switch (cmd) {
-        case '/help':
-        case '/?':
-          appendLine('terminal-command-line', '$ > help');
-          appendBlock(HELP_LINES);
-          return true;
-        case '/clear':
-          output.innerHTML = '';
-          return true;
-        case '/brief':
-          brief();
-          return true;
-        case '/status':
-          appendLine('terminal-command-line', '$ > status');
-          sendMessage('Когда свободны?', 'availability', { preset_index: 5 }, true);
-          return true;
-        case '/price':
-          appendLine('terminal-command-line', '$ > price');
-          sendMessage('Сколько стоит?', 'preset', { preset_index: 2 }, true);
-          return true;
-        case '/mail':
-          appendLine('terminal-command-line', '$ > mail');
-          copyEmail();
-          return true;
-        case '/tg':
-          appendLine('terminal-command-line', '$ > tg');
-          if (contactTelegram) {
-            window.open('https://t.me/' + contactTelegram.replace(/^@/, ''), '_blank', 'noopener');
-          } else {
-            appendBlock('Телеграм не настроен. Форма: /contact');
-          }
-          return true;
-        case '/services':
-          go('/services');
-          return true;
-        case '/projects':
-          go('/projects');
-          return true;
-        case '/blog':
-          go('/blog');
-          return true;
-        case '/contact':
-          go('/contact');
-          return true;
-        case '/chat':
-          go('/chat');
-          return true;
-        case '/home':
-          go('/');
-          return true;
-        default:
-          appendLine('terminal-command-line', '$ > ' + cmd);
-          appendBlock('Неизвестная команда: ' + cmd + '\nСписок: /help');
-          return true;
+    function openTelegram() {
+      if (!contactTelegram) {
+        note('Телеграм не настроен — оставьте заявку через форму.');
+        return;
       }
+      window.open('https://t.me/' + contactTelegram.replace(/^@/, ''), '_blank', 'noopener');
     }
+
+    var ACTIONS = {
+      brief: brief,
+      status: function () {
+        sendMessage('Когда свободны?', 'availability', { preset_index: 5 }, true);
+      },
+      services: function () { window.location.href = '/services'; },
+      mail: copyEmail,
+      tg: openTelegram
+    };
 
     // ---------- Обработчики событий ----------
     function handleSend() {
       var text = input.value.trim();
       if (!text) return;
-      // Команда выполняется сразу и не уходит в API: это действие, а не вопрос.
-      if (runCommand(text)) { input.value = ''; return; }
       var max = tooLong(input, text);
       if (max) {
         appendLine('terminal-line-warn', 'Вопрос длиннее ' + max + ' символов — сократите его, пожалуйста.');
@@ -2071,11 +2005,11 @@
       if (e.key === 'Enter') handleSend();
     });
 
-    // Кнопки-действия: выполняют команду сразу, без вопроса к модели.
+    // Быстрые действия: выполняются сразу, без вопроса к модели.
     terminal.querySelectorAll('[data-terminal-action]').forEach(function(btn) {
       btn.addEventListener('click', function() {
-        var action = btn.getAttribute('data-terminal-action');
-        runCommand('/' + action);
+        var action = ACTIONS[btn.getAttribute('data-terminal-action')];
+        if (action) action();
       });
     });
 
