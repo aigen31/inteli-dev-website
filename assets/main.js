@@ -2108,8 +2108,6 @@
   // уже открывал чат, кнопка показывается сразу, без прокрутки, и переживает
   // обновление страницы. Ключ в localStorage, а не в sessionStorage: визит —
   // это не вкладка.
-  var CHAT_FAB_STORAGE_KEY = 'inteli:chat-opened';
-
   function initFloatingChat() {
     var fab = document.getElementById('chat-fab');
     if (!fab) return;
@@ -2122,13 +2120,6 @@
     var sendBtn = document.getElementById('chat-fab-send');
     var intro = document.getElementById('chat-fab-intro');
     var presets = document.getElementById('chat-fab-presets');
-    // Кнопка нужна там, где терминала из hero не видно. Терминал есть только на
-    // главной: на остальных страницах (в том числе на 404, где секция `.hero`
-    // тоже есть) привязываться не к чему, и кнопка видна сразу.
-    var hero = document.getElementById('hero-terminal')
-      ? document.querySelector('.hero')
-      : null;
-
     var isWaiting = false;
     var MIN_TYPING_MS = 500; // как на /chat: индикатор не должен «мигать»
 
@@ -2144,52 +2135,20 @@
     }
 
     // ---------- Видимость кнопки ----------
-    // Приватный режим и запрет хранилища не должны ломать чат: без памяти
-    // кнопка просто ведёт себя как при первом визите.
-    var remembered = false;
-    try {
-      remembered = window.localStorage.getItem(CHAT_FAB_STORAGE_KEY) === '1';
-    } catch (e) {
-      remembered = false;
-    }
-
-    function heroPassed() {
-      return !hero || hero.getBoundingClientRect().bottom <= 0;
-    }
-
-    function syncVisibility() {
-      // Открытую панель прокрутка прятать не должна: человек сам её открыл.
-      if (panel && !panel.hidden) { fab.hidden = false; return; }
-      fab.hidden = !(remembered || heroPassed());
-    }
-
-    var ticking = false;
-    function onScroll() {
-      if (ticking) return;
-      ticking = true;
-      window.requestAnimationFrame(function () {
-        ticking = false;
-        syncVisibility();
-      });
+    // Кнопка фиксированная и видна всегда: на главной, на внутренних страницах
+    // и до прокрутки. Раньше она появлялась только после обложки (или после
+    // первого открытия) — то есть её приходилось искать.
+    function showFab() {
+      fab.hidden = false;
     }
 
     // ---------- Открытие и закрытие ----------
-    function remember() {
-      remembered = true;
-      try {
-        window.localStorage.setItem(CHAT_FAB_STORAGE_KEY, '1');
-      } catch (e) {
-        // Запомнить не вышло — кнопка останется видимой до конца этой страницы.
-      }
-    }
-
     function openPanel() {
       panel.hidden = false;
       fab.hidden = false;
       fab.classList.add('is-open');
       toggle.setAttribute('aria-expanded', 'true');
-      remember();
-      syncVisibility();
+      showFab();
       input.focus();
     }
 
@@ -2197,7 +2156,7 @@
       panel.hidden = true;
       fab.classList.remove('is-open');
       toggle.setAttribute('aria-expanded', 'false');
-      syncVisibility();
+      showFab();
       toggle.focus();
     }
 
@@ -2309,12 +2268,7 @@
       if (e.key === 'Escape' && !panel.hidden) closePanel();
     });
 
-    // Скролл через requestAnimationFrame: обработчик не должен считать
-    // геометрию на каждое событие прокрутки.
-    window.addEventListener('scroll', onScroll, { passive: true });
-    window.addEventListener('resize', onScroll);
-
-    syncVisibility();
+    showFab();
   }
 
   // ---------- Кнопки: radial spotlight под курсором (без box-shadow) ----------

@@ -213,7 +213,7 @@ pub fn Layout(children: Children) -> impl IntoView {
         // (терминал прокручен / чат уже открывали) и вся переписка — в
         // `initFloatingChat` (`assets/main.js`).
         {chat_widget.then(|| view! {
-            <div class="chat-fab" id="chat-fab" hidden>
+            <div class="chat-fab" id="chat-fab">
                 <section
                     class="chat-fab-panel"
                     id="chat-fab-panel"

@@ -2979,7 +2979,10 @@ body::after {
     radial-gradient(52vw 40vw at 42% 108%, rgba(139, 127, 245, 0.1), transparent 68%);
 }
 
-.main, .footer, .chat-fab, .chat-panel { position: relative; z-index: 1; }
+/* `.chat-fab` в этом списке не должно быть: `position: relative` перебивал
+   `fixed` из компонента, и кнопка «Спросить» уезжала в поток в самый низ
+   документа вместо правого нижнего угла экрана. */
+.main, .footer, .chat-panel { position: relative; z-index: 1; }
 .navbar { position: fixed; z-index: 100; }
 
 ::selection { background: rgba(139, 127, 245, 0.32); color: #fff; }
@@ -4178,6 +4181,12 @@ a:hover { color: #fff; }
 .terminal-action-primary:hover {
   background: rgba(139, 127, 245, 0.2);
   border-color: var(--color-primary);
+}
+
+/* Кнопка «Спросить» теперь видна всегда: на телефоне она перекрывает нижнюю
+   строку контента, поэтому под подвалом оставляем место под неё. */
+@media (max-width: 767px) {
+  body { padding-bottom: 84px; }
 }
 
 /* ---------- 17.21 Прайс в админке ----------
