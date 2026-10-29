@@ -1315,6 +1315,251 @@ async fn only_published_articles_reach_rss_and_sitemap() {
     assert!(sitemap.contains("<loc>https://test.inteli-dev.ru/</loc>"));
     assert!(sitemap.contains("<loc>https://test.inteli-dev.ru/blog/publichnaya-statya</loc>"));
     assert!(!sitemap.contains("chernovik"));
+    // Кейсы — такие же страницы сайта, как услуги и блог: без них карта
+    // рассказывает поисковику только про половину сайта.
+    assert!(
+        sitemap.contains("<loc>https://test.inteli-dev.ru/projects/coffee-b2b-platform</loc>"),
+        "в карте сайта нет страниц кейсов: {sitemap}"
+    );
+}
+
+
+/// Список кейсов: карточки во всю ширину, со скриншотом и ссылкой на страницу.
+///
+/// Тест держит три вещи, которые легко разъедутся: пункт «Было» из карточек
+/// убран (это был ярлык сравнения, а не факт), каждая карточка ведёт на свою
+/// страницу, и картинка у карточки — из `/assets/projects/`, а не заглушка.
+#[tokio::test]
+async fn projects_list_links_to_each_case() {
+    let _guard = seo_lock();
+    let state = test_state().await;
+    let projects = inteli_dev::memory::content::SiteContent::get()
+        .projects
+        .clone();
+    assert!(projects.len() >= 6, "кейсов слишком мало для портфолио");
+
+    let (status, _, html) = get_page(&state, "/projects").await;
+    assert_eq!(status, StatusCode::OK);
+
+    assert!(
+        !html.contains("Было"),
+        "в карточках остался пункт «Было» — он убран из разметки"
+    );
+
+    for project in &projects {
+        let href = format!("href=\"{}\"", project.url_path());
+        assert!(
+            html.contains(&href),
+            "нет ссылки на страницу кейса {}",
+            project.url_path()
+        );
+        assert!(
+            html.contains(&project.title),
+            "нет заголовка кейса «{}»",
+            project.title
+        );
+        let image = format!("/assets/projects/{}", project.image);
+        assert!(
+            html.contains(&image),
+            "у кейса «{}» нет картинки {image}",
+            project.title
+        );
+    }
+}
+
+/// Страница кейса: факты из портфолио, скриншот и переходы к соседним кейсам.
+#[tokio::test]
+async fn project_page_shows_the_case() {
+    let _guard = seo_lock();
+    let state = test_state().await;
+    inteli_dev::services::seo::set_site_url(test_public_url());
+    inteli_dev::services::seo::set_counters(None, None);
+
+    let project = inteli_dev::memory::content::SiteContent::get().projects[0].clone();
+    let path = project.url_path();
+    let (status, _, html) = get_page(&state, &path).await;
+    assert_eq!(status, StatusCode::OK, "{path}");
+
+    // Заголовок страницы — название кейса, а не главной.
+    let title = between(&html, "<title>", "</title>").unwrap_or_default();
+    assert!(
+        title.contains(&project.title),
+        "{path}: в title нет названия кейса — {title}"
+    );
+    assert_eq!(
+        canonical_href(&html).as_deref(),
+        Some(format!("{}{path}", test_public_url()).as_str()),
+        "{path}: canonical должен вести на сам кейс"
+    );
+    assert!(
+        html.contains(&format!(r#"<h1>{}</h1>"#, project.title)),
+        "{path}: нет H1 с названием кейса"
+    );
+
+    // Содержание — из данных кейса, а не из шаблона.
+    assert!(html.contains(&project.task), "{path}: нет задачи");
+    for item in &project.solution {
+        assert!(html.contains(item.as_str()), "{path}: нет пункта решения «{item}»");
+    }
+    for item in &project.result {
+        assert!(html.contains(item.as_str()), "{path}: нет пункта результата «{item}»");
+    }
+
+    // Скриншот кейса — тот же файл, что в карточке, и он же годится для og:image.
+    let image = format!("/assets/projects/{}", project.image);
+    assert!(html.contains(&image), "{path}: нет скриншота {image}");
+    assert!(
+        og_content(&html, "og:image").is_some_and(|og| og.contains(&image)),
+        "{path}: og:image не ведёт на скриншот кейса"
+    );
+
+    // Переходы по кругу: у первого кейса оба соседа существуют.
+    assert!(
+        html.contains("project-nav-prev") && html.contains("project-nav-next"),
+        "{path}: нет переходов к соседним кейсам"
+    );
+}
+
+/// Несуществующий кейс — настоящий 404, а не пустая страница с кодом 200.
+#[tokio::test]
+async fn unknown_project_is_a_noindex_404() {
+    let _guard = seo_lock();
+    let state = test_state().await;
+    inteli_dev::services::seo::set_site_url(test_public_url());
+
+    let (status, _, html) = get_page(&state, "/projects/no-such-case").await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    assert!(
+        html.contains(r#"<meta name="robots" content="noindex"#),
+        "404 должен быть закрыт от индексации"
+    );
+    assert!(canonical_href(&html).is_none(), "у 404 не должно быть canonical");
+}
+
+/// Скриншоты кейсов отдаются как WebP и кэшируются по версии в адресе.
+#[tokio::test]
+async fn project_screenshots_are_served_as_webp() {
+    let state = test_state().await;
+    let version = inteli_dev::api::assets::version();
+
+    let (status, headers, _) =
+        get_page(&state, &format!("/assets/projects/coffee-b2b-platform.webp?v={version}")).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(headers[header::CONTENT_TYPE], "image/webp");
+    assert!(headers[header::CACHE_CONTROL]
+        .to_str()
+        .unwrap()
+        .contains("immutable"));
+
+    // Опечатка в имени файла — 404, а не пустая картинка.
+    let (status, _, _) = get_page(&state, "/assets/projects/no-such-image.webp").await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+}
+
+/// Админка разделена по адресам: у каждого раздела свой заголовок, ровно один
+/// активный пункт меню и только его данные.
+///
+/// Раньше это была одна страница со всеми таблицами подряд: ссылку на заявки
+/// нельзя было отправить, а обновление возвращало в начало. Тест держит
+/// границы разделов — иначе при следующей правке они снова съедутся в одну
+/// страницу, и никто этого не заметит.
+#[tokio::test]
+async fn admin_sections_live_on_their_own_urls() {
+    let _guard = seo_lock();
+    let state = test_state().await;
+    inteli_dev::services::seo::set_site_url(test_public_url());
+
+    // адрес, заголовок, свой контейнер, контейнер чужого раздела
+    let sections = [
+        ("/admin", "Обзор", "admin-kpi", "admin-articles-table"),
+        ("/admin/leads", "Заявки", "admin-leads-table", "admin-chats-table"),
+        ("/admin/chats", "Чаты", "admin-chats-table", "admin-leads-table"),
+        ("/admin/articles", "Статьи", "admin-articles-table", "admin-outbox-table"),
+        ("/admin/outbox", "Кросспостинг", "admin-outbox-table", "admin-settings"),
+        ("/admin/settings", "Приём заявок", "admin-settings", "admin-leads-table"),
+    ];
+
+    for (path, title, own_id, foreign_id) in sections {
+        let (status, _, html) = get_page(&state, path).await;
+        assert_eq!(status, StatusCode::OK, "{path}");
+
+        assert!(
+            html.contains(&format!("<h1>{title}</h1>")),
+            "{path}: заголовок страницы не «{title}»"
+        );
+        assert!(
+            html.contains(&format!("id=\"{own_id}\"")),
+            "{path}: нет контейнера раздела {own_id}"
+        );
+        assert!(
+            !html.contains(&format!("id=\"{foreign_id}\"")),
+            "{path}: раздел тянет чужой контейнер {foreign_id}"
+        );
+
+        // Активен ровно один пункт меню — и это текущий раздел.
+        let active = html.matches("aria-current=\"page\"").count();
+        assert_eq!(active, 1, "{path}: активных пунктов меню {active}");
+        let active_at = html.find("aria-current=\"page\"").expect("активный пункт");
+        let tag_start = html[..active_at].rfind('<').expect("начало тега");
+        let tag = &html[tag_start..active_at];
+        assert!(
+            tag.contains(&format!("href=\"{path}\"")),
+            "{path}: активен не этот раздел, а {tag}"
+        );
+
+        assert!(
+            html.contains(r#"<meta name="robots" content="noindex"#),
+            "{path}: админка не закрыта от индексации"
+        );
+        assert!(
+            !html.contains("Страница не найдена"),
+            "{path}: раздел отдаёт заголовок 404, хотя страница работает"
+        );
+    }
+
+    // Раздел без адреса — 404, а не «обзор» с подменой содержимого.
+    let (status, _, _) = get_page(&state, "/admin/no-such-section").await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+}
+
+/// «Результаты» на главной — слайдер: четыре слайда, стрелки и точки-ссылки.
+///
+/// Проверяем то, что легко потерять при правке вёрстки: лента одна, слайдов
+/// ровно четыре (не весь портфолио), стрелки приходят выключенными (без скрипта
+/// нажимать их нечем), а точки остаются ссылками на якоря — они работают даже
+/// без JS.
+#[tokio::test]
+async fn home_results_are_a_slider() {
+    let _guard = seo_lock();
+    let state = test_state().await;
+
+    let (status, _, html) = get_page(&state, "/").await;
+    assert_eq!(status, StatusCode::OK);
+
+    assert!(html.contains("id=\"project-slider\""), "нет ленты слайдера");
+    assert_eq!(
+        html.matches("class=\"project-slide\"").count(),
+        4,
+        "в слайдере не четыре кейса"
+    );
+
+    for arrow in ["prev", "next"] {
+        let button = tag_with(&html, &format!("data-slider=\"{arrow}\""));
+        assert!(
+            button.contains("disabled"),
+            "стрелка {arrow} активна до инициализации — без скрипта она мертва"
+        );
+        assert!(button.contains("aria-label="), "у стрелки {arrow} нет имени");
+    }
+
+    assert_eq!(html.matches("class=\"slider-dot\"").count(), 4);
+    assert!(
+        html.contains("href=\"#project-slide-4\""),
+        "последняя точка не ведёт на четвёртый слайд"
+    );
+
+    // Карточки в слайдере — те же ссылки на страницы кейсов.
+    assert!(html.contains("href=\"/projects/voice-ai-real-estate\""));
 }
 
 // ---------------------------------------------------------------------------
@@ -1951,13 +2196,16 @@ async fn every_page_except_chat_carries_the_floating_chat() {
         "в компактной панели нет кнопок-подсказок"
     );
 
-    // Исключение одно — сама страница чата: там диалог занимает весь экран, и
-    // вторая кнопка «Спросить» дублировала бы поле ввода под ней.
-    let (_, _, chat) = get_page(&state, "/chat").await;
-    assert!(
-        !chat.contains("id=\"chat-fab\""),
-        "на /chat плавающая кнопка дублирует сам чат"
-    );
+    // Исключения два: страница чата (там диалог занимает весь экран, и вторая
+    // кнопка «Спросить» дублировала бы поле ввода) и админка (гостевая кнопка
+    // поверх таблиц владельцу не нужна).
+    for path in ["/chat", "/admin", "/admin/articles"] {
+        let (_, _, html) = get_page(&state, path).await;
+        assert!(
+            !html.contains("id=\"chat-fab\""),
+            "{path}: плавающая кнопка чата мешает"
+        );
+    }
 }
 
 /// Ссылка «Читать на Хабр» — в начале текста и только когда адрес заполнен.
