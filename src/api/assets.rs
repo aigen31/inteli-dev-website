@@ -350,7 +350,7 @@ pub const SERVICE_ART: [ServiceArt; 19] = [
         slug: "ai-assistants",
         image: include_bytes!("../../assets/services/ai-assistants.png"),
         width: 760,
-        height: 760,
+        height: 680,
     },
     ServiceArt {
         slug: "ai-automation",
@@ -367,13 +367,13 @@ pub const SERVICE_ART: [ServiceArt; 19] = [
     ServiceArt {
         slug: "ai-mcp",
         image: include_bytes!("../../assets/services/ai-mcp.png"),
-        width: 760,
+        width: 676,
         height: 760,
     },
     ServiceArt {
         slug: "ai-vision",
         image: include_bytes!("../../assets/services/ai-vision.png"),
-        width: 760,
+        width: 744,
         height: 760,
     },
     ServiceArt {
@@ -385,7 +385,7 @@ pub const SERVICE_ART: [ServiceArt; 19] = [
     ServiceArt {
         slug: "design-figma",
         image: include_bytes!("../../assets/services/design-figma.png"),
-        width: 760,
+        width: 710,
         height: 760,
     },
     ServiceArt {
@@ -403,14 +403,14 @@ pub const SERVICE_ART: [ServiceArt; 19] = [
     ServiceArt {
         slug: "fullstack-any",
         image: include_bytes!("../../assets/services/fullstack-any.png"),
-        width: 760,
+        width: 744,
         height: 760,
     },
     ServiceArt {
         slug: "legacy-refactor",
         image: include_bytes!("../../assets/services/legacy-refactor.png"),
         width: 760,
-        height: 760,
+        height: 751,
     },
     ServiceArt {
         slug: "local-private-dev",
@@ -433,7 +433,7 @@ pub const SERVICE_ART: [ServiceArt; 19] = [
     ServiceArt {
         slug: "small-fixes",
         image: include_bytes!("../../assets/services/small-fixes.png"),
-        width: 760,
+        width: 708,
         height: 760,
     },
     ServiceArt {
@@ -451,7 +451,7 @@ pub const SERVICE_ART: [ServiceArt; 19] = [
     ServiceArt {
         slug: "voice-ai",
         image: include_bytes!("../../assets/services/voice-ai.png"),
-        width: 760,
+        width: 643,
         height: 760,
     },
     ServiceArt {
