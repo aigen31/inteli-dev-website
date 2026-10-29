@@ -176,9 +176,13 @@ pub fn ServiceCard(service: Service, #[prop(default = 3)] level: u8) -> impl Int
     // как видоискатель. Alt называет услугу — по нему картинку находят, когда
     // она не загрузилась.
     let art_alt = format!("Кики: {}", service.title);
+    // Локальный инференс просили показать чуть крупнее: картинка выходит
+    // за рамку видоискателя, чтобы фигура читалась объёмнее. Правится только
+    // подача, сам файл иллюстрации не меняется.
+    let art_bleed = service.slug == "local-private-dev";
 
     view! {
-        <article class="card" class:card-with-art=art.is_some() data-category=category>
+        <article class="card" class:card-with-art=art.is_some() class:card-art-bleed=art_bleed data-category=category>
             <div class="card-icon" aria-hidden="true"><LucideIcon name=service.icon_name/></div>
             {heading}
             <p class="card-text">{service.description}</p>

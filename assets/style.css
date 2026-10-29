@@ -3559,6 +3559,14 @@ a:hover { color: #fff; }
     drop-shadow(0 0 22px rgba(139, 127, 245, 0.5));
   transform: scale(1.015);
 }
+/* Локальный инференс: чуть крупнее и с выходом за рамку ради объёма.
+   Сам файл не трогаем — только масштаб подачи. */
+.card-art-bleed .card-art {
+  transform: scale(1.065);
+}
+.card-art-bleed:hover .card-art {
+  transform: scale(1.08);
+}
 .card:hover .card-plate::before { opacity: 1; }
 .card-with-art .card-price { align-self: flex-end; margin: 0; }
 
