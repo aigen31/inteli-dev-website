@@ -10,6 +10,7 @@
 //! Обе ленты строятся из [`PublishedArticles`], то есть черновики и архив в них
 //! попасть не могут по построению.
 
+use crate::memory::content::SiteContent;
 use crate::services::article::{Article, ArticleHead, PublishedArticles};
 use crate::utils::markdown;
 
@@ -78,16 +79,26 @@ pub fn rss_xml(articles: &[Article], public_url: &str) -> String {
     out
 }
 
-/// Собирает карту сайта: статические страницы + опубликованные статьи.
-pub fn sitemap_xml(articles: &[ArticleHead], public_url: &str) -> String {
+/// Собирает карту сайта: статические страницы, кейсы и опубликованные статьи.
+///
+/// Слаги кейсов передаёт вызывающий, как и статьи: функция остаётся чистой и
+/// проверяемой, без чтения глобального контента изнутри.
+pub fn sitemap_xml(articles: &[ArticleHead], project_slugs: &[String], public_url: &str) -> String {
     let base = public_url.trim_end_matches('/');
-    let mut out = String::with_capacity(512 + articles.len() * 256);
+    let mut out = String::with_capacity(512 + articles.len() * 256 + project_slugs.len() * 96);
 
     out.push_str("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
     out.push_str("<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">\n");
 
     for page in STATIC_PAGES {
         out.push_str(&format!("  <url><loc>{base}{page}</loc></url>\n"));
+    }
+
+    for slug in project_slugs {
+        out.push_str(&format!(
+            "  <url><loc>{base}/projects/{}</loc></url>\n",
+            escape_xml(slug)
+        ));
     }
 
     for article in articles {
@@ -150,7 +161,12 @@ pub fn current_rss(public_url: &str) -> String {
 
 /// Снимок карты сайта для текущего состояния сайта.
 pub fn current_sitemap(public_url: &str) -> String {
-    sitemap_xml(&PublishedArticles::heads(), public_url)
+    let projects: Vec<String> = SiteContent::get()
+        .projects
+        .iter()
+        .map(|project| project.slug.clone())
+        .collect();
+    sitemap_xml(&PublishedArticles::heads(), &projects, public_url)
 }
 
 #[cfg(test)]
@@ -230,11 +246,12 @@ mod tests {
     #[test]
     fn sitemap_lists_static_pages_and_articles() {
         let head = article("hello", "t", "body").head();
-        let xml = sitemap_xml(&[head], "https://x.ru");
+        let xml = sitemap_xml(&[head], &["coffee-b2b-platform".to_string()], "https://x.ru");
 
         assert!(xml.contains("<loc>https://x.ru/</loc>"));
         assert!(xml.contains("<loc>https://x.ru/blog</loc>"));
         assert!(xml.contains("<loc>https://x.ru/blog/hello</loc>"));
+        assert!(xml.contains("<loc>https://x.ru/projects/coffee-b2b-platform</loc>"));
         assert!(xml.contains("<lastmod>2026-09-24</lastmod>"));
     }
 
