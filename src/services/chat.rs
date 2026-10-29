@@ -692,7 +692,6 @@ mod tests {
         let resp = svc.answer(preset_req(index), None).await.unwrap();
 
         let services = crate::memory::content::SiteContent::get().services.clone();
-        assert_eq!(services.len(), 6);
         for service in &services {
             assert!(resp.answer.contains(&service.title), "нет услуги «{}»", service.title);
             // Полное описание в ответе не помещается — и не должно.

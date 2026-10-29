@@ -125,16 +125,30 @@ pub async fn replace_all(
     Ok(())
 }
 
-/// Первый запуск: прайс собирается из услуг контента.
-pub async fn seed_if_empty(pool: &SqlitePool, updated_at: &str) -> AppResult<bool> {
-    let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM price_items")
-        .fetch_one(pool)
-        .await?;
-    if count > 0 {
+/// Ключ в `site_settings` с отпечатком каталога услуг.
+const CATALOG_HASH_KEY: &str = "price_catalog_hash";
+
+/// Синхронизация прайса с каталогом услуг.
+///
+/// Прайс — не копия услуг, а отдельная таблица, которую владелец правит в
+/// админке. Но когда каталог меняется целиком (новая услуга, переименование,
+/// другие цены), старые строки начинают врать. Поэтому при старте сравниваем
+/// отпечаток каталога: изменился — пересобираем прайс из услуг; не изменился —
+/// оставляем ручные правки владельца нетронутыми.
+pub async fn sync_with_services(pool: &SqlitePool, updated_at: &str) -> AppResult<bool> {
+    let content = crate::memory::content::SiteContent::get();
+    let hash = catalog_hash(&content.services);
+
+    let stored: Option<String> =
+        sqlx::query_scalar("SELECT value FROM site_settings WHERE key = ?")
+            .bind(CATALOG_HASH_KEY)
+            .fetch_optional(pool)
+            .await?;
+
+    if stored.as_deref() == Some(hash.as_str()) {
         return Ok(false);
     }
 
-    let content = crate::memory::content::SiteContent::get();
     let items: Vec<PriceItem> = content
         .services
         .iter()
@@ -153,7 +167,42 @@ pub async fn seed_if_empty(pool: &SqlitePool, updated_at: &str) -> AppResult<boo
         .collect();
 
     replace_all(pool, &items, updated_at).await?;
+
+    sqlx::query(
+        r#"INSERT INTO site_settings (key, value, updated_at) VALUES (?, ?, ?)
+           ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at"#,
+    )
+    .bind(CATALOG_HASH_KEY)
+    .bind(hash)
+    .bind(updated_at)
+    .execute(pool)
+    .await?;
+
     Ok(true)
+}
+
+/// Отпечаток каталога: ключ, название и цена каждой услуги.
+///
+/// FNV-1a, а не криптография: нужен только признак «каталог изменился», а не
+/// защита от подделки.
+fn catalog_hash(services: &[crate::memory::content::Service]) -> String {
+    let mut hash: u64 = 0xcbf29ce484222325;
+    for service in services {
+        for part in [
+            service.slug.as_str(),
+            service.title.as_str(),
+            service.price_from.as_deref().unwrap_or(""),
+            service.price_to.as_deref().unwrap_or(""),
+        ] {
+            for byte in part.as_bytes() {
+                hash ^= u64::from(*byte);
+                hash = hash.wrapping_mul(0x100000001b3);
+            }
+            hash ^= 0xff;
+            hash = hash.wrapping_mul(0x100000001b3);
+        }
+    }
+    format!("{hash:016x}")
 }
 
 #[cfg(test)]
