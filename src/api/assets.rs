@@ -350,7 +350,7 @@ pub const SERVICE_ART: [ServiceArt; 19] = [
         slug: "ai-assistants",
         image: include_bytes!("../../assets/services/ai-assistants.png"),
         width: 760,
-        height: 603,
+        height: 675,
     },
     ServiceArt {
         slug: "ai-automation",
