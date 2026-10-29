@@ -1,30 +1,22 @@
 //! Страница AI-чата.
 //!
-//! Рендерит preset-кнопки, область сообщений и поле ввода. Вся интерактивность
-//! (отправка в POST /api/chat, рендер ответов) — в `assets/main.js`.
+//! Рендерит готовые вопросы, область сообщений и поле ввода. Вся
+//! интерактивность (отправка в POST /api/chat, рендер ответов) — в
+//! `assets/main.js`.
 //!
-//! Кнопки берутся из [`crate::services::chat::PRESETS`] — единого источника
-//! правды. Свой список здесь означал бы, что подпись и индекс кнопки могут
-//! разойтись с тем, как её обрабатывает сервер.
+//! Готовые вопросы — те же термины из [`crate::services::glossary`], что и в
+//! терминале на главной: слаг кнопки один на все поверхности, поэтому подпись
+//! и ответ не могут разойтись. Старые кнопки-пресеты («Кто вы», «Сколько
+//! стоит») убраны: они дублировали обложку и цены.
 
 use leptos::prelude::*;
 
 use crate::limits::Limits;
-use crate::services::chat::PRESETS;
 use crate::services::goals;
 use crate::ui::shared::{GlossaryLinks, QuickActions};
 
 #[component]
 pub fn Chat() -> impl IntoView {
-    // Только те вопросы, которых нет среди терминов и быстрых действий:
-    // «Оставить заявку» и «Когда свободны?» дублировали кнопки под полем,
-    // а «Локальный инференс» — термин в глоссарии.
-    let presets = PRESETS
-        .iter()
-        .filter(|p| p.index <= 2)
-        .map(|p| (p.label.to_string(), p.kind.to_string(), p.index))
-        .collect::<Vec<_>>();
-
     let max_chars = Limits::get().chat_message_max_chars;
     let chat_hint = Limits::get().chat_hint();
 
@@ -34,22 +26,11 @@ pub fn Chat() -> impl IntoView {
                 <p class="eyebrow"><span class="eyebrow-dot" aria-hidden="true"></span>{"Диалог с Кики"}</p>
                 <h1>Задайте вопрос</h1>
             </div>
-            <p class="subtitle">Отвечу на вопросы об услугах, ценах и сроках.</p>
+            <p class="subtitle">{"Отвечу о проектах, статьях и ценах. Или выберите готовый вопрос ниже."}</p>
 
             // `data-goal` — цель «диалог начат» (см. `services::goals`).
             // initChat() отправляет её один раз, после первого ответа сервера.
             <div class="chat-container" id="chat-app" data-goal=goals::CHAT_STARTED>
-                <div class="preset-buttons" role="group" aria-label="Частые вопросы">
-                    {presets.into_iter().map(|(label, kind, index)| view! {
-                        <button
-                            type="button"
-                            class="preset-button"
-                            data-kind=kind
-                            data-index=index.to_string()
-                        >{label}</button>
-                    }).collect::<Vec<_>>()}
-                </div>
-
                 // Термины объясняются готовым текстом: без запроса к модели.
                 <GlossaryLinks/>
 

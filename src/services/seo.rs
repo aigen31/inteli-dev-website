@@ -744,8 +744,8 @@ pub fn page_meta(path: &str, site_url: &str, article: Option<&Article>) -> PageM
             Some(default_og_image(base)),
         ),
         "/chat" => PageMeta::new(
-            format!("Задать вопрос об услугах и сроках — {name}"),
-            "AI-ассистент отвечает про услуги, цены и сроки и помнит контекст разговора. Заявка — в один клик, без регистрации.".to_string(),
+            format!("Задать вопрос о проектах и ценах — {name}"),
+            "AI-ассистент отвечает про проекты, статьи и цены и помнит контекст разговора. Готовые вопросы объясняют термины; заявка — в один клик.".to_string(),
             absolute(base, "/chat"),
             OgType::Website,
             Some(default_og_image(base)),
