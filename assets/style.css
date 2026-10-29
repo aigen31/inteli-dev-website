@@ -3465,6 +3465,53 @@ a:hover { color: #fff; }
   color: var(--color-text-tertiary);
 }
 
+/* Иллюстрация Кики в карточке услуги.
+   Каталог услуг — справочник, поэтому рисунок стоит на одном и том же месте:
+   правая колонка, волосяная линия, цена под фигурой. Кадр достаточно крупный,
+   чтобы читались лицо, шляпа и предмет в руках, и при этом на экран 900 px
+   помещаются две карточки — страница не превращается в галерею, где тонет
+   текст. */
+.card-with-art {
+  grid-template-columns: minmax(0, 1fr) clamp(220px, 26vw, 380px);
+  grid-template-areas:
+    "icon aside"
+    "title aside"
+    "text aside";
+  gap: 24px 48px;
+  align-items: start;
+  padding: 30px 0 34px;
+}
+.card-aside {
+  grid-area: aside;
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  align-items: flex-end;
+  gap: 10px;
+  min-width: 0;
+  padding-left: clamp(16px, 2vw, 32px);
+  border-left: 1px solid var(--rule);
+}
+.card-art {
+  width: 100%;
+  height: clamp(240px, 32vh, 350px);
+  object-fit: contain;
+  object-position: bottom center;
+  margin: auto 0 0;
+  transition: filter var(--transition-fast);
+}
+.card:hover .card-art { filter: brightness(1.06); }
+.card-with-art .card-price { align-self: flex-end; margin: 0; }
+
+@media (max-width: 1023px) {
+  .card-with-art {
+    grid-template-columns: minmax(0, 1fr) clamp(170px, 26vw, 250px);
+    gap: 18px 32px;
+  }
+  .card-art { height: clamp(200px, 30vh, 280px); }
+}
+
 /* ---------- 17.9 Кейсы: строка «экран + текст» ----------
    Скриншот во всю ширину карточки весил больше, чем сам кейс: белый кадр
    1920×1080 занимал два экрана и перебивал текст. Теперь кейс — строка:
@@ -4118,11 +4165,20 @@ a:hover { color: #fff; }
 @media (max-width: 767px) {
   .card {
     grid-template-columns: 1fr;
-    grid-template-areas: "icon" "title" "text" "price";
+    grid-template-areas: "icon" "title" "text" "aside";
     min-height: 0;
     gap: 14px;
     padding: 26px 0 30px;
   }
+  /* Иллюстрация уходит под текст во всю ширину: две колонки оставляли
+     описанию 240 px и растягивали карточку на экран с лишним. */
+  .card-aside {
+    margin-top: 8px;
+    padding: 10px 0 0;
+    border-left: 0;
+    border-top: 1px solid var(--rule);
+  }
+  .card-art { height: 220px; }
   .card-price { justify-self: start; margin: 2px 0 0; }
   .card-title { font-size: clamp(1.75rem, 8.4vw, 2.4rem); max-width: none; }
   .card-text { font-size: 0.94rem; }

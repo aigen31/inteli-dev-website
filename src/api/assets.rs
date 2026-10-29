@@ -327,6 +327,151 @@ pub const FAVICON_SVG: &str = include_str!("../../assets/favicon.svg");
 /// Префикс адресов скриншотов кейсов: `/assets/projects/<файл>`.
 pub const PROJECT_IMAGE_PATH_PREFIX: &str = "/assets/projects/";
 
+
+/// Иллюстрация к услуге: файл, содержимое и размеры.
+///
+/// Кики для карточек услуг: тот же персонаж, что в hero, но в другой роли —
+/// у каждой услуги свой предмет. Файлы лежат рядом с кодом и вшиваются в
+/// бинарник: карточка услуги не должна зависеть от базы медиа.
+pub struct ServiceArt {
+    /// Слаг услуги — он же имя файла без расширения.
+    pub slug: &'static str,
+    pub image: &'static [u8],
+    pub width: u32,
+    pub height: u32,
+}
+
+/// Префикс адреса иллюстраций услуг.
+pub const SERVICE_ART_PATH_PREFIX: &str = "/assets/services/";
+
+/// Все иллюстрации услуг.
+pub const SERVICE_ART: [ServiceArt; 19] = [
+    ServiceArt {
+        slug: "ai-assistants",
+        image: include_bytes!("../../assets/services/ai-assistants.png"),
+        width: 360,
+        height: 760,
+    },
+    ServiceArt {
+        slug: "ai-automation",
+        image: include_bytes!("../../assets/services/ai-automation.png"),
+        width: 531,
+        height: 760,
+    },
+    ServiceArt {
+        slug: "ai-bots",
+        image: include_bytes!("../../assets/services/ai-bots.png"),
+        width: 392,
+        height: 760,
+    },
+    ServiceArt {
+        slug: "ai-mcp",
+        image: include_bytes!("../../assets/services/ai-mcp.png"),
+        width: 377,
+        height: 760,
+    },
+    ServiceArt {
+        slug: "ai-vision",
+        image: include_bytes!("../../assets/services/ai-vision.png"),
+        width: 312,
+        height: 760,
+    },
+    ServiceArt {
+        slug: "comfyui-media",
+        image: include_bytes!("../../assets/services/comfyui-media.png"),
+        width: 338,
+        height: 760,
+    },
+    ServiceArt {
+        slug: "design-figma",
+        image: include_bytes!("../../assets/services/design-figma.png"),
+        width: 325,
+        height: 760,
+    },
+    ServiceArt {
+        slug: "desktop-apps",
+        image: include_bytes!("../../assets/services/desktop-apps.png"),
+        width: 481,
+        height: 760,
+    },
+    ServiceArt {
+        slug: "email-campaigns",
+        image: include_bytes!("../../assets/services/email-campaigns.png"),
+        width: 558,
+        height: 760,
+    },
+    ServiceArt {
+        slug: "fullstack-any",
+        image: include_bytes!("../../assets/services/fullstack-any.png"),
+        width: 403,
+        height: 760,
+    },
+    ServiceArt {
+        slug: "legacy-refactor",
+        image: include_bytes!("../../assets/services/legacy-refactor.png"),
+        width: 399,
+        height: 760,
+    },
+    ServiceArt {
+        slug: "local-private-dev",
+        image: include_bytes!("../../assets/services/local-private-dev.png"),
+        width: 454,
+        height: 760,
+    },
+    ServiceArt {
+        slug: "mobile-apps",
+        image: include_bytes!("../../assets/services/mobile-apps.png"),
+        width: 323,
+        height: 760,
+    },
+    ServiceArt {
+        slug: "qa-testing",
+        image: include_bytes!("../../assets/services/qa-testing.png"),
+        width: 477,
+        height: 760,
+    },
+    ServiceArt {
+        slug: "small-fixes",
+        image: include_bytes!("../../assets/services/small-fixes.png"),
+        width: 380,
+        height: 760,
+    },
+    ServiceArt {
+        slug: "support",
+        image: include_bytes!("../../assets/services/support.png"),
+        width: 333,
+        height: 760,
+    },
+    ServiceArt {
+        slug: "sysadmin-devops",
+        image: include_bytes!("../../assets/services/sysadmin-devops.png"),
+        width: 456,
+        height: 760,
+    },
+    ServiceArt {
+        slug: "voice-ai",
+        image: include_bytes!("../../assets/services/voice-ai.png"),
+        width: 320,
+        height: 760,
+    },
+    ServiceArt {
+        slug: "web-any",
+        image: include_bytes!("../../assets/services/web-any.png"),
+        width: 464,
+        height: 760,
+    },
+];
+
+/// Адрес иллюстрации услуги.
+pub fn service_art_path(slug: &str) -> String {
+    format!("{SERVICE_ART_PATH_PREFIX}{slug}.png")
+}
+
+/// Иллюстрация по слагу услуги: `None` — для этой услуги рисунка нет.
+pub fn service_art(slug: &str) -> Option<&'static ServiceArt> {
+    SERVICE_ART.iter().find(|art| art.slug == slug)
+}
+
 /// Адрес скриншота кейса по имени файла.
 pub fn project_image_path(file: &str) -> String {
     format!("{PROJECT_IMAGE_PATH_PREFIX}{file}")

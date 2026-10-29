@@ -111,6 +111,7 @@ pub fn routes(seo: &SeoConfig) -> Router<AppState> {
         .route("/assets/habr.svg", get(handlers::habr_icon))
         .route("/assets/mascot/:file", get(handlers::mascot_image))
         .route("/assets/projects/:file", get(handlers::project_image))
+        .route("/assets/services/:file", get(handlers::service_image))
         .route("/assets/fonts/:file", get(handlers::font_file))
         .route("/assets/hero/kiki-levitation.webp", get(handlers::hero_art))
         .route("/assets/logo/:file", get(handlers::logo_asset))

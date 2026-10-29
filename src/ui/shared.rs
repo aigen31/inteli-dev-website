@@ -164,12 +164,39 @@ pub fn ServiceCard(service: Service, #[prop(default = 3)] level: u8) -> impl Int
 
     let category = service.category.clone();
 
+    // Иллюстрация Кики: у каждой услуги свой предмет. Если для слага рисунка
+    // нет (контент из OpenViking опередил код), карточка остаётся текстовой.
+    let art = crate::api::assets::service_art(&service.slug);
+    let art_src = art.map(|a| {
+        crate::api::assets::versioned(&crate::api::assets::service_art_path(a.slug))
+    });
+    let art_size = art.map(|a| (a.width, a.height));
+    // Подпись у увеличенной картинки: в лайтбоксе видно только её, поэтому имя
+    // услуги должно быть в alt, а не пустая строка.
+    let art_alt = format!("Кики: {}", service.title);
+
     view! {
-        <article class="card" data-category=category>
+        <article class="card" class:card-with-art=art.is_some() data-category=category>
             <div class="card-icon" aria-hidden="true"><LucideIcon name=service.icon_name/></div>
             {heading}
             <p class="card-text">{service.description}</p>
-            <span class="card-price">{price}</span>
+            <div class="card-aside">
+                {art_src.map(|src| {
+                    let (width, height) = art_size.unwrap_or((480, 620));
+                    view! {
+                        <img
+                            class="card-art"
+                            src=src
+                            alt=art_alt
+                            width=width
+                            height=height
+                            loading="lazy"
+                            decoding="async"
+                        />
+                    }
+                })}
+                <span class="card-price">{price}</span>
+            </div>
         </article>
     }
 }

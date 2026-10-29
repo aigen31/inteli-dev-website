@@ -1025,6 +1025,29 @@ pub async fn project_image(Path(file): Path<String>, raw: RawQuery) -> Result<Re
         .into_response())
 }
 
+/// Иллюстрация услуги: `/assets/services/<слаг>.png`.
+///
+/// PNG с прозрачным фоном: карточка ставит рисунок на свою подложку, поэтому
+/// альфа обязательна. Имя файла — это слаг услуги; версия в адресе считается
+/// по содержимому, как у остальных встроенных ресурсов.
+pub async fn service_image(Path(file): Path<String>, raw: RawQuery) -> Result<Response, ApiError> {
+    let slug = file.strip_suffix(".png").unwrap_or(&file);
+    let art = assets::service_art(slug)
+        .ok_or_else(|| AppError::NotFound(format!("service art `{file}`")))?;
+
+    Ok((
+        [
+            (header::CONTENT_TYPE, "image/png"),
+            (
+                header::CACHE_CONTROL,
+                asset_cache_control(query_version(raw.0.as_deref())),
+            ),
+        ],
+        art.image,
+    )
+        .into_response())
+}
+
 /// Шрифт: `/assets/fonts/<файл>`.
 ///
 /// Кэш долгий и без версии в адресе: `@font-face` ссылается на файл из CSS, и
