@@ -385,8 +385,8 @@ pub const SERVICE_ART: [ServiceArt; 19] = [
     ServiceArt {
         slug: "design-figma",
         image: include_bytes!("../../assets/services/design-figma.png"),
-        width: 760,
-        height: 739,
+        width: 750,
+        height: 772,
     },
     ServiceArt {
         slug: "desktop-apps",
