@@ -162,8 +162,10 @@ pub fn ServiceCard(service: Service, #[prop(default = 3)] level: u8) -> impl Int
     };
     let heading = card_heading(level, "card-title", service.title.clone(), None);
 
+    let category = service.category.clone();
+
     view! {
-        <article class="card">
+        <article class="card" data-category=category>
             <div class="card-icon" aria-hidden="true"><LucideIcon name=service.icon_name/></div>
             {heading}
             <p class="card-text">{service.description}</p>

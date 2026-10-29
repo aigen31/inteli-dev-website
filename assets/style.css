@@ -4313,3 +4313,136 @@ a:hover { color: #fff; }
 .admin-prices th:nth-child(7) { width: 9%; }
 .admin-prices-toolbar { justify-content: flex-start; }
 
+
+/* ---------- 17.21 Фильтр услуг ----------
+   Каталог из девятнадцати направлений — это уже не страница, а справочник:
+   без категорий его читают сверху вниз и уходят. Фильтр сделан тихой строкой
+   моно-подписей с цифрами, а не рядом крупных кнопок: он служит чтению, а не
+   спорит с заголовками услуг.
+
+   Строка прилипает к шапке: каталог длинный, и возвращаться наверх за
+   категорией — лишний жест. */
+.service-filter {
+  position: sticky;
+  top: var(--nav-height, 64px);
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-lg);
+  margin: var(--space-lg) 0 var(--space-md);
+  padding: 10px 0;
+  background: var(--color-bg);
+  border-top: 1px solid var(--rule);
+  border-bottom: 1px solid var(--rule);
+}
+.service-filter-rail {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+.service-filter-rail::-webkit-scrollbar { display: none; }
+
+.filter-chip {
+  position: relative;
+  flex: none;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--color-text-tertiary);
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color var(--transition-fast);
+}
+.filter-chip:hover { color: var(--color-text); }
+.filter-chip:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: -2px;
+}
+/* Активная категория: волосяная линия и светлый текст. Никакой заливки —
+   иначе фильтр становится главным объектом страницы. */
+.filter-chip::after {
+  content: "";
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  bottom: 4px;
+  height: 1px;
+  background: var(--color-primary);
+  opacity: 0;
+  transform: scaleX(0.4);
+  transition: opacity var(--transition-fast), transform var(--transition-fast);
+}
+.filter-chip.is-active { color: var(--color-text); }
+.filter-chip.is-active::after { opacity: 1; transform: scaleX(1); }
+
+.filter-count {
+  font-size: 0.54rem;
+  letter-spacing: 0.04em;
+  color: var(--color-text-tertiary);
+  opacity: 0.7;
+  /* Цифра стоит над базовой линией, как сноска, — не мешает читать подпись. */
+  vertical-align: super;
+  line-height: 0;
+}
+.filter-chip.is-active .filter-count { color: var(--color-primary); opacity: 1; }
+
+.service-filter-status {
+  flex: none;
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 0.58rem;
+  letter-spacing: 0.06em;
+  color: var(--color-text-tertiary);
+  white-space: nowrap;
+}
+
+/* `[hidden]` из браузерных стилей слабее `.card { display: grid }`, поэтому
+   скрытие категории без этого правила не работало: карточки оставались на
+   экране, хотя в DOM были hidden. */
+#services-list .card[hidden] { display: none; }
+
+/* Появление карточек после переключения: короткий подъём, без «прыжка». */
+.card.is-filtered-in { animation: filter-card-in 240ms ease-out both; }
+@keyframes filter-card-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+
+.service-empty {
+  margin: var(--space-xl) 0 0;
+  padding: var(--space-lg) 0;
+  border-top: 1px solid var(--rule);
+  color: var(--color-text-secondary);
+  font-size: var(--text-body);
+}
+
+@media (max-width: 767px) {
+  .service-filter {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 2px;
+    /* На телефоне строка не липнет: она занимает треть экрана. */
+    position: static;
+  }
+  /* Край ленты растворяется: видно, что категории продолжаются вправо. */
+  .service-filter-rail {
+    gap: 0;
+    padding-bottom: 2px;
+    mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
+  }
+  .filter-chip { padding: 8px; font-size: 0.58rem; }
+  .service-filter-status { display: none; }
+}

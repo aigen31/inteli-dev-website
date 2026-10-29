@@ -515,6 +515,75 @@
     });
   }
 
+  // ---------- Фильтр услуг ----------
+  //
+  // Каталог длинный, поэтому категории — это переключатель, а не ссылки:
+  // карточки уже в разметке, скрываем ненужные. Ноль запросов, позиция
+  // страницы не прыгает, выбор переживает перезагрузку через `?cat=`.
+  function initServiceFilter() {
+    var root = document.getElementById('service-filter');
+    var list = document.getElementById('services-list');
+    if (!root || !list) return;
+
+    var chips = Array.prototype.slice.call(root.querySelectorAll('[data-filter]'));
+    var cards = Array.prototype.slice.call(list.querySelectorAll('.card'));
+    var status = document.getElementById('service-filter-status');
+    var empty = document.getElementById('services-empty');
+    var reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    function plural(n, forms) {
+      var mod10 = n % 10;
+      var mod100 = n % 100;
+      if (mod10 === 1 && mod100 !== 11) return forms[0];
+      if (mod10 >= 2 && mod10 <= 4 && (mod100 < 10 || mod100 >= 20)) return forms[1];
+      return forms[2];
+    }
+
+    function apply(key, updateUrl) {
+      var shown = 0;
+
+      cards.forEach(function (card) {
+        var visible = key === 'all' || (card.getAttribute('data-category') || 'none') === key;
+        card.hidden = !visible;
+        if (visible && !reduced) {
+          card.classList.remove('is-filtered-in');
+          // Перезапуск анимации без чтения offsetWidth в цикле: rAF на кадр.
+          window.requestAnimationFrame(function () { card.classList.add('is-filtered-in'); });
+        }
+        if (visible) shown++;
+      });
+
+      chips.forEach(function (chip) {
+        var active = chip.getAttribute('data-filter') === key;
+        chip.classList.toggle('is-active', active);
+        chip.setAttribute('aria-pressed', active ? 'true' : 'false');
+      });
+
+      if (empty) empty.hidden = shown !== 0;
+      if (status) {
+        status.textContent = shown + ' ' + plural(shown, ['услуга', 'услуги', 'услуг']);
+      }
+
+      if (updateUrl) {
+        var url = new URL(window.location.href);
+        if (key === 'all') url.searchParams.delete('cat');
+        else url.searchParams.set('cat', key);
+        window.history.replaceState(null, '', url.pathname + url.search + url.hash);
+      }
+    }
+
+    root.addEventListener('click', function (event) {
+      var chip = event.target.closest('[data-filter]');
+      if (!chip) return;
+      apply(chip.getAttribute('data-filter'), true);
+    });
+
+    // Категория из адреса — чтобы ссылку на «Боты» можно было отправить.
+    var initial = new URL(window.location.href).searchParams.get('cat');
+    var known = chips.some(function (chip) { return chip.getAttribute('data-filter') === initial; });
+    apply(known && initial ? initial : 'all', false);
+  }
+
   // ---------- Форма заявки ----------
   function initLeadForm() {
     var form = document.getElementById('lead-form');
@@ -2700,6 +2769,7 @@
 
   initReveal();
   initAssistantTools();
+  initServiceFilter();
   initMobileNav();
   initStatusBadge();
   initCharCounters();

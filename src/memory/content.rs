@@ -38,6 +38,10 @@ pub struct AuthorProfile {
 pub struct Service {
     pub slug: String,
     pub title: String,
+    /// Категория для фильтра на `/services`: ai, web, infra, design, quality.
+    /// Пустая строка — услуга попадёт в «Прочее».
+    #[serde(default)]
+    pub category: String,
     pub icon_name: String,  // имя иконки Lucide (outline SVG)
     pub description: String,
     pub price_from: Option<String>,
@@ -227,6 +231,7 @@ pub fn fallback_content() -> SiteContent {
         services: vec![
             Service {
                 slug: "local-private-dev".into(),
+                category: "ai".into(),
                 title: "Приватная разработка в локальном инференсе".into(),
                 icon_name: "brain-circuit".into(),
                 description:
@@ -236,6 +241,7 @@ pub fn fallback_content() -> SiteContent {
             },
             Service {
                 slug: "ai-mcp".into(),
+                category: "ai".into(),
                 title: "MCP-серверы и AI Skills".into(),
                 icon_name: "plug-zap".into(),
                 description:
@@ -245,6 +251,7 @@ pub fn fallback_content() -> SiteContent {
             },
             Service {
                 slug: "voice-ai".into(),
+                category: "ai".into(),
                 title: "Голосовые ИИ-боты".into(),
                 icon_name: "mic".into(),
                 description:
@@ -254,6 +261,7 @@ pub fn fallback_content() -> SiteContent {
             },
             Service {
                 slug: "comfyui-media".into(),
+                category: "ai".into(),
                 title: "ComfyUI: генерация любых медиа с ИИ".into(),
                 icon_name: "images".into(),
                 description:
@@ -263,6 +271,7 @@ pub fn fallback_content() -> SiteContent {
             },
             Service {
                 slug: "ai-assistants".into(),
+                category: "ai".into(),
                 title: "ИИ-ассистенты".into(),
                 icon_name: "message-circle".into(),
                 description:
@@ -272,6 +281,7 @@ pub fn fallback_content() -> SiteContent {
             },
             Service {
                 slug: "ai-bots".into(),
+                category: "ai".into(),
                 title: "Боты в Telegram, VK и WhatsApp".into(),
                 icon_name: "message-circle".into(),
                 description:
@@ -281,6 +291,7 @@ pub fn fallback_content() -> SiteContent {
             },
             Service {
                 slug: "ai-vision".into(),
+                category: "ai".into(),
                 title: "Компьютерное зрение".into(),
                 icon_name: "images".into(),
                 description:
@@ -290,6 +301,7 @@ pub fn fallback_content() -> SiteContent {
             },
             Service {
                 slug: "ai-automation".into(),
+                category: "ai".into(),
                 title: "Автоматизация процессов с ИИ".into(),
                 icon_name: "settings".into(),
                 description:
@@ -299,6 +311,7 @@ pub fn fallback_content() -> SiteContent {
             },
             Service {
                 slug: "web-any".into(),
+                category: "web".into(),
                 title: "Веб-разработка на любом стеке".into(),
                 icon_name: "code-2".into(),
                 description:
@@ -308,6 +321,7 @@ pub fn fallback_content() -> SiteContent {
             },
             Service {
                 slug: "fullstack-any".into(),
+                category: "web".into(),
                 title: "Fullstack-разработка под ключ".into(),
                 icon_name: "code-2".into(),
                 description:
@@ -317,6 +331,7 @@ pub fn fallback_content() -> SiteContent {
             },
             Service {
                 slug: "design-figma".into(),
+                category: "design".into(),
                 title: "Дизайн в Figma и Penpot".into(),
                 icon_name: "images".into(),
                 description:
@@ -326,6 +341,7 @@ pub fn fallback_content() -> SiteContent {
             },
             Service {
                 slug: "email-campaigns".into(),
+                category: "design".into(),
                 title: "Email-рассылки".into(),
                 icon_name: "message-circle".into(),
                 description:
@@ -335,6 +351,7 @@ pub fn fallback_content() -> SiteContent {
             },
             Service {
                 slug: "qa-testing".into(),
+                category: "quality".into(),
                 title: "QA и тестирование".into(),
                 icon_name: "circle-check".into(),
                 description:
@@ -344,6 +361,7 @@ pub fn fallback_content() -> SiteContent {
             },
             Service {
                 slug: "desktop-apps".into(),
+                category: "web".into(),
                 title: "Десктопные приложения".into(),
                 icon_name: "code-2".into(),
                 description:
@@ -353,6 +371,7 @@ pub fn fallback_content() -> SiteContent {
             },
             Service {
                 slug: "mobile-apps".into(),
+                category: "web".into(),
                 title: "Мобильные приложения".into(),
                 icon_name: "code-2".into(),
                 description:
@@ -362,6 +381,7 @@ pub fn fallback_content() -> SiteContent {
             },
             Service {
                 slug: "legacy-refactor".into(),
+                category: "infra".into(),
                 title: "Рефакторинг легаси-проектов".into(),
                 icon_name: "settings".into(),
                 description:
@@ -371,6 +391,7 @@ pub fn fallback_content() -> SiteContent {
             },
             Service {
                 slug: "support".into(),
+                category: "infra".into(),
                 title: "Поддержка сервисов".into(),
                 icon_name: "server-cog".into(),
                 description:
@@ -380,6 +401,7 @@ pub fn fallback_content() -> SiteContent {
             },
             Service {
                 slug: "sysadmin-devops".into(),
+                category: "infra".into(),
                 title: "Системное администрирование и DevOps".into(),
                 icon_name: "server-cog".into(),
                 description:
@@ -389,6 +411,7 @@ pub fn fallback_content() -> SiteContent {
             },
             Service {
                 slug: "small-fixes".into(),
+                category: "quality".into(),
                 title: "Небольшие задачи и правки".into(),
                 icon_name: "settings".into(),
                 description:
