@@ -3467,11 +3467,11 @@ a:hover { color: #fff; }
 
 /* Иллюстрация Кики в карточке услуги.
    Каталог — справочник, поэтому рисунок стоит на одном и том же месте: правая
-   колонка, под ним цена. Но на тёмной странице чёрное платье сливалось с фоном,
-   и рисунок читался как тёмное пятно. Теперь он лежит на кремовой «вклейке»,
-   как цветная пластина в журнале: силуэт, шляпа и фиолетовые предметы
-   наконец видны. Плашка держит высоту 900-экранного кадра: две карточки
-   помещаются целиком, а сама иллюстрация стала крупнее прежней. */
+   колонка, под ним цена. Светлой подложки нет: рисунок живёт прямо на тёмной
+   странице. Силуэт отделяет холодный rim-light (drop-shadow по альфе), а за
+   фигурой — мягкое фиолетовое свечение, не плашка. Тонкая рамка с уголками
+   читается как видоискатель, а не как карточка, и не мешает фигуре выходить
+   за её пределы. */
 .card-with-art {
   grid-template-columns: minmax(0, 1fr) clamp(240px, 20vw, 300px);
   grid-template-areas:
@@ -3491,6 +3491,8 @@ a:hover { color: #fff; }
   align-items: stretch;
   gap: 10px;
   min-width: 0;
+  padding-left: clamp(16px, 2vw, 28px);
+  border-left: 1px solid var(--rule);
 }
 .card-plate {
   position: relative;
@@ -3499,19 +3501,43 @@ a:hover { color: #fff; }
   justify-content: center;
   width: 100%;
   height: clamp(300px, 38.4vh, 380px);
-  padding: 10px 10px 0;
-  background:
-    radial-gradient(120% 85% at 50% 0%, #f8f5ef 0%, #f2ede4 58%, #eae3d6 100%);
-  border: 1px solid rgba(20, 18, 40, 0.14);
-  overflow: hidden;
+  overflow: visible;
 }
-/* Тонкая внутренняя рамка — как поля у печатной вклейки. Линия уходит под
-   фигуру, поэтому не режет силуэт. */
+/* Свечение за фигурой: холодный фиолетовый свет, а не бумага. */
 .card-plate::before {
   content: "";
   position: absolute;
-  inset: 8px;
-  border: 1px solid rgba(20, 18, 40, 0.09);
+  inset: -8% -14% -6% -10%;
+  z-index: 0;
+  background: radial-gradient(
+    ellipse 48% 52% at 50% 56%,
+    rgba(139, 127, 245, 0.5) 0%,
+    rgba(88, 72, 190, 0.24) 42%,
+    rgba(40, 32, 90, 0.1) 62%,
+    transparent 76%
+  );
+  filter: blur(14px);
+  opacity: 0.9;
+  transition: opacity 420ms var(--transition-fast);
+  pointer-events: none;
+}
+/* Рамка-видоискатель: еле заметный контур и уголки. Линии уходят под фигуру,
+   поэтому силуэт не режется. */
+.card-plate::after {
+  content: "";
+  position: absolute;
+  inset: 2% 4%;
+  z-index: 0;
+  border: 1px solid rgba(167, 157, 255, 0.1);
+  background:
+    linear-gradient(rgba(184, 174, 255, 0.55), rgba(184, 174, 255, 0.55)) left top / 14px 1px no-repeat,
+    linear-gradient(rgba(184, 174, 255, 0.55), rgba(184, 174, 255, 0.55)) left top / 1px 14px no-repeat,
+    linear-gradient(rgba(184, 174, 255, 0.55), rgba(184, 174, 255, 0.55)) right top / 14px 1px no-repeat,
+    linear-gradient(rgba(184, 174, 255, 0.55), rgba(184, 174, 255, 0.55)) right top / 1px 14px no-repeat,
+    linear-gradient(rgba(184, 174, 255, 0.55), rgba(184, 174, 255, 0.55)) left bottom / 14px 1px no-repeat,
+    linear-gradient(rgba(184, 174, 255, 0.55), rgba(184, 174, 255, 0.55)) left bottom / 1px 14px no-repeat,
+    linear-gradient(rgba(184, 174, 255, 0.55), rgba(184, 174, 255, 0.55)) right bottom / 14px 1px no-repeat,
+    linear-gradient(rgba(184, 174, 255, 0.55), rgba(184, 174, 255, 0.55)) right bottom / 1px 14px no-repeat;
   pointer-events: none;
 }
 .card-art {
@@ -3521,11 +3547,19 @@ a:hover { color: #fff; }
   height: 100%;
   object-fit: contain;
   object-position: bottom center;
+  filter: drop-shadow(0 0 1px rgba(200, 190, 255, 0.4))
+    drop-shadow(0 0 14px rgba(139, 127, 245, 0.35));
   transform-origin: bottom center;
-  transition: transform 420ms cubic-bezier(0.2, 0.7, 0.2, 1);
+  transition:
+    filter 420ms var(--transition-fast),
+    transform 420ms cubic-bezier(0.2, 0.7, 0.2, 1);
 }
-.card:hover .card-plate { border-color: rgba(20, 18, 40, 0.28); }
-.card:hover .card-art { transform: scale(1.025); }
+.card:hover .card-art {
+  filter: drop-shadow(0 0 1px rgba(220, 212, 255, 0.55))
+    drop-shadow(0 0 22px rgba(139, 127, 245, 0.5));
+  transform: scale(1.015);
+}
+.card:hover .card-plate::before { opacity: 1; }
 .card-with-art .card-price { align-self: flex-end; margin: 0; }
 
 @media (max-width: 1023px) {
@@ -3533,8 +3567,9 @@ a:hover { color: #fff; }
     grid-template-columns: minmax(0, 1fr) clamp(190px, 26vw, 260px);
     gap: 18px 28px;
   }
-  .card-plate { height: clamp(220px, 30vh, 300px); padding: 8px 8px 0; }
-  .card-plate::before { inset: 6px; }
+  .card-aside { padding-left: 20px; }
+  .card-plate { height: clamp(220px, 30vh, 300px); }
+  .card-plate::after { inset: 3% 4%; }
 }
 
 /* ---------- 17.9 Кейсы: строка «экран + текст» ----------
@@ -4206,8 +4241,8 @@ a:hover { color: #fff; }
   .card-plate {
     margin-top: 4px;
     height: 280px;
-    padding: 10px 10px 0;
   }
+  .card-plate::after { inset: 3% 2%; }
   .card-price { justify-self: start; margin: 2px 0 0; }
   .card-title { font-size: clamp(1.75rem, 8.4vw, 2.4rem); max-width: none; }
   .card-text { font-size: 0.94rem; }
