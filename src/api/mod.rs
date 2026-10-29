@@ -31,8 +31,8 @@ pub const ROOT_ASSET_PATHS: &[&str] = &[
     "/sitemap.xml",
     "/rss.xml",
     "/feed.xml",
-    "/favicon.svg",
     "/og.png",
+    "/favicon.svg",
 ];
 
 /// Регистрирует все API-маршруты (без `.with_state` — его задаёт `main`).
@@ -46,6 +46,8 @@ pub fn routes(seo: &SeoConfig) -> Router<AppState> {
         .route("/api/status", get(handlers::status))
         .route("/api/status.json", get(handlers::status))
         .route("/api/chat", post(handlers::chat))
+        // MCP-сервер сайта: JSON-RPC 2.0, только чтение публичных данных.
+        .route("/mcp", post(handlers::mcp))
         .route("/api/lead", post(handlers::lead))
         .route("/api/telegram/webhook", post(handlers::telegram_webhook))
         // Бот настроек сайта: Telegram стучится сюда (секрет — в заголовке).
@@ -61,6 +63,11 @@ pub fn routes(seo: &SeoConfig) -> Router<AppState> {
         .route("/api/admin/leads", get(handlers::admin_leads))
         .route("/api/admin/chats", get(handlers::admin_chats))
         .route("/api/admin/leads/:id", patch(handlers::admin_update_lead))
+        // Прайс-лист: его читает ассистент через MCP, правит владелец здесь.
+        .route(
+            "/api/admin/prices",
+            get(handlers::admin_prices).put(handlers::admin_update_prices),
+        )
         // Настройки сайта: статус «Приём заявок», число проектов и слот.
         .route(
             "/api/admin/settings",
@@ -103,13 +110,18 @@ pub fn routes(seo: &SeoConfig) -> Router<AppState> {
         .route("/assets/main.js", get(handlers::main_js))
         .route("/assets/habr.svg", get(handlers::habr_icon))
         .route("/assets/mascot/:file", get(handlers::mascot_image))
+        .route("/assets/projects/:file", get(handlers::project_image))
+        .route("/assets/services/:file", get(handlers::service_image))
+        .route("/assets/fonts/:file", get(handlers::font_file))
+        .route("/assets/hero/kiki-levitation.webp", get(handlers::hero_art))
+        .route("/assets/logo/:file", get(handlers::logo_asset))
+        .route("/favicon.svg", get(handlers::favicon))
         .route("/media/:name", get(handlers::media_file))
         .route("/robots.txt", get(handlers::robots))
         .route("/manifest.json", get(handlers::manifest))
         .route("/sitemap.xml", get(handlers::sitemap))
         .route("/rss.xml", get(handlers::rss))
         .route("/feed.xml", get(handlers::rss))
-        .route("/favicon.svg", get(handlers::favicon))
         .route("/og.png", get(handlers::og_image));
 
     with_root_files(router, seo)

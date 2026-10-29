@@ -39,6 +39,40 @@ pub async fn status() -> Json<StatusPayload> {
     Json(status_payload())
 }
 
+/// MCP-сервер сайта: `POST /mcp` (JSON-RPC 2.0).
+///
+/// Один эндпоинт на все методы: `initialize`, `tools/list`, `tools/call`,
+/// `ping`. Транспорт — обычный HTTP POST, как в MCP Streamable HTTP без
+/// SSE-канала: сервер не шлёт уведомлений, поэтому поток не нужен.
+///
+/// Авторизации нет: инструменты только читают публичные данные сайта (услуги,
+/// кейсы, прайс, статус, контакты). Всё, что меняет состояние, живёт за
+/// токеном админки и в MCP не выставляется.
+pub async fn mcp(
+    State(state): State<AppState>,
+    Json(payload): Json<serde_json::Value>,
+) -> Response {
+    // Батч-запросы MCP допускает, но мы отвечаем только на одиночный вызов:
+    // батч усложняет поток и не нужен агентам, которые ходят по одному.
+    if payload.is_array() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": null,
+                "error": { "code": -32600, "message": "батч-запросы не поддерживаются" }
+            })),
+        )
+            .into_response();
+    }
+
+    match crate::mcp::handle_rpc(&state, &payload).await {
+        // Уведомление: тело не нужно, но 202 подтверждает приём.
+        None => StatusCode::ACCEPTED.into_response(),
+        Some(response) => Json(response).into_response(),
+    }
+}
+
 /// Чат (POST /api/chat).
 pub async fn chat(
     State(state): State<AppState>,
@@ -277,6 +311,104 @@ fn admin_availability() -> AdminAvailability {
         next_free_slot: a.next_free_slot.clone(),
         availability_date: a.availability_date.clone(),
         updated_at: crate::settings::SiteSettings::updated_at(),
+    }
+}
+
+/// Прайс-лист для админки (GET /api/admin/prices).
+///
+/// Отдаёт и скрытые строки: владелец должен видеть всё, что сам завёл.
+pub async fn admin_prices(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<Vec<crate::storage::price::PriceItem>>, ApiError> {
+    check_admin(&headers, &state.config.admin.token)?;
+    let items = crate::storage::price::load_all(&state.db).await?;
+    Ok(Json(items))
+}
+
+/// Полная замена прайса (PUT /api/admin/prices).
+///
+/// Админка присылает весь список: так удаление строки — это её отсутствие в
+/// теле, и не нужен отдельный DELETE. Запись идёт одной транзакцией (см.
+/// `storage::price::replace_all`), чтобы ассистент не увидел полпрайса.
+pub async fn admin_update_prices(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(mut items): Json<Vec<crate::storage::price::PriceItem>>,
+) -> Result<Json<Vec<crate::storage::price::PriceItem>>, ApiError> {
+    check_admin(&headers, &state.config.admin.token)?;
+
+    if items.len() > MAX_PRICE_ITEMS {
+        return Err(AppError::Validation(format!(
+            "слишком много строк: {MAX_PRICE_ITEMS} — предел"
+        ))
+        .into());
+    }
+
+    let now = chrono::Utc::now().to_rfc3339();
+
+    for (index, item) in items.iter_mut().enumerate() {
+        // Слаг — это ключ строки и адрес в MCP. Пустой превращаем в `item-N`,
+        // а не отбиваем запрос: владелец мог добавить строку и не заполнить его.
+        if item.slug.trim().is_empty() {
+            item.slug = format!("item-{}", index + 1);
+        }
+        item.slug = slugify(&item.slug);
+        item.updated_at = now.clone();
+
+        if item.title.trim().is_empty() {
+            return Err(AppError::Validation(format!(
+                "строка {}: название не может быть пустым",
+                index + 1
+            ))
+            .into());
+        }
+        if item.title.chars().count() > 120 {
+            return Err(AppError::Validation("название строки — до 120 символов".into()).into());
+        }
+        if item.description.chars().count() > 300 {
+            return Err(AppError::Validation("описание строки — до 300 символов".into()).into());
+        }
+    }
+
+    // Дубли слагов ломают ключ таблицы: отбиваем заранее, а не ловим ошибку БД.
+    let mut seen = std::collections::BTreeSet::new();
+    for item in &items {
+        if !seen.insert(item.slug.clone()) {
+            return Err(AppError::Validation(format!(
+                "повторяющийся ключ строки: {}",
+                item.slug
+            ))
+            .into());
+        }
+    }
+
+    crate::storage::price::replace_all(&state.db, &items, &now).await?;
+    let saved = crate::storage::price::load_all(&state.db).await?;
+    Ok(Json(saved))
+}
+
+/// Предел строк прайса: длиннее — уже не прайс, а каталог.
+const MAX_PRICE_ITEMS: usize = 40;
+
+/// Слаг из названия: латиница, цифры, дефисы.
+fn slugify(input: &str) -> String {
+    let mut out = String::with_capacity(input.len());
+    let mut prev_dash = false;
+    for ch in input.to_lowercase().chars() {
+        if ch.is_ascii_alphanumeric() {
+            out.push(ch);
+            prev_dash = false;
+        } else if !prev_dash && !out.is_empty() {
+            out.push('-');
+            prev_dash = true;
+        }
+    }
+    let trimmed = out.trim_matches('-');
+    if trimmed.is_empty() {
+        "item".to_string()
+    } else {
+        trimmed.to_string()
     }
 }
 
@@ -814,6 +946,7 @@ pub async fn sitemap(State(state): State<AppState>) -> impl IntoResponse {
     )
 }
 
+
 /// RSS-лента блога — канал для n8n RSS Feed Trigger.
 pub async fn rss(State(state): State<AppState>) -> impl IntoResponse {
     (
@@ -822,6 +955,7 @@ pub async fn rss(State(state): State<AppState>) -> impl IntoResponse {
     )
 }
 
+/// Favicon: `/favicon.svg`. Белая заливка на тёмном тайле.
 pub async fn favicon(raw: RawQuery) -> Response {
     asset_response(
         "image/svg+xml",
@@ -864,6 +998,105 @@ pub async fn mascot_image(Path(file): Path<String>, raw: RawQuery) -> Result<Res
             ),
         ],
         frame,
+    )
+        .into_response())
+}
+
+/// Скриншот кейса: `/assets/projects/<файл>`.
+///
+/// WebP: скриншоты 1920×1080 в PNG весили по несколько мегабайт, а на сайте
+/// показываются шириной до 1600 px. Неизвестный файл — 404, а не пустая
+/// картинка: имена приходят из контента, и опечатка в `Project::image` должна
+/// быть видна сразу, а не превращаться в дыру в карточке.
+pub async fn project_image(Path(file): Path<String>, raw: RawQuery) -> Result<Response, ApiError> {
+    let image = assets::project_image(&file)
+        .ok_or_else(|| AppError::NotFound(format!("project image `{file}`")))?;
+
+    Ok((
+        [
+            (header::CONTENT_TYPE, "image/webp"),
+            (
+                header::CACHE_CONTROL,
+                asset_cache_control(query_version(raw.0.as_deref())),
+            ),
+        ],
+        image.image,
+    )
+        .into_response())
+}
+
+/// Иллюстрация услуги: `/assets/services/<слаг>.png`.
+///
+/// PNG с прозрачным фоном: карточка ставит рисунок на свою подложку, поэтому
+/// альфа обязательна. Имя файла — это слаг услуги; версия в адресе считается
+/// по содержимому, как у остальных встроенных ресурсов.
+pub async fn service_image(Path(file): Path<String>, raw: RawQuery) -> Result<Response, ApiError> {
+    let slug = file.strip_suffix(".png").unwrap_or(&file);
+    let art = assets::service_art(slug)
+        .ok_or_else(|| AppError::NotFound(format!("service art `{file}`")))?;
+
+    Ok((
+        [
+            (header::CONTENT_TYPE, "image/png"),
+            (
+                header::CACHE_CONTROL,
+                asset_cache_control(query_version(raw.0.as_deref())),
+            ),
+        ],
+        art.image,
+    )
+        .into_response())
+}
+
+/// Шрифт: `/assets/fonts/<файл>`.
+///
+/// Кэш долгий и без версии в адресе: `@font-face` ссылается на файл из CSS, и
+/// подставить туда `?v=` нельзя. Имя файла — это и есть версия: при замене
+/// шрифта меняется имя, а старый адрес остаётся валидным для уже открытых вкладок.
+pub async fn font_file(Path(file): Path<String>) -> Result<Response, ApiError> {
+    let font = assets::font_file(&file)
+        .ok_or_else(|| AppError::NotFound(format!("font `{file}`")))?;
+
+    Ok((
+        [
+            (header::CONTENT_TYPE, "font/woff2"),
+            (header::CACHE_CONTROL, assets::CACHE_IMMUTABLE),
+        ],
+        font.bytes,
+    )
+        .into_response())
+}
+
+/// Иллюстрация hero: `/assets/hero/kiki-levitation.webp`.
+pub async fn hero_art(raw: RawQuery) -> Response {
+    (
+        [
+            (header::CONTENT_TYPE, "image/webp"),
+            (
+                header::CACHE_CONTROL,
+                asset_cache_control(query_version(raw.0.as_deref())),
+            ),
+        ],
+        assets::HERO_ART,
+    )
+        .into_response()
+}
+
+/// Логотип: `/assets/logo/<файл>`.
+///
+/// Знак и иконки — PNG, отрендеренные из одной генерации в фиксированных
+/// размерах. Неизвестный файл — 404, а не пустая картинка: имена приходят из
+/// разметки, и опечатка должна быть видна сразу.
+pub async fn logo_asset(Path(file): Path<String>) -> Result<Response, ApiError> {
+    let logo = assets::logo_file(&file)
+        .ok_or_else(|| AppError::NotFound(format!("logo `{file}`")))?;
+
+    Ok((
+        [
+            (header::CONTENT_TYPE, logo.mime),
+            (header::CACHE_CONTROL, assets::CACHE_IMMUTABLE),
+        ],
+        logo.bytes,
     )
         .into_response())
 }

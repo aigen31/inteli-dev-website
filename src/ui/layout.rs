@@ -13,7 +13,7 @@ use crate::services::github;
 use crate::services::goals;
 use crate::ui::beget::BegetLogo;
 use crate::ui::icon::{BrandIcon, LucideIcon};
-use crate::ui::shared::{Lightbox, StatusBadge};
+use crate::ui::shared::{GlossaryLinks, Lightbox, QuickActions, StatusBadge};
 
 /// Ссылка на профиль Habr.
 ///
@@ -50,18 +50,20 @@ pub fn Layout(children: Children) -> impl IntoView {
     });
 
     // Плавающий чат: кнопка в правом нижнем углу и компактная панель к ней.
-    // Есть на каждой странице, кроме `/chat`: там чат занимает всю страницу, и
-    // вторая кнопка «Спросить» над ним дублировала бы поле ввода.
-    let chat_widget = request_path().as_deref() != Some("/chat");
-    // Просмотр изображений нужен только статье: разметку панели отдаём там,
-    // где есть `.prose` с картинками, — остальным страницам она не нужна.
-    let article_page = request_path().is_some_and(|path| path.starts_with("/blog/"));
-    // Кнопки в компактной панели — то же подмножество, что в терминале на
-    // главной: список общий с /chat, поэтому подпись и индекс кнопки не могут
-    // разойтись с тем, как их обрабатывает сервер.
-    let presets_fab = crate::services::chat::hero_presets()
-        .map(|p| (p.label.to_string(), p.kind.to_string(), p.index))
-        .collect::<Vec<_>>();
+    // Есть на каждой странице, кроме `/chat` и админки: на `/chat` чат занимает
+    // всю страницу и вторая кнопка дублировала бы поле ввода, а в админке это
+    // гостевая кнопка «Спросить» поверх таблиц — владельцу она не нужна.
+    let path = request_path();
+    // `None` (юнит-тест, чужой потребитель) — показываем: пропадать из-за
+    // отсутствия контекста виджет не должен.
+    let chat_widget = path
+        .as_deref()
+        .map_or(true, |p| !p.starts_with("/admin"));
+    // Просмотр изображений нужен там, где есть крупная картинка: статья блога и
+    // скриншот кейса. Остальным страницам панель не нужна.
+    let article_page = request_path()
+        .is_some_and(|path| path.starts_with("/blog/") || path.starts_with("/projects/"));
+
     // Лимит поля тот же, что у терминала и /chat: серверная валидация одна.
     let max_chars = Limits::get().chat_message_max_chars;
 
@@ -70,7 +72,21 @@ pub fn Layout(children: Children) -> impl IntoView {
 
         <header class="navbar">
             <nav class="navbar-inner" aria-label="Основная навигация">
-                <a href="/" class="navbar-brand">{name}</a>
+                <a href="/" class="navbar-brand">
+                    // Знак — шляпа Кики из той же one-line серии, что и hero-арт.
+                    // Растр, а не инлайн-SVG: знак живёт в фиксированных размерах.
+                    <img
+                        class="navbar-mark"
+                        src="/assets/logo/hat-fill.svg"
+                        alt=""
+                        width="26"
+                        height="26"
+                        decoding="async"
+                    />
+                    // В шапке стоит имя продукта, а не человека: «Евгений Биль»
+                    // повторяло заголовок hero и занимало строку целиком.
+                    <span>"Inteli Dev"</span>
+                </a>
 
                 // Бургер виден только на мобильном (см. RULES/ui-rules.md:
                 // «Navbar: <768px — hamburger menu, лого слева»). Состояние
@@ -191,7 +207,7 @@ pub fn Layout(children: Children) -> impl IntoView {
         // (терминал прокручен / чат уже открывали) и вся переписка — в
         // `initFloatingChat` (`assets/main.js`).
         {chat_widget.then(|| view! {
-            <div class="chat-fab" id="chat-fab" hidden>
+            <div class="chat-fab" id="chat-fab">
                 <section
                     class="chat-fab-panel"
                     id="chat-fab-panel"
@@ -215,17 +231,12 @@ pub fn Layout(children: Children) -> impl IntoView {
                         <p class="chat-fab-intro" id="chat-fab-intro">
                             "Спросите о задачах, услугах и сроках — отвечу прямо здесь."
                         </p>
-                        <div class="chat-fab-presets" id="chat-fab-presets" role="group" aria-label="Частые вопросы">
-                            {presets_fab.into_iter().map(|(label, kind, index)| view! {
-                                <button
-                                    type="button"
-                                    class="preset-button chat-fab-preset"
-                                    data-kind=kind
-                                    data-index=index.to_string()
-                                >{label}</button>
-                            }).collect::<Vec<_>>()}
-                        </div>
-                        <div class="chat-fab-messages" id="chat-fab-messages" role="log" aria-live="polite"></div>
+                        <GlossaryLinks/>
+                        // Кнопки-вопросы в компактной панели убраны: термины и
+                        // быстрые действия ниже дают тот же вход, не занимая
+                        // пол-панели восемью пилюлями.
+<div class="chat-fab-messages" id="chat-fab-messages" role="log" aria-live="polite"></div>
+                        <QuickActions/>
                     </div>
 
                     <div class="chat-fab-input-row">

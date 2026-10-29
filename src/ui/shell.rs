@@ -203,7 +203,11 @@ pub fn shell(_options: LeptosOptions) -> impl IntoView {
 
                 <link rel="stylesheet" href=style_css/>
                 <link rel="manifest" href=manifest/>
+                // Знак — растр одной генерации в фиксированных размерах. 32 px
+                // хватает браузеру на вкладку, 180 — иконке на домашнем экране.
                 <link rel="icon" href=favicon type="image/svg+xml"/>
+                <link rel="icon" type="image/png" sizes="32x32" href="/assets/logo/hat-icon-fill-32.png"/>
+                <link rel="apple-touch-icon" sizes="180x180" href="/assets/logo/hat-icon-line-180.png"/>
                 <script src=main_js defer></script>
                 // Секции прячет CSS, показывает JS. Без скриптов показывать
                 // некому — снимаем скрытие, иначе страница остаётся пустой.

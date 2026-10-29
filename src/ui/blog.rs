@@ -119,6 +119,7 @@ pub fn Blog() -> impl IntoView {
     view! {
         <section class="section blog-section">
             <header class="blog-header">
+                <p class="eyebrow"><span class="eyebrow-dot" aria-hidden="true"></span>{"Заметки"}</p>
                 <h1>Блог</h1>
                 <p class="subtitle">
                     "Заметки о приватных AI-системах, локальном инференсе и разработке."
@@ -217,7 +218,7 @@ pub fn BlogPost() -> impl IntoView {
                 <p>
                     "Есть задача по этой теме? "
                     <a href="/contact">"Напишите мне"</a>
-                    " — отвечу при наличии свободного окна."
+                    "."
                 </p>
                 <a class="btn btn-secondary" href="/blog">"← Все статьи"</a>
             </footer>

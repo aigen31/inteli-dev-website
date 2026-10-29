@@ -31,3 +31,10 @@ viking-content/
 
 # Local docker CLI state (обход read-only ~/.docker в песочнице)
 .docker-build/
+
+# Локальные рабочие каталоги агента: скрипты генерации иллюстраций, промежуточные
+# рендеры и скриншоты проверок. В репозиторий идут только финальные файлы.
+.cache/
+.design-preview/
+.fool-work/
+.playwright-mcp/

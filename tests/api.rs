@@ -433,10 +433,7 @@ async fn presets_do_not_consume_ai_quota() {
 
     // Квота исчерпана, но все кнопки без ИИ идут из контента. Берём список из
     // общего источника правды: добавили кнопку — она сразу проверяется здесь.
-    for preset in inteli_dev::services::chat::PRESETS
-        .iter()
-        .filter(|p| p.kind != "analysis")
-    {
+    for preset in inteli_dev::services::chat::PRESETS.iter() {
         let body = serde_json::json!({
             "message": preset.label,
             "question_type": preset.kind,

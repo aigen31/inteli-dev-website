@@ -69,6 +69,14 @@ async fn run(config: AppConfig) -> AppResult<()> {
     let content = SiteContent::load(&viking).await;
     SiteContent::set_global(content);
 
+    // 2.0. Прайс: на первом запуске собирается из услуг контента, дальше
+    //      живёт в БД и правится в админке. Ассистент читает его через MCP.
+    match inteli_dev::storage::price::sync_with_services(&db, &chrono::Utc::now().to_rfc3339()).await {
+        Ok(true) => tracing::info!("прайс-лист синхронизирован с услугами контента"),
+        Ok(false) => {}
+        Err(e) => tracing::warn!("не удалось подготовить прайс-лист: {e}"),
+    }
+
     // 2.1. Живые настройки сайта. Сохранённый в БД статус занятости главнее
     //      значения из контента: владелец мог поменять его из Telegram, пока
     //      приложение было выключено.

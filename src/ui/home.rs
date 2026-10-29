@@ -11,7 +11,16 @@ use crate::memory::content::SiteContent;
 use crate::services::goals;
 use crate::ui::blog::LatestArticles;
 use crate::ui::github::GitHubStatsSection;
-use crate::ui::shared::{PrimaryButton, ProjectCard, SecondaryButton, ServiceCard, StatusBadge};
+use crate::ui::shared::{
+    GlossaryLinks, PrimaryButton, ProjectCard, QuickActions, SecondaryButton, ServiceCard, StatusBadge,
+};
+
+/// Сколько кейсов крутить в слайдере на главной.
+///
+/// Четыре — компромисс: два слайда не дают повода листать, а все восемь
+/// превращали бы главную в копию `/projects` (ровно та дубликация, из-за которой
+/// страницы портфолио плохо индексируются).
+const SLIDER_COUNT: usize = 4;
 
 /// Интерактивный AI-терминал в hero-секции. Клиент может задать вопрос через
 /// CLI-интерфейс (как на /chat) и получить ответ от ИИ прямо на главной.
@@ -19,11 +28,9 @@ use crate::ui::shared::{PrimaryButton, ProjectCard, SecondaryButton, ServiceCard
 pub fn HeroTerminal() -> impl IntoView {
     let max_chars = Limits::get().chat_message_max_chars;
     let chat_hint = Limits::get().chat_hint();
-    // Те же кнопки и те же индексы, что на странице /chat: список общий, иначе
-    // подпись кнопки на главной могла бы означать другой вопрос.
-    let presets = crate::services::chat::hero_presets()
-        .map(|p| (p.label.to_string(), p.index))
-        .collect::<Vec<_>>();
+    // Контакты нужны кнопкам «Почта» и «Телеграм»: они не ходят на сервер,
+    // поэтому данные приходят вместе с разметкой.
+    let contacts = SiteContent::get().profile.contacts.clone();
     // Версия в адресе обязательна: кадры кэшируются на год (см. assets.rs).
     // Все пять кадров лежат в разметке сразу: смена эмоции — это атрибут, а не
     // загрузка картинки, иначе в момент ответа ведьма мигала бы пустым местом.
@@ -41,7 +48,13 @@ pub fn HeroTerminal() -> impl IntoView {
         // `data-goal` — та же цель, что у чата на /chat: человек задал вопрос
         // (см. `services::goals`). Терминал отправляет её один раз, после
         // первого ответа сервера.
-        <div class="terminal-window" id="hero-terminal" data-goal=goals::CHAT_STARTED>
+        <div
+            class="terminal-window"
+            id="hero-terminal"
+            data-goal=goals::CHAT_STARTED
+            data-email=contacts.email.clone()
+            data-telegram=contacts.telegram.clone()
+        >
             <div class="terminal-bar">
                 <span class="dot dot-red"></span>
                 <span class="dot dot-yellow"></span>
@@ -62,7 +75,7 @@ pub fn HeroTerminal() -> impl IntoView {
                     id="hero-terminal-input"
                     type="text"
                     class="terminal-input"
-                    placeholder="Задайте вопрос..."
+                    placeholder="О проектах и ценах"
                     autocomplete="off"
                     maxlength=max_chars
                     aria-describedby="hero-terminal-hint"
@@ -98,16 +111,11 @@ pub fn HeroTerminal() -> impl IntoView {
                 <span class="char-count" data-counter-for="hero-terminal-input" aria-hidden="true"></span>
             </p>
 
-            <div class="terminal-presets" role="group" aria-label="Частые вопросы">
-                {presets.into_iter().map(|(label, index)| view! {
-                    <button
-                        type="button"
-                        class="preset-button terminal-preset-btn"
-                        data-kind="preset"
-                        data-index=index.to_string()
-                    >{label}</button>
-                }).collect::<Vec<_>>()}
-            </div>
+            // Подсказки и действия — общие компоненты: тот же набор работает
+            // на /chat и в плавающей панели. Ответы на термины — готовый текст
+            // из `services::glossary`, без запроса к модели.
+            <GlossaryLinks/>
+            <QuickActions/>
             </div>
         </div>
     }
@@ -117,57 +125,176 @@ pub fn HeroTerminal() -> impl IntoView {
 pub fn Home() -> impl IntoView {
     let content = SiteContent::get();
     let profile = content.profile.clone();
-    let skills = profile.skills.clone();
     let services_preview = content.services.iter().take(3).cloned().collect::<Vec<_>>();
-    let projects_preview = content.projects.iter().take(2).cloned().collect::<Vec<_>>();
-    let subtitle = format!(
-        "{} · {} лет опыта · {}+ проектов",
-        profile.title, profile.experience_years, profile.projects_completed
+    // Слайдер кейсов: четыре штуки — достаточно, чтобы листать, и меньше, чем
+    // весь портфолио на `/projects` (дублировать его целиком на главной незачем).
+    let slides = content
+        .projects
+        .iter()
+        .take(SLIDER_COUNT)
+        .cloned()
+        .collect::<Vec<_>>();
+    let slide_count = slides.len();
+    // Цифры вынесены в отдельную моно-строку: в подзаголовке они тонули в
+    // тексте, а в новом макете это метрика, а не часть описания.
+    let metrics = format!(
+        "{} лет опыта · {}+ проектов",
+        profile.experience_years, profile.projects_completed
     );
+    // Заголовок hero — роль, а не имя. Имя живёт в шапке и подвале, а имя
+    // человека в 72 px ничего не объясняло новому посетителю.
+    // Каждое слово — своя строка: на крупном кегле это даёт плакатную
+    // вертикаль и позволяет держать размер, не наезжая на иллюстрацию.
+    let title_lines = hero_title_lines(HERO_TITLE);
+    let hero_art = crate::api::assets::versioned(crate::api::assets::HERO_ART_PATH);
+    let hero_art_w = crate::api::assets::HERO_ART_WIDTH;
+    let hero_art_h = crate::api::assets::HERO_ART_HEIGHT;
     view! {
+        // Hero — обложка во всю ширину: слева текст, справа иллюстрация
+        // (Кики в левитации). Картинка уходит под левую колонку градиентной
+        // шторкой, поэтому заголовку не нужна подложка и он не спорит с
+        // фигурой. Пятна и сетка переехали на уровень страницы (`.site-bg`).
         <section class="hero">
-            <canvas id="hero-canvas" class="hero-canvas" aria-hidden="true"></canvas>
-            <div class="hero-blob hero-blob-1" aria-hidden="true"></div>
-            <div class="hero-blob hero-blob-2" aria-hidden="true"></div>
-            <div class="hero-blob hero-blob-3" aria-hidden="true"></div>
+            <div class="hero-art" aria-hidden="true">
+                <img
+                    class="hero-art-img"
+                    src=hero_art
+                    alt=""
+                    width=hero_art_w
+                    height=hero_art_h
+                    fetchpriority="high"
+                    decoding="async"
+                />
+            </div>
 
-            <div class="hero-grid">
-                // Маскот — внутри терминала (HeroTerminal): он сидит на черте
-                // строки ввода, а не на самом окне.
-                <HeroTerminal/>
-
+            <div class="hero-inner">
                 <div class="hero-content">
-                    <h1>{profile.name}</h1>
-                    <p class="subtitle">{subtitle}</p>
-                    <StatusBadge/>
-                    <div class="cta-buttons">
-                        <PrimaryButton text="Задать вопрос" href="/chat"/>
-                        <SecondaryButton text="Оставить заявку" href="/contact"/>
+                    <p class="eyebrow"><span class="eyebrow-dot" aria-hidden="true"></span>{profile.location.clone()}</p>
+                    <h1 class="hero-title" aria-label=HERO_TITLE>
+                        {title_lines.into_iter().map(|line| view! {
+                            <span class="hero-line">
+                                {line.before}<span class="hero-accent">{line.accent}</span>{line.after}
+                            </span>
+                        }).collect::<Vec<_>>()}
+                    </h1>
+                    // Мета-строка отделена линейкой и разведена по краям:
+                    // цифры слева, статус справа. Это рамка плаката, а не
+                    // ещё одна строка текста.
+                    <div class="hero-meta">
+                        <span class="hero-metrics mono">{metrics}</span>
+                        <StatusBadge/>
                     </div>
-                    <div class="tech-pills">
-                        {skills.into_iter().map(|s| view! { <span class="tech-pill">{s}</span> }).collect::<Vec<_>>()}
+                    <div class="hero-actions">
+                        <div class="cta-buttons">
+                            <PrimaryButton text="Задать вопрос" href="/chat"/>
+                            // Второе действие — текстовая ссылка: две кнопки
+                            // одинакового веса спорили за внимание.
+                            <a class="hero-cta-link" href="/contact">
+                                "Оставить заявку"
+                                <span aria-hidden="true">"→"</span>
+                            </a>
+                        </div>
                     </div>
                 </div>
             </div>
         </section>
 
-        <section class="section section-glow section-services">
+        // Терминал вынесен из hero в отдельную секцию: в обложке он спорил с
+        // иллюстрацией за правую половину, а здесь у него своя полоса и
+        // собственный заголовок. Маскот остаётся внутри окна (см. §7c/d).
+        <section class="section section-terminal" id="terminal">
+            <div class="terminal-layout">
+                <div class="terminal-intro">
+                    <p class="eyebrow"><span class="eyebrow-dot" aria-hidden="true"></span>{"Терминал"}</p>
+                    <h2>Спросите Кики</h2>
+                    <p class="section-note">
+                        "Она знает проекты, статьи и цены из прайс-листа. Отвечает сразу — без формы и ожидания письма."
+                    </p>
+                    <ul class="terminal-facts">
+                        <li><span class="terminal-fact-num mono">01</span>{"Ответ по кейсам, статьям и ценам"}</li>
+                        <li><span class="terminal-fact-num mono">02</span>{"Три ответа в час, без регистрации"}</li>
+                        <li><span class="terminal-fact-num mono">03</span>{"Не хватит ответа — оставите заявку"}</li>
+                    </ul>
+                </div>
+                <HeroTerminal/>
+            </div>
+        </section>
+
+        <section class="section section-services">
             <div class="section-head">
+                <p class="eyebrow"><span class="eyebrow-dot" aria-hidden="true"></span>{"01 — Направления"}</p>
                 <h2>Услуги</h2>
-                <a class="section-link" href="/services">{"Все услуги →"}</a>
+                <a class="section-link" href="/services">{"Все услуги"}</a>
             </div>
             <div class="cards-grid">
                 {services_preview.into_iter().map(|s| view! { <ServiceCard service=s/> }).collect::<Vec<_>>()}
             </div>
         </section>
 
-        <section class="section section-glow section-results">
+        <section class="section section-results">
             <div class="section-head">
+                <p class="eyebrow"><span class="eyebrow-dot" aria-hidden="true"></span>{"02 — Кейсы"}</p>
                 <h2>Результаты</h2>
-                <a class="section-link" href="/projects">{"Все проекты →"}</a>
+                <div class="section-actions">
+                    // Стрелки приходят выключенными: без скрипта они бы ничего не
+                    // делали, а включённые `initProjectSlider` — работают. Свайп и
+                    // колесо работают и без них.
+                    <button
+                        type="button"
+                        class="slider-arrow"
+                        data-slider="prev"
+                        aria-label="Предыдущий кейс"
+                        disabled
+                    >
+                        <span aria-hidden="true">"←"</span>
+                    </button>
+                    <button
+                        type="button"
+                        class="slider-arrow"
+                        data-slider="next"
+                        aria-label="Следующий кейс"
+                        disabled
+                    >
+                        <span aria-hidden="true">"→"</span>
+                    </button>
+                    <a class="section-link" href="/projects">{"Все проекты"}</a>
+                </div>
             </div>
-            <div class="cards-grid cards-grid-2">
-                {projects_preview.into_iter().map(|p| view! { <ProjectCard project=p/> }).collect::<Vec<_>>()}
+
+            // Лента со снапом: одна карточка на экран. Прокручивается сама —
+            // стрелки и точки только помогают, но без них лента не ломается.
+            <div
+                class="project-slider"
+                id="project-slider"
+                role="region"
+                aria-label="Кейсы"
+                tabindex="0"
+            >
+                <ul class="project-slider-track">
+                    {slides
+                        .into_iter()
+                        .enumerate()
+                        .map(|(i, p)| view! {
+                            <li class="project-slide" id=format!("project-slide-{}", i + 1)>
+                                <ProjectCard project=p/>
+                            </li>
+                        })
+                        .collect::<Vec<_>>()}
+                </ul>
+            </div>
+
+            // Точки — ссылки, а не кнопки: без скрипта переход по якорю всё равно
+            // прокручивает ленту к нужному слайду.
+            <div class="project-slider-dots" role="group" aria-label="Выбор кейса">
+                {(1..=slide_count)
+                    .map(|i| view! {
+                        <a
+                            class="slider-dot"
+                            href=format!("#project-slide-{i}")
+                            aria-label=format!("Кейс {i} из {slide_count}")
+                        ></a>
+                    })
+                    .collect::<Vec<_>>()}
             </div>
         </section>
 
@@ -178,9 +305,10 @@ pub fn Home() -> impl IntoView {
         // Последние статьи. Блок сам себя скрывает, пока ничего не опубликовано.
         <LatestArticles/>
 
-        <section class="section section-glow section-cta cta-section">
+        <section class="section section-cta cta-section">
+            <p class="eyebrow"><span class="eyebrow-dot" aria-hidden="true"></span>{"04 — Контакт"}</p>
             <h2>Готовы обсудить ваш проект?</h2>
-            <p class="subtitle">{"Оставьте заявку — отвечу при наличии свободного окна."}</p>
+            <p class="section-note">{"Опишите задачу: что нужно сделать, к какому сроку и какой бюджет."}</p>
             <div class="cta-buttons">
                 <PrimaryButton text="Оставить заявку" href="/contact"/>
                 <SecondaryButton text="Спросить в чате" href="/chat"/>
@@ -315,4 +443,65 @@ mod tests {
             );
         }
     }
+}
+
+/// Заголовок hero. Отдельно от `profile.title`: профиль — для мета-описаний,
+/// hero — позиционирование, и они могут расходиться.
+const HERO_TITLE: &str = "Fullstack разработчик и ML инженер";
+
+/// Строка заголовка: до акцента, акцент, после акцента.
+struct HeroLine {
+    before: String,
+    accent: String,
+    after: String,
+}
+
+impl HeroLine {
+    fn plain(text: &str) -> Self {
+        Self {
+            before: text.to_string(),
+            accent: String::new(),
+            after: String::new(),
+        }
+    }
+}
+
+/// Разбивает заголовок на строки-слова: `Fullstack` / `разработчик` /
+/// `и ML инженер`. Первое слово уходит в капс — это печать, а не реплика;
+/// «ML» подкрашено: это то, что отличает от обычного fullstack.
+///
+/// Если формулировка изменится и «ML» в ней не окажется, останется три
+/// строки без акцента; если слов меньше трёх — одна строка.
+fn hero_title_lines(title: &str) -> Vec<HeroLine> {
+    let words: Vec<&str> = title.split_whitespace().collect();
+    if words.len() < 3 {
+        return vec![HeroLine::plain(title)];
+    }
+
+    let mut last = HeroLine::plain("");
+    let mut before_parts: Vec<&str> = Vec::new();
+    let mut after_parts: Vec<&str> = Vec::new();
+    let mut seen_accent = false;
+
+    for word in &words[2..] {
+        if !seen_accent && word.eq_ignore_ascii_case("ml") {
+            seen_accent = true;
+            last.accent = (*word).to_string();
+        } else if seen_accent {
+            after_parts.push(word);
+        } else {
+            before_parts.push(word);
+        }
+    }
+
+    if seen_accent {
+        // Неразрывные пробелы: обычные Leptos срезает в текстовых узлах, и
+        // «и ML инженер» склеивался в «иMLинженер».
+        last.before = format!("{}\u{00A0}", before_parts.join(" "));
+        last.after = format!("\u{00A0}{}", after_parts.join(" "));
+    } else {
+        last.before = words[2..].join(" ");
+    }
+
+    vec![HeroLine::plain(words[0]), HeroLine::plain(words[1]), last]
 }

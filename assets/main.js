@@ -281,6 +281,101 @@
   }
 
   // ---------- Чат ----------
+  // ---------- Ассистент: общие инструменты ----------
+  //
+  // Один набор на три поверхности: терминал в hero, страница /chat и
+  // плавающая панель. Разметку кнопок задаёт Rust (`shared::QuickActions` и
+  // `shared::GlossaryLinks`), здесь — только поведение.
+  //
+  // Термины показываются готовым текстом из `data-answer`: ни запроса, ни
+  // токенов, ни ожидания. Плавающая кнопка и панель — тоже без ИИ.
+
+  var assistantSurfaces = [];
+
+  function registerSurface(element, api) {
+    if (!element) return;
+    assistantSurfaces.push({ element: element, api: api });
+  }
+
+  function surfaceFor(node) {
+    for (var i = 0; i < assistantSurfaces.length; i++) {
+      if (assistantSurfaces[i].element.contains(node)) return assistantSurfaces[i].api;
+    }
+    return null;
+  }
+
+  function contactEmailFromFooter() {
+    var link = document.querySelector('.footer a[href^="mailto:"]');
+    return link ? link.getAttribute('href').replace(/^mailto:/, '') : '';
+  }
+
+  function telegramHandleFromFooter() {
+    var link = document.querySelector('.footer a[href*="t.me/"]');
+    return link ? link.getAttribute('href').split('t.me/')[1] : '';
+  }
+
+  function openBrief(topic) {
+    var href = '/contact#lead-form';
+    if (topic) href = '/contact?topic=' + encodeURIComponent(topic) + '#lead-form';
+    window.location.href = href;
+  }
+
+  function copyContactEmail(reply) {
+    var email = contactEmailFromFooter();
+    if (!email) {
+      if (reply) reply('Почта не настроена — форма заявки на /contact.');
+      return;
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(email).then(
+        function () { if (reply) reply('Почта скопирована: ' + email); },
+        function () { if (reply) reply(email); }
+      );
+    } else if (reply) {
+      reply(email);
+    }
+  }
+
+  function openTelegram(reply) {
+    var handle = telegramHandleFromFooter();
+    if (!handle) {
+      if (reply) reply('Телеграм не настроен — форма заявки на /contact.');
+      return;
+    }
+    window.open('https://t.me/' + handle, '_blank', 'noopener');
+  }
+
+  // Один делегированный обработчик на всю страницу: кнопок может быть
+  // несколько (терминал, чат, панель), и вешать слушатель на каждую незачем.
+  function initAssistantTools() {
+    document.addEventListener('click', function (event) {
+      var quick = event.target.closest('[data-quick-action]');
+      if (quick) {
+        var api = surfaceFor(quick);
+        var reply = api && api.reply;
+        var action = quick.getAttribute('data-quick-action');
+
+        if (action === 'status') {
+          if (api && api.status) api.status();
+          return;
+        }
+        if (action === 'brief') { openBrief(api && api.lastQuestion ? api.lastQuestion() : ''); return; }
+        if (action === 'services') { window.location.href = '/services'; return; }
+        if (action === 'mail') { copyContactEmail(reply); return; }
+        if (action === 'tg') { openTelegram(reply); return; }
+      }
+
+      var term = event.target.closest('[data-glossary]');
+      if (term) {
+        var surface = surfaceFor(term);
+        var answer = term.getAttribute('data-answer') || '';
+        // Подсказка остаётся на месте: человек может посмотреть второй термин,
+        // не перезагружая страницу. Раньше ряд исчезал после первого клика.
+        if (surface && surface.reply) surface.reply(answer);
+      }
+    });
+  }
+
   function initChat() {
     var app = document.getElementById('chat-app');
     if (!app) return;
@@ -398,6 +493,14 @@
       if (e.key === 'Enter') sendFree();
     });
 
+    registerSurface(app, {
+      status: function () {
+        addMessage('Когда свободны?', 'user');
+        send({ message: 'Когда свободны?', question_type: 'availability', preset_index: 5 });
+      },
+      reply: function (text) { addMessage(text, 'bot'); }
+    });
+
     app.querySelectorAll('.preset-button[data-kind]').forEach(function (btn) {
       btn.addEventListener('click', function () {
         if (isWaiting) return;
@@ -405,17 +508,80 @@
         var index = btn.getAttribute('data-index');
         addMessage(btn.textContent, 'user');
 
-        if (kind === 'analysis') {
-          var url = window.prompt('Введите ссылку на ваш сайт (например, example.com):');
-          if (!url || !url.trim()) return;
-          send({ message: btn.textContent, question_type: 'analysis', url: url.trim() });
-        } else {
-          var payload = { message: btn.textContent, question_type: kind };
-          if (index) payload.preset_index = parseInt(index, 10);
-          send(payload);
-        }
+        var payload = { message: btn.textContent, question_type: kind };
+        if (index) payload.preset_index = parseInt(index, 10);
+        send(payload);
       });
     });
+  }
+
+  // ---------- Фильтр услуг ----------
+  //
+  // Каталог длинный, поэтому категории — это переключатель, а не ссылки:
+  // карточки уже в разметке, скрываем ненужные. Ноль запросов, позиция
+  // страницы не прыгает, выбор переживает перезагрузку через `?cat=`.
+  function initServiceFilter() {
+    var root = document.getElementById('service-filter');
+    var list = document.getElementById('services-list');
+    if (!root || !list) return;
+
+    var chips = Array.prototype.slice.call(root.querySelectorAll('[data-filter]'));
+    var cards = Array.prototype.slice.call(list.querySelectorAll('.card'));
+    var status = document.getElementById('service-filter-status');
+    var empty = document.getElementById('services-empty');
+    var reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    function plural(n, forms) {
+      var mod10 = n % 10;
+      var mod100 = n % 100;
+      if (mod10 === 1 && mod100 !== 11) return forms[0];
+      if (mod10 >= 2 && mod10 <= 4 && (mod100 < 10 || mod100 >= 20)) return forms[1];
+      return forms[2];
+    }
+
+    function apply(key, updateUrl) {
+      var shown = 0;
+
+      cards.forEach(function (card) {
+        var visible = key === 'all' || (card.getAttribute('data-category') || 'none') === key;
+        card.hidden = !visible;
+        if (visible && !reduced) {
+          card.classList.remove('is-filtered-in');
+          // Перезапуск анимации без чтения offsetWidth в цикле: rAF на кадр.
+          window.requestAnimationFrame(function () { card.classList.add('is-filtered-in'); });
+        }
+        if (visible) shown++;
+      });
+
+      chips.forEach(function (chip) {
+        var active = chip.getAttribute('data-filter') === key;
+        chip.classList.toggle('is-active', active);
+        chip.setAttribute('aria-pressed', active ? 'true' : 'false');
+      });
+
+      if (empty) empty.hidden = shown !== 0;
+      if (status) {
+        status.textContent = shown + ' ' + plural(shown, ['услуга', 'услуги', 'услуг']);
+      }
+
+      if (updateUrl) {
+        var url = new URL(window.location.href);
+        if (key === 'all') url.searchParams.delete('cat');
+        else url.searchParams.set('cat', key);
+        window.history.replaceState(null, '', url.pathname + url.search + url.hash);
+      }
+    }
+
+    root.addEventListener('click', function (event) {
+      var chip = event.target.closest('[data-filter]');
+      if (!chip) return;
+      apply(chip.getAttribute('data-filter'), true);
+    });
+
+    // Категория из адреса — чтобы ссылку на «Боты» можно было отправить.
+    var initial = new URL(window.location.href).searchParams.get('cat');
+    var known = chips.some(function (chip) { return chip.getAttribute('data-filter') === initial; });
+    apply(known && initial ? initial : 'all', false);
   }
 
   // ---------- Форма заявки ----------
@@ -478,7 +644,7 @@
     if (!app) return;
 
     var login = document.getElementById('admin-login');
-    var dashboard = document.getElementById('admin-dashboard');
+    var shell = document.getElementById('admin-shell');
     var tokenInput = document.getElementById('admin-token');
     var loginBtn = document.getElementById('admin-login-btn');
     var loginStatus = document.getElementById('admin-login-status');
@@ -501,38 +667,51 @@
 
     function showLogin(message) {
       login.hidden = false;
-      dashboard.hidden = true;
+      shell.hidden = true;
       if (message) { loginStatus.textContent = message; loginStatus.className = 'form-status error'; }
     }
 
     function showDashboard() {
       login.hidden = true;
-      dashboard.hidden = false;
+      shell.hidden = false;
     }
 
-    async function loadDashboard() {
+    // Раздел просит только свои данные: таблицы, которой нет на странице, не
+    // грузим. Статистика нужна всем — по ней же проверяется токен.
+    async function loadAdmin() {
       var stats = await api('/api/admin/stats');
       if (stats.status === 401) { showLogin('Неверный или пустой токен.'); return; }
 
-      var [leads, chats] = await Promise.all([
-        api('/api/admin/leads?limit=100'),
-        api('/api/admin/chats?limit=100')
-      ]);
-
       renderKpi(stats.body);
-      renderLeads(leads.body);
-      renderChats(chats.body);
-      await Promise.all([loadArticles(), loadOutbox(), loadSettings()]);
+      renderBars('admin-lead-sources', stats.body.lead_sources);
+      renderBars('admin-question-types', stats.body.question_types);
+
+      var tasks = [];
+      if (document.getElementById('admin-leads-table')) {
+        tasks.push(api('/api/admin/leads?limit=100').then(function (r) { renderLeads(r.body); }));
+      }
+      if (document.getElementById('admin-chats-table')) {
+        tasks.push(api('/api/admin/chats?limit=100').then(function (r) { renderChats(r.body); }));
+      }
+      if (document.getElementById('admin-articles-table')) tasks.push(loadArticles());
+      if (document.getElementById('admin-outbox-table')) tasks.push(loadOutbox());
+      if (document.getElementById('admin-prices-table')) tasks.push(loadPrices());
+      if (document.getElementById('admin-settings')) tasks.push(loadSettings());
+
+      await Promise.all(tasks);
       showDashboard();
     }
 
     function renderKpi(s) {
       var el = document.getElementById('admin-kpi');
-      var avg = s.avg_response_time_ms == null ? '—' : Math.round(s.avg_response_time_ms) + 'ms';
+      if (!el) return;
+      // Без emoji: в интерфейсе админки они читаются как случайные значки, а
+      // на части систем рисуются пустыми прямоугольниками.
+      var avg = s.avg_response_time_ms == null ? '—' : Math.round(s.avg_response_time_ms) + ' мс';
       var cards = [
-        ['📩 Заявки сегодня', s.leads_today != null ? s.leads_today : '—'],
-        ['💬 Чатов сегодня', s.chats_today != null ? s.chats_today : '—'],
-        ['⚡ Ср. время ответа', avg]
+        ['Заявки сегодня', s.leads_today != null ? s.leads_today : '—'],
+        ['Чатов сегодня', s.chats_today != null ? s.chats_today : '—'],
+        ['Среднее время ответа', avg]
       ];
       el.innerHTML = cards.map(function (c) {
         return '<div class="kpi-card"><div class="kpi-value">' + escapeHtml(c[1]) +
@@ -540,8 +719,32 @@
       }).join('');
     }
 
+    // Разбивка «значение → число»: горизонтальные полосы. Таблица из двух
+    // колонок сравнивать доли не помогает — полосы показывают их глазами.
+    function renderBars(id, rows) {
+      var el = document.getElementById(id);
+      if (!el) return;
+      if (!Array.isArray(rows) || !rows.length) {
+        el.innerHTML = '<p class="admin-hint">Пока нет данных.</p>';
+        return;
+      }
+      var total = rows.reduce(function (sum, row) { return sum + (row[1] || 0); }, 0) || 1;
+      var max = rows.reduce(function (m, row) { return Math.max(m, row[1] || 0); }, 0) || 1;
+      el.innerHTML = rows.map(function (row) {
+        var count = row[1] || 0;
+        var share = Math.round((count / total) * 100);
+        var width = Math.max(4, Math.round((count / max) * 100));
+        return '<div class="admin-bar">' +
+          '<div class="admin-bar-head"><span>' + escapeHtml(String(row[0] || '—')) + '</span>' +
+          '<span class="admin-bar-value">' + count + ' · ' + share + '%</span></div>' +
+          '<div class="admin-bar-track"><span style="width:' + width + '%"></span></div>' +
+          '</div>';
+      }).join('');
+    }
+
     function renderLeads(leads) {
       var table = document.getElementById('admin-leads-table');
+      if (!table) return;
       if (!Array.isArray(leads) || !leads.length) {
         table.innerHTML = '<tbody><tr><td colspan="6">Заявок пока нет.</td></tr></tbody>';
         return;
@@ -575,6 +778,7 @@
 
     function renderChats(chats) {
       var table = document.getElementById('admin-chats-table');
+      if (!table) return;
       if (!Array.isArray(chats) || !chats.length) {
         table.innerHTML = '<tbody><tr><td colspan="5">Чатов пока нет.</td></tr></tbody>';
         return;
@@ -594,7 +798,7 @@
       var value = tokenInput.value.trim();
       if (!value) { loginStatus.textContent = 'Введите токен.'; loginStatus.className = 'form-status error'; return; }
       localStorage.setItem(STORAGE_KEY, value);
-      await loadDashboard();
+      await loadAdmin();
     });
     tokenInput.addEventListener('keydown', function (e) {
       if (e.key === 'Enter') loginBtn.click();
@@ -614,6 +818,7 @@
     }
 
     function renderSettings(s) {
+      if (!field('admin-status-select')) return;
       field('admin-status-select').value = s.status || 'available';
       field('admin-projects').value = s.current_projects == null ? 0 : s.current_projects;
       field('admin-slot').value = s.next_free_slot || '';
@@ -682,10 +887,157 @@
       setSettingsMessage('Сохранено: ' + res.body.label + ' · ' + (res.body.facts || []).join(' · '), 'success');
     }
 
-    field('admin-settings-save').addEventListener('click', saveSettings);
-    field('admin-slot').addEventListener('keydown', function (e) {
-      if (e.key === 'Enter') saveSettings();
-    });
+    if (field('admin-settings-save')) {
+      field('admin-settings-save').addEventListener('click', saveSettings);
+    }
+    if (field('admin-slot')) {
+      field('admin-slot').addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') saveSettings();
+      });
+    }
+
+    // ---------- Прайс-лист ----------
+    //
+    // Строки правятся в таблице и сохраняются целиком: админка присылает весь
+    // список, а сервер заменяет его одной транзакцией. Поэтому удаление —
+    // это отсутствие строки, отдельная ручка не нужна.
+    var priceRows = [];
+
+    function priceInput(row, key, cls, placeholder) {
+      var input = document.createElement('input');
+      input.type = 'text';
+      input.className = 'admin-input ' + (cls || '');
+      input.value = row[key] || '';
+      input.placeholder = placeholder || '';
+      input.dataset.key = key;
+      input.addEventListener('input', function () {
+        row[key] = input.value;
+      });
+      return input;
+    }
+
+    function priceCell(child) {
+      var td = document.createElement('td');
+      if (child) td.appendChild(child);
+      return td;
+    }
+
+    function renderPrices() {
+      var table = document.getElementById('admin-prices-table');
+      if (!table) return;
+      table.textContent = '';
+
+      var head = document.createElement('tr');
+      ['Название', 'Описание', 'От', 'До', 'Единица', 'Показ', ''].forEach(function (label) {
+        var th = document.createElement('th');
+        th.textContent = label;
+        head.appendChild(th);
+      });
+      table.appendChild(head);
+
+      if (!priceRows.length) {
+        var empty = document.createElement('tr');
+        var td = document.createElement('td');
+        td.colSpan = 7;
+        td.className = 'admin-empty';
+        td.textContent = 'Прайс пуст. Добавьте строку — ассистент перестанет говорить «цен нет».';
+        empty.appendChild(td);
+        table.appendChild(empty);
+        return;
+      }
+
+      priceRows.forEach(function (row, index) {
+        var tr = document.createElement('tr');
+        tr.appendChild(priceCell(priceInput(row, 'title', '')));
+        tr.appendChild(priceCell(priceInput(row, 'description', '')));
+        tr.appendChild(priceCell(priceInput(row, 'price_from', 'admin-price')));
+        tr.appendChild(priceCell(priceInput(row, 'price_to', 'admin-price')));
+        tr.appendChild(priceCell(priceInput(row, 'unit', 'admin-price')));
+        tr.appendChild(priceCell(priceToggle(row)));
+        tr.appendChild(priceCell(priceRemove(index)));
+        table.appendChild(tr);
+      });
+    }
+
+    function priceToggle(row) {
+      var label = document.createElement('label');
+      label.className = 'admin-switch';
+      var input = document.createElement('input');
+      input.type = 'checkbox';
+      input.checked = row.is_active !== false;
+      input.addEventListener('change', function () { row.is_active = input.checked; });
+      label.appendChild(input);
+      return label;
+    }
+
+    function priceRemove(index) {
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'admin-row-remove';
+      btn.textContent = 'Удалить';
+      btn.addEventListener('click', function () {
+        priceRows.splice(index, 1);
+        renderPrices();
+      });
+      return btn;
+    }
+
+    async function loadPrices() {
+      var res = await api('/api/admin/prices');
+      if (!res.ok) return;
+      priceRows = Array.isArray(res.body) ? res.body : [];
+      renderPrices();
+    }
+
+    function setPriceStatus(text, kind) {
+      var el = document.getElementById('price-status');
+      if (!el) return;
+      el.textContent = text;
+      el.className = 'form-status ' + (kind || '');
+    }
+
+    async function savePrices() {
+      var button = document.getElementById('price-save-btn');
+      if (button) button.disabled = true;
+      setPriceStatus('Сохраняю…', '');
+
+      var res = await api('/api/admin/prices', {
+        method: 'PUT',
+        body: JSON.stringify(priceRows)
+      });
+
+      if (button) button.disabled = false;
+
+      if (!res.ok) {
+        setPriceStatus(res.body.error || ('Ошибка ' + res.status), 'error');
+        return;
+      }
+
+      priceRows = Array.isArray(res.body) ? res.body : [];
+      renderPrices();
+      setPriceStatus('Сохранено: строк — ' + priceRows.length, 'success');
+    }
+
+    if (document.getElementById('price-add-btn')) {
+      document.getElementById('price-add-btn').addEventListener('click', function () {
+        priceRows.push({
+          slug: 'item-' + (priceRows.length + 1) + '-' + Date.now().toString(36),
+          title: '',
+          description: '',
+          price_from: '',
+          price_to: '',
+          unit: 'проект',
+          sort: priceRows.length,
+          is_active: true,
+          updated_at: ''
+        });
+        renderPrices();
+        setPriceStatus('', '');
+      });
+    }
+    if (document.getElementById('price-save-btn')) {
+      document.getElementById('price-save-btn').addEventListener('click', savePrices);
+    }
 
     // ---------- Статьи блога ----------
     //
@@ -1269,7 +1621,7 @@
     });
 
     // Автовход, если токен уже сохранён.
-    if (token()) { loadDashboard(); }
+    if (token()) { loadAdmin(); }
   }
 
   // ---------- Интерактивные карточки: tilt + radial spotlight ----------
@@ -1687,7 +2039,7 @@
       input.disabled = false;
       input.placeholder = 'Задайте вопрос...';
       inputRow.classList.remove('is-busy');
-      input.focus();
+      input.focus({ preventScroll: true });
     }
 
     // ---------- Приветственное сообщение (typewriter) ----------
@@ -1695,12 +2047,14 @@
     welcomeLine.className = 'terminal-line terminal-welcome';
     output.appendChild(welcomeLine);
     // Маскота зовут Кики — приветствие знакомит с ней до первого вопроса.
-    typeText(welcomeLine, '> Привет! Я Кики. Спрашивайте о задачах, услугах, ценах или оставьте заявку.', function() {
-      input.focus();
+    typeText(welcomeLine, '> Привет! Я Кики. Расскажу о проектах, статьях и ценах из прайса. Или оставьте заявку.', function() {
+      // Фокус на загрузке больше не забираем: терминал стоит отдельной секцией
+      // ниже обложки, и автофокус уводил страницу вниз мимо hero. Фокус
+      // приходит по клику в поле или по кнопке-пресету.
     }, 0.6);
 
     // ---------- Отправка сообщения в API ----------
-    async function sendMessage(message, questionType) {
+    async function sendMessage(message, questionType, extra, silent) {
       if (isBusy) return;                          // предыдущий запрос ещё в полёте
       if (isTyping && skipTyping) skipTyping();    // недопечатанный ответ — допечатать мгновенно
 
@@ -1711,7 +2065,13 @@
       if (mascot) mascot.reading();
 
       try {
-        var res = await postChat({ message: message, question_type: questionType });
+        var payload = { message: message, question_type: questionType };
+        if (extra) {
+          for (var key in extra) {
+            if (Object.prototype.hasOwnProperty.call(extra, key)) payload[key] = extra[key];
+          }
+        }
+        var res = await postChat(payload);
 
         if (!res.ok) throw new Error(res.body.error || ('HTTP ' + res.status));
 
@@ -1719,7 +2079,7 @@
         loading(); // убрать лоадер
         markChatStarted();
 
-        appendLine('terminal-user', '$ > ' + message);
+        if (!silent) appendLine('terminal-user', '$ > ' + message);
 
         // Напечатать ответ от бота с анимацией
         var botLine = document.createElement('div');
@@ -1746,6 +2106,21 @@
       }
     }
 
+    // ---------- Общие инструменты ассистента ----------
+    // Кнопки и термины размечает Rust, поведение — общий слой
+    // (`initAssistantTools`). Здесь только привязка к этой поверхности.
+    var lastQuestion = '';
+
+    registerSurface(terminal, {
+      status: function () {
+        sendMessage('Когда свободны?', 'availability', { preset_index: 5 }, true);
+      },
+      reply: function (text) {
+        appendLine('terminal-line terminal-bot-response', text);
+      },
+      lastQuestion: function () { return lastQuestion; }
+    });
+
     // ---------- Обработчики событий ----------
     function handleSend() {
       var text = input.value.trim();
@@ -1755,6 +2130,7 @@
         appendLine('terminal-line-warn', 'Вопрос длиннее ' + max + ' символов — сократите его, пожалуйста.');
         return;
       }
+      lastQuestion = text;
       sendMessage(text, 'free');
       input.value = '';
     }
@@ -1770,15 +2146,14 @@
         var index = btn.getAttribute('data-index');
         var message = btn.textContent.replace(/^["']|["']$/g, ''); // убрать кавычки из шаблона
 
-        if (kind === 'analysis') {
-          var url = prompt('Введите ссылку на ваш сайт (например, example.com):');
-          if (!url || !url.trim()) return;
-          sendMessage(message + ' (' + url.trim() + ')', 'analysis');
-        } else {
-          var payload = { message: message, question_type: kind };
-          if (index) payload.preset_index = parseInt(index, 10);
-          sendMessage(message, kind);
+        if (kind === 'lead_request') {
+          // Кнопка ведёт к форме, а не рассказывает про неё.
+          openBrief(lastQuestion);
+          return;
         }
+        var payload = { message: message, question_type: kind };
+        if (index) payload.preset_index = parseInt(index, 10);
+        sendMessage(message, kind);
       });
     });
   }
@@ -1793,8 +2168,6 @@
   // уже открывал чат, кнопка показывается сразу, без прокрутки, и переживает
   // обновление страницы. Ключ в localStorage, а не в sessionStorage: визит —
   // это не вкладка.
-  var CHAT_FAB_STORAGE_KEY = 'inteli:chat-opened';
-
   function initFloatingChat() {
     var fab = document.getElementById('chat-fab');
     if (!fab) return;
@@ -1806,14 +2179,6 @@
     var input = document.getElementById('chat-fab-input');
     var sendBtn = document.getElementById('chat-fab-send');
     var intro = document.getElementById('chat-fab-intro');
-    var presets = document.getElementById('chat-fab-presets');
-    // Кнопка нужна там, где терминала из hero не видно. Терминал есть только на
-    // главной: на остальных страницах (в том числе на 404, где секция `.hero`
-    // тоже есть) привязываться не к чему, и кнопка видна сразу.
-    var hero = document.getElementById('hero-terminal')
-      ? document.querySelector('.hero')
-      : null;
-
     var isWaiting = false;
     var MIN_TYPING_MS = 500; // как на /chat: индикатор не должен «мигать»
 
@@ -1829,23 +2194,25 @@
     }
 
     // ---------- Видимость кнопки ----------
-    // Приватный режим и запрет хранилища не должны ломать чат: без памяти
-    // кнопка просто ведёт себя как при первом визите.
-    var remembered = false;
-    try {
-      remembered = window.localStorage.getItem(CHAT_FAB_STORAGE_KEY) === '1';
-    } catch (e) {
-      remembered = false;
-    }
+    // Кнопка фиксированная. На главной появляется после обложки: в первом
+    // экране уже есть «Задать вопрос», второй такой же вход — шум. Дальше она
+    // не исчезает: один раз показалась — остаётся на экране.
+    var hero = document.getElementById('hero-terminal')
+      ? document.querySelector('.hero')
+      : null;
 
     function heroPassed() {
       return !hero || hero.getBoundingClientRect().bottom <= 0;
     }
 
-    function syncVisibility() {
+    // Один раз прошли обложку — кнопка остаётся. Возврат наверх её не прячет:
+    // мигающий вход раздражает сильнее, чем лишняя кнопка.
+    var revealed = !hero;
+
+    function syncFab() {
+      if (heroPassed()) revealed = true;
       // Открытую панель прокрутка прятать не должна: человек сам её открыл.
-      if (panel && !panel.hidden) { fab.hidden = false; return; }
-      fab.hidden = !(remembered || heroPassed());
+      fab.hidden = panel.hidden ? !revealed : false;
     }
 
     var ticking = false;
@@ -1854,27 +2221,17 @@
       ticking = true;
       window.requestAnimationFrame(function () {
         ticking = false;
-        syncVisibility();
+        syncFab();
       });
     }
 
     // ---------- Открытие и закрытие ----------
-    function remember() {
-      remembered = true;
-      try {
-        window.localStorage.setItem(CHAT_FAB_STORAGE_KEY, '1');
-      } catch (e) {
-        // Запомнить не вышло — кнопка останется видимой до конца этой страницы.
-      }
-    }
-
     function openPanel() {
       panel.hidden = false;
       fab.hidden = false;
       fab.classList.add('is-open');
       toggle.setAttribute('aria-expanded', 'true');
-      remember();
-      syncVisibility();
+      syncFab();
       input.focus();
     }
 
@@ -1882,7 +2239,7 @@
       panel.hidden = true;
       fab.classList.remove('is-open');
       toggle.setAttribute('aria-expanded', 'false');
-      syncVisibility();
+      syncFab();
       toggle.focus();
     }
 
@@ -1899,8 +2256,9 @@
     // Приглашение и кнопки-подсказки уступают место переписке после первого
     // вопроса: в компактной панели дорога каждая строка.
     function hideGreeting() {
+      // Термины и действия остаются: к ним возвращаются и после первого
+      // вопроса. Скрываем только приветствие.
       if (intro) intro.hidden = true;
-      if (presets) presets.hidden = true;
     }
 
     function scrollMessages() {
@@ -1966,27 +2324,18 @@
       send({ message: text, question_type: 'free' });
     }
 
-    if (presets) {
-      presets.querySelectorAll('.chat-fab-preset').forEach(function (btn) {
-        btn.addEventListener('click', function () {
-          if (isWaiting) return;
-          var kind = btn.getAttribute('data-kind');
-          var index = btn.getAttribute('data-index');
-          hideGreeting();
-          addMessage(btn.textContent, 'user');
-
-          if (kind === 'analysis') {
-            var url = window.prompt('Введите ссылку на ваш сайт (например, example.com):');
-            if (!url || !url.trim()) return;
-            send({ message: btn.textContent, question_type: 'analysis', url: url.trim() });
-          } else {
-            var payload = { message: btn.textContent, question_type: kind };
-            if (index) payload.preset_index = parseInt(index, 10);
-            send(payload);
-          }
-        });
-      });
-    }
+    // Термины и действия в панели — те же общие компоненты, что в терминале
+    // и на /chat. Кнопок-пресетов здесь нет: панель компактная.
+    registerSurface(panel, {
+      status: function () {
+        addMessage('Когда свободны?', 'user');
+        send({ message: 'Когда свободны?', question_type: 'availability', preset_index: 5 });
+      },
+      reply: function (text) {
+        hideGreeting();
+        addMessage(text, 'bot');
+      }
+    });
 
     toggle.addEventListener('click', function () {
       if (panel.hidden) openPanel(); else closePanel();
@@ -2000,12 +2349,9 @@
       if (e.key === 'Escape' && !panel.hidden) closePanel();
     });
 
-    // Скролл через requestAnimationFrame: обработчик не должен считать
-    // геометрию на каждое событие прокрутки.
     window.addEventListener('scroll', onScroll, { passive: true });
     window.addEventListener('resize', onScroll);
-
-    syncVisibility();
+    syncFab();
   }
 
   // ---------- Кнопки: radial spotlight под курсором (без box-shadow) ----------
@@ -2101,6 +2447,101 @@
     });
   }
 
+  // ---------- Слайдер кейсов на главной ----------
+  // Лента со scroll-snap листается сама: свайп, колесо и клавиши работают без
+  // скрипта. Скрипт добавляет только стрелки, точки и состояние — поэтому без
+  // него слайдер остаётся рабочим, просто менее очевидным.
+  function initProjectSlider() {
+    var slider = document.getElementById('project-slider');
+    if (!slider) return;
+
+    var track = slider.querySelector('.project-slider-track');
+    var slides = track ? Array.prototype.slice.call(track.children) : [];
+    if (slides.length < 2) return;
+
+    var prev = document.querySelector('[data-slider="prev"]');
+    var next = document.querySelector('[data-slider="next"]');
+    var dots = Array.prototype.slice.call(document.querySelectorAll('.project-slider-dots .slider-dot'));
+    var reduceMotion = !!(window.matchMedia &&
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+
+    // Позицию слайда считаем от первого: `gap` между слайдами добавляет к
+    // ширине свою долю, и «ширина контейнера × индекс» разъезжается с реальной
+    // прокруткой.
+    function offsetOf(index) {
+      return slides[index].offsetLeft - slides[0].offsetLeft;
+    }
+
+    function currentIndex() {
+      var x = slider.scrollLeft;
+      var best = 0;
+      var bestDistance = Infinity;
+      for (var i = 0; i < slides.length; i++) {
+        var distance = Math.abs(offsetOf(i) - x);
+        if (distance < bestDistance) { bestDistance = distance; best = i; }
+      }
+      return best;
+    }
+
+    function goTo(index) {
+      var target = Math.max(0, Math.min(slides.length - 1, index));
+      slider.scrollTo({
+        left: offsetOf(target),
+        behavior: reduceMotion ? 'auto' : 'smooth'
+      });
+    }
+
+    function sync() {
+      var index = currentIndex();
+      if (prev) prev.disabled = index <= 0;
+      if (next) next.disabled = index >= slides.length - 1;
+      dots.forEach(function (dot, i) {
+        if (i === index) dot.setAttribute('aria-current', 'true');
+        else dot.removeAttribute('aria-current');
+      });
+    }
+
+    if (prev) {
+      prev.disabled = false;
+      prev.addEventListener('click', function () { goTo(currentIndex() - 1); });
+    }
+    if (next) {
+      next.disabled = false;
+      next.addEventListener('click', function () { goTo(currentIndex() + 1); });
+    }
+
+    // Точка — ссылка на якорь: без скрипта она честно прокручивает ленту, со
+    // скриптом — делает то же плавно и без прыжка страницы.
+    dots.forEach(function (dot, i) {
+      dot.addEventListener('click', function (e) {
+        e.preventDefault();
+        goTo(i);
+      });
+    });
+
+    // Стрелки на клавиатуре листают слайды целиком: встроенная прокрутка
+    // сдвигает ленту на десятки пикселей, и снап возвращает её назад.
+    slider.addEventListener('keydown', function (e) {
+      if (e.key === 'ArrowRight') { e.preventDefault(); goTo(currentIndex() + 1); }
+      else if (e.key === 'ArrowLeft') { e.preventDefault(); goTo(currentIndex() - 1); }
+      else if (e.key === 'Home') { e.preventDefault(); goTo(0); }
+      else if (e.key === 'End') { e.preventDefault(); goTo(slides.length - 1); }
+    });
+
+    var ticking = false;
+    slider.addEventListener('scroll', function () {
+      if (ticking) return;
+      ticking = true;
+      window.requestAnimationFrame(function () {
+        ticking = false;
+        sync();
+      });
+    }, { passive: true });
+
+    window.addEventListener('resize', sync);
+    sync();
+  }
+
   // ---------- Подсказка статуса занятости ----------
   // Бейдж — кнопка с постоянным подлежащим («Приём заявок: открыт») и
   // подсказкой с подробностями. На десктопе подсказку показывает сам CSS
@@ -2159,12 +2600,12 @@
     // клавиатурный читатель теряет место, на котором остановился.
     var lastFocus = null;
 
-    // Что вообще можно увеличить: картинки статьи и её обложка. Картинку внутри
-    // ссылки не трогаем — автор уже назначил ей действие (`[![…](…)](…)`), и клик
-    // должен вести по ссылке.
+    // Что вообще можно увеличить: картинки статьи, её обложка и скриншот кейса.
+    // Картинку внутри ссылки не трогаем — автор уже назначил ей действие
+    // (`[![…](…)](…)`), и клик должен вести по ссылке.
     function zoomable() {
       return Array.prototype.filter.call(
-        document.querySelectorAll('.prose img, .post-cover'),
+        document.querySelectorAll('.prose img, .post-cover, .project-shot'),
         function (img) {
           return !img.closest('a') && !img.closest('.lightbox') && img.getAttribute('src');
         }
@@ -2304,15 +2745,41 @@
     markZoomable();
   }
 
+  // Заявка из терминала: `/brief` (или кнопка «Оставить заявку») ведёт на
+  // /contact?topic=<вопрос>#lead-form. Вопрос подставляется в «задачу», чтобы
+  // человек не пересказывал то, что уже написал в терминале.
+  function initContactPrefill() {
+    var form = document.getElementById('lead-form');
+    if (!form) return;
+    var topic = '';
+    try {
+      topic = new URLSearchParams(window.location.search).get('topic') || '';
+    } catch (e) {
+      topic = '';
+    }
+    if (!topic) return;
+    var message = document.getElementById('message');
+    if (message && !message.value) message.value = topic;
+    if (window.location.hash === '#lead-form') {
+      form.scrollIntoView({ block: 'start' });
+    }
+    var name = document.getElementById('name');
+    if (name) name.focus({ preventScroll: true });
+  }
+
   initReveal();
+  initAssistantTools();
+  initServiceFilter();
   initMobileNav();
   initStatusBadge();
   initCharCounters();
   initGoalClicks();
   initGoalRead();
   initHeroTerminal(initMascot());
+  initContactPrefill();
   initFloatingChat();
   initLightbox();
+  initProjectSlider();
   initHeroCanvas();
   initCardEffects();
   initButtonSpotlight();

@@ -34,11 +34,18 @@ pub fn App() -> impl IntoView {
                     <Route path=path!("/") view=home::Home/>
                     <Route path=path!("/services") view=services::Services/>
                     <Route path=path!("/projects") view=projects::Projects/>
+                    <Route path=path!("/projects/:slug") view=projects::ProjectPage/>
                     <Route path=path!("/blog") view=blog::Blog/>
                     <Route path=path!("/blog/:slug") view=blog::BlogPost/>
                     <Route path=path!("/chat") view=chat::Chat/>
                     <Route path=path!("/contact") view=contact::Contact/>
-                    <Route path=path!("/admin") view=admin::Admin/>
+                    <Route path=path!("/admin") view=admin::AdminOverview/>
+                    <Route path=path!("/admin/leads") view=admin::AdminLeads/>
+                    <Route path=path!("/admin/chats") view=admin::AdminChats/>
+                    <Route path=path!("/admin/articles") view=admin::AdminArticles/>
+                    <Route path=path!("/admin/outbox") view=admin::AdminOutbox/>
+                    <Route path=path!("/admin/prices") view=admin::AdminPrices/>
+                    <Route path=path!("/admin/settings") view=admin::AdminSettings/>
                 </Routes>
             </Layout>
         </Router>

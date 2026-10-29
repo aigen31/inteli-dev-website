@@ -8,6 +8,7 @@ pub mod article;
 pub mod chat;
 pub mod lead;
 pub mod media;
+pub mod price;
 pub mod settings;
 
 use sqlx::sqlite::{SqlitePool, SqlitePoolOptions};
@@ -53,6 +54,21 @@ CREATE TABLE IF NOT EXISTS notification_retry_queue (
 CREATE TABLE IF NOT EXISTS site_settings (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+-- Прайс-лист: строки, которые правит владелец в админке и которые читает
+-- ассистент через MCP. Отдельно от услуг: услуга — направление, строка прайса —
+-- то, что продаётся (проект, час поддержки, аудит).
+CREATE TABLE IF NOT EXISTS price_items (
+    slug TEXT PRIMARY KEY,
+    title TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    price_from TEXT NOT NULL DEFAULT '',
+    price_to TEXT NOT NULL DEFAULT '',
+    unit TEXT NOT NULL DEFAULT 'проект',
+    sort INTEGER NOT NULL DEFAULT 0,
+    is_active INTEGER NOT NULL DEFAULT 1,
     updated_at TEXT NOT NULL
 );
 
