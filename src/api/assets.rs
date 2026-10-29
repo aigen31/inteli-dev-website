@@ -374,7 +374,7 @@ pub const SERVICE_ART: [ServiceArt; 19] = [
         slug: "ai-vision",
         image: include_bytes!("../../assets/services/ai-vision.png"),
         width: 737,
-        height: 665,
+        height: 730,
     },
     ServiceArt {
         slug: "comfyui-media",
@@ -416,7 +416,7 @@ pub const SERVICE_ART: [ServiceArt; 19] = [
         slug: "local-private-dev",
         image: include_bytes!("../../assets/services/local-private-dev.png"),
         width: 760,
-        height: 760,
+        height: 661,
     },
     ServiceArt {
         slug: "mobile-apps",
