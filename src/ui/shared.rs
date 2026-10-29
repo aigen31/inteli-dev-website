@@ -171,8 +171,9 @@ pub fn ServiceCard(service: Service, #[prop(default = 3)] level: u8) -> impl Int
         crate::api::assets::versioned(&crate::api::assets::service_art_path(a.slug))
     });
     let art_size = art.map(|a| (a.width, a.height));
-    // Подпись у увеличенной картинки: в лайтбоксе видно только её, поэтому имя
-    // услуги должно быть в alt, а не пустая строка.
+    // Рисунок стоит на кремовой «плашке», как вклейка в журнале: на тёмной
+    // странице чёрное платье иначе сливается с фоном. Alt называет услугу —
+    // по нему картинку находят, когда она не загрузилась.
     let art_alt = format!("Кики: {}", service.title);
 
     view! {
@@ -184,15 +185,17 @@ pub fn ServiceCard(service: Service, #[prop(default = 3)] level: u8) -> impl Int
                 {art_src.map(|src| {
                     let (width, height) = art_size.unwrap_or((480, 620));
                     view! {
-                        <img
-                            class="card-art"
-                            src=src
-                            alt=art_alt
-                            width=width
-                            height=height
-                            loading="lazy"
-                            decoding="async"
-                        />
+                        <div class="card-plate">
+                            <img
+                                class="card-art"
+                                src=src
+                                alt=art_alt
+                                width=width
+                                height=height
+                                loading="lazy"
+                                decoding="async"
+                            />
+                        </div>
                     }
                 })}
                 <span class="card-price">{price}</span>
