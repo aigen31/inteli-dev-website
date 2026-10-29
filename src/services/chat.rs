@@ -753,11 +753,6 @@ mod tests {
         // «Отлично!» и без срока, которого автор не обещал.
         assert!(resp.answer.contains("заявк"), "получено: {}", resp.answer);
         assert!(
-            resp.answer.contains("при наличии свободного окна"),
-            "рамка ответа пропала: {}",
-            resp.answer
-        );
-        assert!(
             !resp.answer.contains("24"),
             "срок «24 часа» вернулся в ответ чата: {}",
             resp.answer

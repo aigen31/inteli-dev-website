@@ -752,7 +752,7 @@ pub fn page_meta(path: &str, site_url: &str, article: Option<&Article>) -> PageM
         ),
         "/contact" => PageMeta::new(
             format!("Контакты и заявка — {name}"),
-            "Telegram, email и форма заявки. Опишите проект: задача, сроки, бюджет — отвечу при наличии свободного окна.".to_string(),
+            "Telegram, email и форма заявки. Опишите проект: задача, сроки, бюджет.".to_string(),
             absolute(base, "/contact"),
             OgType::Website,
             Some(default_og_image(base)),

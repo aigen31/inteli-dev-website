@@ -13,7 +13,7 @@ use crate::services::github;
 use crate::services::goals;
 use crate::ui::beget::BegetLogo;
 use crate::ui::icon::{BrandIcon, LucideIcon};
-use crate::ui::shared::{Lightbox, StatusBadge};
+use crate::ui::shared::{GlossaryLinks, Lightbox, QuickActions, StatusBadge};
 
 /// Ссылка на профиль Habr.
 ///
@@ -58,18 +58,12 @@ pub fn Layout(children: Children) -> impl IntoView {
     // отсутствия контекста виджет не должен.
     let chat_widget = path
         .as_deref()
-        .map_or(true, |p| p != "/chat" && !p.starts_with("/admin"));
+        .map_or(true, |p| !p.starts_with("/admin"));
     // Просмотр изображений нужен там, где есть крупная картинка: статья блога и
     // скриншот кейса. Остальным страницам панель не нужна.
     let article_page = request_path()
         .is_some_and(|path| path.starts_with("/blog/") || path.starts_with("/projects/"));
-    // Кнопки в компактной панели — те же, что на /chat: список общий, поэтому
-    // подпись и индекс кнопки не могут разойтись с тем, как их обрабатывает
-    // сервер. Аудит сайта из списка убран: он требует ссылки и ходит в модель.
-    let presets_fab = crate::services::chat::PRESETS
-        .iter()
-        .map(|p| (p.label.to_string(), p.kind.to_string(), p.index))
-        .collect::<Vec<_>>();
+
     // Лимит поля тот же, что у терминала и /chat: серверная валидация одна.
     let max_chars = Limits::get().chat_message_max_chars;
 
@@ -237,17 +231,12 @@ pub fn Layout(children: Children) -> impl IntoView {
                         <p class="chat-fab-intro" id="chat-fab-intro">
                             "Спросите о задачах, услугах и сроках — отвечу прямо здесь."
                         </p>
-                        <div class="chat-fab-presets" id="chat-fab-presets" role="group" aria-label="Частые вопросы">
-                            {presets_fab.into_iter().map(|(label, kind, index)| view! {
-                                <button
-                                    type="button"
-                                    class="preset-button chat-fab-preset"
-                                    data-kind=kind
-                                    data-index=index.to_string()
-                                >{label}</button>
-                            }).collect::<Vec<_>>()}
-                        </div>
-                        <div class="chat-fab-messages" id="chat-fab-messages" role="log" aria-live="polite"></div>
+                        <GlossaryLinks/>
+                        // Кнопки-вопросы в компактной панели убраны: термины и
+                        // быстрые действия ниже дают тот же вход, не занимая
+                        // пол-панели восемью пилюлями.
+<div class="chat-fab-messages" id="chat-fab-messages" role="log" aria-live="polite"></div>
+                        <QuickActions/>
                     </div>
 
                     <div class="chat-fab-input-row">

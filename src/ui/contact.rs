@@ -21,7 +21,7 @@ pub fn Contact() -> impl IntoView {
                 <p class="eyebrow"><span class="eyebrow-dot" aria-hidden="true"></span>{"Связь"}</p>
                 <h1>Контакты</h1>
             </div>
-            <p class="subtitle">{"Опишите проект — отвечу при наличии свободного окна."}</p>
+            <p class="subtitle">{"Опишите проект: задача, сроки, бюджет — этого достаточно, чтобы начать."}</p>
 
             <div class="contact-grid">
                 // `data-goal` — цель аналитики (см. `services::goals`):

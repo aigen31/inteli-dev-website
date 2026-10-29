@@ -1938,24 +1938,34 @@ ul { margin: 0; padding: 0; list-style: none; }
 }
 .chat-fab[hidden] { display: none; }
 
+/* Кнопка в углу — не акцент, а тихий вход: пока человек читает, она не должна
+   перетягивать взгляд. Поэтому никакой заливки и градиента — тёмная плашка с
+   волосяной рамкой, как служебные элементы интерфейса. */
 .chat-fab-toggle {
   display: inline-flex;
   align-items: center;
-  gap: var(--space-sm);
-  padding: 0.7rem 1.15rem;
-  border: 1px solid var(--color-border-strong);
+  gap: 8px;
+  padding: 0.55rem 0.95rem;
+  border: 1px solid var(--rule-strong);
   border-radius: var(--radius-full);
-  background: linear-gradient(135deg, var(--color-primary), #6f5cf0);
-  color: #fff;
-  font-family: inherit;
-  font-size: var(--text-small);
-  font-weight: 600;
+  background: #0b0b12;
+  color: var(--color-text-secondary);
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  font-weight: 400;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
   cursor: pointer;
-  box-shadow: var(--shadow-md);
-  transition: transform var(--transition-fast), box-shadow var(--transition-fast);
+  box-shadow: 0 14px 34px -26px #000;
+  transition: color var(--transition-fast), border-color var(--transition-fast),
+    background var(--transition-fast);
 }
-.chat-fab-toggle:hover { transform: translateY(-2px); box-shadow: var(--shadow-lg); }
-.chat-fab-toggle-icon { display: inline-flex; font-size: 1.1rem; }
+.chat-fab-toggle:hover {
+  color: var(--color-text);
+  border-color: rgba(255, 255, 255, 0.22);
+  background: #12121a;
+}
+.chat-fab-toggle-icon { display: inline-flex; font-size: 0.9rem; opacity: 0.8; }
 /* Открытую панель закрывает своя кнопка: две кнопки рядом с одним действием —
    лишний выбор. */
 .chat-fab.is-open .chat-fab-toggle { display: none; }
@@ -4134,34 +4144,32 @@ a:hover { color: #fff; }
    должна накрывать поле имени. */
 #lead-form { scroll-margin-top: calc(var(--nav-offset) + 24px); }
 
-/* ---------- 17.20 Быстрые действия и термины ----------
-   Подсказки внутри окна — не пилюли, а тихая строка: термин подчёркнут,
-   действия разделены точками. Пилюли в футере терминала весили больше самого
-   окна и спорили с полем ввода. */
-.terminal-suggest {
+/* ---------- 17.20 Ассистент: термины и быстрые действия ----------
+   Один набор на три поверхности: терминал в hero, страница /chat и
+   плавающая панель. Оформление намеренно тихое — это подсказки под полем
+   ввода, а не второй ряд кнопок. Пилюли убраны: ряд из пяти рамок весил
+   больше самого окна. */
+.assistant-terms {
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
   gap: 4px 12px;
-  padding: 0 18px 10px;
-  /* Не заезжать под маскота: он сидит на кромке футера справа. */
-  padding-right: calc(var(--mascot-w, 120px) * 0.9 + 18px);
 }
-.terminal-suggest[hidden] { display: none; }
-.terminal-suggest-label {
+.assistant-terms[hidden] { display: none; }
+.assistant-terms-label {
   font-family: var(--font-mono);
   font-size: 0.58rem;
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--color-text-tertiary);
 }
-.terminal-suggest-list {
+.assistant-terms-list {
   display: flex;
   flex-wrap: wrap;
   gap: 4px 14px;
   min-width: 0;
 }
-.terminal-question {
+.assistant-term {
   padding: 2px 0;
   border: 0;
   background: transparent;
@@ -4176,32 +4184,24 @@ a:hover { color: #fff; }
   text-underline-offset: 3px;
   transition: color var(--transition-fast);
 }
-.terminal-question:hover {
+.assistant-term:hover {
   color: var(--color-text);
   text-decoration-color: var(--color-primary);
 }
-.terminal-question:focus-visible {
+.assistant-term:focus-visible,
+.assistant-action:focus-visible {
   outline: 2px solid var(--color-primary);
   outline-offset: 2px;
   border-radius: 2px;
 }
 
-.terminal-actions {
+.assistant-actions {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 0;
-  padding: 0 18px 12px;
 }
-/* На телефоне строка действий переносится, и точка-разделитель оказывается в
-   начале второй строки. Меняем её на обычный отступ. */
-@media (max-width: 767px) {
-  .terminal-actions { gap: 10px; }
-  .terminal-action + .terminal-action::before { content: none; }
-  .terminal-suggest { padding-right: calc(var(--mascot-w, 96px) * 0.55 + 12px); }
-  .terminal-input { padding-right: calc(var(--mascot-w, 96px) * 0.8); }
-}
-.terminal-action {
+.assistant-action {
   padding: 2px 0;
   border: 0;
   border-radius: 0;
@@ -4214,19 +4214,46 @@ a:hover { color: #fff; }
   cursor: pointer;
   transition: color var(--transition-fast);
 }
-.terminal-action + .terminal-action::before {
+.assistant-action + .assistant-action::before {
   content: "·";
   margin: 0 9px;
   opacity: 0.5;
 }
-.terminal-action:hover { color: var(--color-text); }
-.terminal-action:focus-visible {
-  outline: 2px solid var(--color-primary);
-  outline-offset: 2px;
-}
+.assistant-action:hover { color: var(--color-text); }
 /* Заявка — единственное действие с акцентом, и то без заливки. */
-.terminal-action-primary { color: var(--color-text); }
-.terminal-action-primary:hover { color: var(--color-primary); }
+.assistant-action-primary { color: var(--color-text); }
+.assistant-action-primary:hover { color: var(--color-primary); }
+
+/* Терминал: подсказки живут в футере окна и не заезжают под маскота. */
+.terminal-footer .assistant-terms {
+  padding: 0 18px 10px;
+  padding-right: calc(var(--mascot-w, 120px) * 0.9 + 18px);
+}
+.terminal-footer .assistant-actions { padding: 0 18px 12px; }
+
+/* /chat: подсказки между приветствием и лентой. */
+.chat-container .assistant-terms { margin: 16px 0 4px; }
+.chat-container .assistant-actions { margin-top: 16px; }
+
+/* Панель в углу: та же логика, плотнее отступы. В узкой панели пять действий
+   в строку не влезают — они переносятся, и точки-разделители там лишние. */
+.chat-fab-panel .assistant-terms { padding: 0 14px 10px; }
+.chat-fab-panel .assistant-actions {
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  padding: 10px 14px 0;
+}
+.chat-fab-panel .assistant-action + .assistant-action::before { content: none; }
+
+/* На телефоне строки переносятся — точка-разделитель в начале второй строки
+   читается как опечатка. */
+@media (max-width: 767px) {
+  .assistant-actions { gap: 10px; }
+  .assistant-action + .assistant-action::before { content: none; }
+  .terminal-footer .assistant-terms {
+    padding-right: calc(var(--mascot-w, 96px) * 0.55 + 12px);
+  }
+}
 
 /* Кнопка «Спросить» теперь видна всегда: на телефоне она перекрывает нижнюю
    строку контента, поэтому под подвалом оставляем место под неё. */
@@ -4286,9 +4313,3 @@ a:hover { color: #fff; }
 .admin-prices th:nth-child(7) { width: 9%; }
 .admin-prices-toolbar { justify-content: flex-start; }
 
-/* Телефон: строка действий переносится — точка-разделитель в начале второй
-   строки читается как опечатка. Правило стоит после базового, иначе
-   `content: "·"` перебивает его. */
-@media (max-width: 767px) {
-  .terminal-action + .terminal-action::before { content: none; }
-}

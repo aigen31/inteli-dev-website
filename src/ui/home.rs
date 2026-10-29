@@ -11,7 +11,9 @@ use crate::memory::content::SiteContent;
 use crate::services::goals;
 use crate::ui::blog::LatestArticles;
 use crate::ui::github::GitHubStatsSection;
-use crate::ui::shared::{PrimaryButton, ProjectCard, SecondaryButton, ServiceCard, StatusBadge};
+use crate::ui::shared::{
+    GlossaryLinks, PrimaryButton, ProjectCard, QuickActions, SecondaryButton, ServiceCard, StatusBadge,
+};
 
 /// Сколько кейсов крутить в слайдере на главной.
 ///
@@ -109,39 +111,11 @@ pub fn HeroTerminal() -> impl IntoView {
                 <span class="char-count" data-counter-for="hero-terminal-input" aria-hidden="true"></span>
             </p>
 
-            // Быстрые действия: то, что человек может сделать сам, без вопроса
-            // к модели. Слэш-команд в интерфейсе нет — только эти кнопки.
-            // Термины сайта: человек не обязан знать, что такое MCP или
-            // локальный инференс, — кнопка сразу задаёт этот вопрос.
-            <div class="terminal-suggest" id="hero-terminal-suggest" role="group" aria-label="О терминах">
-                <span class="terminal-suggest-label">"О терминах"</span>
-                <div class="terminal-suggest-list">
-                    <button type="button" class="terminal-question" data-question="Что такое MCP и зачем он нужен?">"MCP"</button>
-                    <button type="button" class="terminal-question" data-question="Что такое AI Skills?">"AI Skills"</button>
-                    <button type="button" class="terminal-question" data-question="Что такое локальный инференс?">"Локальный инференс"</button>
-                    <button type="button" class="terminal-question" data-question="Что значит приватная AI-система?">"Приватная AI-система"</button>
-                    <button type="button" class="terminal-question" data-question="Что такое ComfyUI?">"ComfyUI"</button>
-                </div>
-            </div>
-
-            <div class="terminal-actions" role="group" aria-label="Действия">
-                <button type="button" class="terminal-action terminal-action-primary" data-terminal-action="brief">
-                    "Оставить заявку"
-                </button>
-                <button type="button" class="terminal-action" data-terminal-action="status">
-                    "Свободен?"
-                </button>
-                <button type="button" class="terminal-action" data-terminal-action="services">
-                    "Услуги"
-                </button>
-                <button type="button" class="terminal-action" data-terminal-action="mail">
-                    "Почта"
-                </button>
-                <button type="button" class="terminal-action" data-terminal-action="tg">
-                    "Телеграм"
-                </button>
-            </div>
-
+            // Подсказки и действия — общие компоненты: тот же набор работает
+            // на /chat и в плавающей панели. Ответы на термины — готовый текст
+            // из `services::glossary`, без запроса к модели.
+            <GlossaryLinks/>
+            <QuickActions/>
             </div>
         </div>
     }
@@ -334,7 +308,7 @@ pub fn Home() -> impl IntoView {
         <section class="section section-cta cta-section">
             <p class="eyebrow"><span class="eyebrow-dot" aria-hidden="true"></span>{"04 — Контакт"}</p>
             <h2>Готовы обсудить ваш проект?</h2>
-            <p class="section-note">{"Оставьте заявку — отвечу при наличии свободного окна."}</p>
+            <p class="section-note">{"Опишите задачу: что нужно сделать, к какому сроку и какой бюджет."}</p>
             <div class="cta-buttons">
                 <PrimaryButton text="Оставить заявку" href="/contact"/>
                 <SecondaryButton text="Спросить в чате" href="/chat"/>

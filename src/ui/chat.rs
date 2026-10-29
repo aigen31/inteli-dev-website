@@ -12,11 +12,16 @@ use leptos::prelude::*;
 use crate::limits::Limits;
 use crate::services::chat::PRESETS;
 use crate::services::goals;
+use crate::ui::shared::{GlossaryLinks, QuickActions};
 
 #[component]
 pub fn Chat() -> impl IntoView {
+    // Только те вопросы, которых нет среди терминов и быстрых действий:
+    // «Оставить заявку» и «Когда свободны?» дублировали кнопки под полем,
+    // а «Локальный инференс» — термин в глоссарии.
     let presets = PRESETS
         .iter()
+        .filter(|p| p.index <= 2)
         .map(|p| (p.label.to_string(), p.kind.to_string(), p.index))
         .collect::<Vec<_>>();
 
@@ -45,6 +50,9 @@ pub fn Chat() -> impl IntoView {
                     }).collect::<Vec<_>>()}
                 </div>
 
+                // Термины объясняются готовым текстом: без запроса к модели.
+                <GlossaryLinks/>
+
                 <div class="messages-area" id="chat-messages" role="log" aria-live="polite"></div>
 
                 <div class="chat-input-row">
@@ -70,7 +78,7 @@ pub fn Chat() -> impl IntoView {
                     <span class="char-count" data-counter-for="chat-input" aria-hidden="true"></span>
                 </p>
 
-                <a href="/contact" class="floating-cta">{"Оставить заявку"}</a>
+                <QuickActions/>
             </div>
         </section>
     }

@@ -157,7 +157,7 @@ pub fn ProjectPage() -> impl IntoView {
                 <p class="project-page-cta">
                     "Похожая задача? "
                     <a href="/contact">"Напишите"</a>
-                    " — отвечу при наличии свободного окна."
+                    "."
                 </p>
             </footer>
 

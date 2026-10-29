@@ -281,6 +281,101 @@
   }
 
   // ---------- Чат ----------
+  // ---------- Ассистент: общие инструменты ----------
+  //
+  // Один набор на три поверхности: терминал в hero, страница /chat и
+  // плавающая панель. Разметку кнопок задаёт Rust (`shared::QuickActions` и
+  // `shared::GlossaryLinks`), здесь — только поведение.
+  //
+  // Термины показываются готовым текстом из `data-answer`: ни запроса, ни
+  // токенов, ни ожидания. Плавающая кнопка и панель — тоже без ИИ.
+
+  var assistantSurfaces = [];
+
+  function registerSurface(element, api) {
+    if (!element) return;
+    assistantSurfaces.push({ element: element, api: api });
+  }
+
+  function surfaceFor(node) {
+    for (var i = 0; i < assistantSurfaces.length; i++) {
+      if (assistantSurfaces[i].element.contains(node)) return assistantSurfaces[i].api;
+    }
+    return null;
+  }
+
+  function contactEmailFromFooter() {
+    var link = document.querySelector('.footer a[href^="mailto:"]');
+    return link ? link.getAttribute('href').replace(/^mailto:/, '') : '';
+  }
+
+  function telegramHandleFromFooter() {
+    var link = document.querySelector('.footer a[href*="t.me/"]');
+    return link ? link.getAttribute('href').split('t.me/')[1] : '';
+  }
+
+  function openBrief(topic) {
+    var href = '/contact#lead-form';
+    if (topic) href = '/contact?topic=' + encodeURIComponent(topic) + '#lead-form';
+    window.location.href = href;
+  }
+
+  function copyContactEmail(reply) {
+    var email = contactEmailFromFooter();
+    if (!email) {
+      if (reply) reply('Почта не настроена — форма заявки на /contact.');
+      return;
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(email).then(
+        function () { if (reply) reply('Почта скопирована: ' + email); },
+        function () { if (reply) reply(email); }
+      );
+    } else if (reply) {
+      reply(email);
+    }
+  }
+
+  function openTelegram(reply) {
+    var handle = telegramHandleFromFooter();
+    if (!handle) {
+      if (reply) reply('Телеграм не настроен — форма заявки на /contact.');
+      return;
+    }
+    window.open('https://t.me/' + handle, '_blank', 'noopener');
+  }
+
+  // Один делегированный обработчик на всю страницу: кнопок может быть
+  // несколько (терминал, чат, панель), и вешать слушатель на каждую незачем.
+  function initAssistantTools() {
+    document.addEventListener('click', function (event) {
+      var quick = event.target.closest('[data-quick-action]');
+      if (quick) {
+        var api = surfaceFor(quick);
+        var reply = api && api.reply;
+        var action = quick.getAttribute('data-quick-action');
+
+        if (action === 'status') {
+          if (api && api.status) api.status();
+          return;
+        }
+        if (action === 'brief') { openBrief(api && api.lastQuestion ? api.lastQuestion() : ''); return; }
+        if (action === 'services') { window.location.href = '/services'; return; }
+        if (action === 'mail') { copyContactEmail(reply); return; }
+        if (action === 'tg') { openTelegram(reply); return; }
+      }
+
+      var term = event.target.closest('[data-glossary]');
+      if (term) {
+        var surface = surfaceFor(term);
+        var answer = term.getAttribute('data-answer') || '';
+        if (surface && surface.reply) surface.reply(answer);
+        var group = term.closest('.assistant-terms');
+        if (group) group.hidden = true;
+      }
+    });
+  }
+
   function initChat() {
     var app = document.getElementById('chat-app');
     if (!app) return;
@@ -396,6 +491,14 @@
     sendBtn.addEventListener('click', sendFree);
     input.addEventListener('keydown', function (e) {
       if (e.key === 'Enter') sendFree();
+    });
+
+    registerSurface(app, {
+      status: function () {
+        addMessage('Когда свободны?', 'user');
+        send({ message: 'Когда свободны?', question_type: 'availability', preset_index: 5 });
+      },
+      reply: function (text) { addMessage(text, 'bot'); }
     });
 
     app.querySelectorAll('.preset-button[data-kind]').forEach(function (btn) {
@@ -1934,58 +2037,20 @@
       }
     }
 
-    // ---------- Быстрые действия ----------
-    // Всё живёт в браузере: ни токенов, ни квоты, ни ожидания. Смысл — не
-    // пересказывать то, что уже есть на сайте, а вести туда или делать
-    // действие: открыть форму, скопировать почту, написать в телеграм.
-    var contactEmail = terminal.getAttribute('data-email') || '';
-    var contactTelegram = terminal.getAttribute('data-telegram') || '';
+    // ---------- Общие инструменты ассистента ----------
+    // Кнопки и термины размечает Rust, поведение — общий слой
+    // (`initAssistantTools`). Здесь только привязка к этой поверхности.
     var lastQuestion = '';
 
-    // Короткая служебная строка в ленте — для подтверждений, не для ответов.
-    function note(text) {
-      appendLine('terminal-note', text);
-    }
-
-    function brief() {
-      // Вопрос, который человек уже написал, переносится в форму: ему не нужно
-      // вспоминать, о чём он спрашивал.
-      var topic = lastQuestion ? lastQuestion : '';
-      window.location.href = '/contact?topic=' + encodeURIComponent(topic) + '#lead-form';
-    }
-
-    function copyEmail() {
-      if (!contactEmail) {
-        note('Почта не настроена — оставьте заявку через форму.');
-        return;
-      }
-      function done() { note('Почта скопирована: ' + contactEmail); }
-      if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(contactEmail).then(done, function () {
-          note(contactEmail);
-        });
-      } else {
-        note(contactEmail);
-      }
-    }
-
-    function openTelegram() {
-      if (!contactTelegram) {
-        note('Телеграм не настроен — оставьте заявку через форму.');
-        return;
-      }
-      window.open('https://t.me/' + contactTelegram.replace(/^@/, ''), '_blank', 'noopener');
-    }
-
-    var ACTIONS = {
-      brief: brief,
+    registerSurface(terminal, {
       status: function () {
         sendMessage('Когда свободны?', 'availability', { preset_index: 5 }, true);
       },
-      services: function () { window.location.href = '/services'; },
-      mail: copyEmail,
-      tg: openTelegram
-    };
+      reply: function (text) {
+        appendLine('terminal-line terminal-bot-response', text);
+      },
+      lastQuestion: function () { return lastQuestion; }
+    });
 
     // ---------- Обработчики событий ----------
     function handleSend() {
@@ -2005,25 +2070,6 @@
       if (e.key === 'Enter') handleSend();
     });
 
-    // Быстрые действия: выполняются сразу, без вопроса к модели.
-    terminal.querySelectorAll('[data-terminal-action]').forEach(function(btn) {
-      btn.addEventListener('click', function() {
-        var action = ACTIONS[btn.getAttribute('data-terminal-action')];
-        if (action) action();
-      });
-    });
-
-    // Термины: кнопка отправляет готовый вопрос и убирает подсказку, чтобы она
-    // не висела над перепиской.
-    var suggest = document.getElementById('hero-terminal-suggest');
-    terminal.querySelectorAll('.terminal-question').forEach(function(btn) {
-      btn.addEventListener('click', function() {
-        var question = btn.getAttribute('data-question') || btn.textContent;
-        if (suggest) suggest.hidden = true;
-        sendMessage(question, 'free');
-      });
-    });
-
     // Preset-кнопки
     terminal.querySelectorAll('.terminal-preset-btn').forEach(function(btn) {
       btn.addEventListener('click', function() {
@@ -2033,7 +2079,7 @@
 
         if (kind === 'lead_request') {
           // Кнопка ведёт к форме, а не рассказывает про неё.
-          brief();
+          openBrief(lastQuestion);
           return;
         }
         var payload = { message: message, question_type: kind };
@@ -2064,7 +2110,6 @@
     var input = document.getElementById('chat-fab-input');
     var sendBtn = document.getElementById('chat-fab-send');
     var intro = document.getElementById('chat-fab-intro');
-    var presets = document.getElementById('chat-fab-presets');
     var isWaiting = false;
     var MIN_TYPING_MS = 500; // как на /chat: индикатор не должен «мигать»
 
@@ -2080,9 +2125,9 @@
     }
 
     // ---------- Видимость кнопки ----------
-    // Кнопка фиксированная, но появляется только после обложки: в первом экране
-    // уже есть «Задать вопрос», и второй такой же вход — шум. На внутренних
-    // страницах обложки нет, там кнопка видна сразу.
+    // Кнопка фиксированная. На главной появляется после обложки: в первом
+    // экране уже есть «Задать вопрос», второй такой же вход — шум. Дальше она
+    // не исчезает: один раз показалась — остаётся на экране.
     var hero = document.getElementById('hero-terminal')
       ? document.querySelector('.hero')
       : null;
@@ -2091,9 +2136,14 @@
       return !hero || hero.getBoundingClientRect().bottom <= 0;
     }
 
+    // Один раз прошли обложку — кнопка остаётся. Возврат наверх её не прячет:
+    // мигающий вход раздражает сильнее, чем лишняя кнопка.
+    var revealed = !hero;
+
     function syncFab() {
+      if (heroPassed()) revealed = true;
       // Открытую панель прокрутка прятать не должна: человек сам её открыл.
-      fab.hidden = panel.hidden ? !heroPassed() : false;
+      fab.hidden = panel.hidden ? !revealed : false;
     }
 
     var ticking = false;
@@ -2138,7 +2188,10 @@
     // вопроса: в компактной панели дорога каждая строка.
     function hideGreeting() {
       if (intro) intro.hidden = true;
-      if (presets) presets.hidden = true;
+      // Термины в компактной панели уступают место переписке; действия — нет:
+      // «Оставить заявку» нужна в любой момент.
+      var terms = panel ? panel.querySelector('.assistant-terms') : null;
+      if (terms) terms.hidden = true;
     }
 
     function scrollMessages() {
@@ -2204,21 +2257,18 @@
       send({ message: text, question_type: 'free' });
     }
 
-    if (presets) {
-      presets.querySelectorAll('.chat-fab-preset').forEach(function (btn) {
-        btn.addEventListener('click', function () {
-          if (isWaiting) return;
-          var kind = btn.getAttribute('data-kind');
-          var index = btn.getAttribute('data-index');
-          hideGreeting();
-          addMessage(btn.textContent, 'user');
-
-          var payload = { message: btn.textContent, question_type: kind };
-          if (index) payload.preset_index = parseInt(index, 10);
-          send(payload);
-        });
-      });
-    }
+    // Термины и действия в панели — те же общие компоненты, что в терминале
+    // и на /chat. Кнопок-пресетов здесь нет: панель компактная.
+    registerSurface(panel, {
+      status: function () {
+        addMessage('Когда свободны?', 'user');
+        send({ message: 'Когда свободны?', question_type: 'availability', preset_index: 5 });
+      },
+      reply: function (text) {
+        hideGreeting();
+        addMessage(text, 'bot');
+      }
+    });
 
     toggle.addEventListener('click', function () {
       if (panel.hidden) openPanel(); else closePanel();
@@ -2651,6 +2701,7 @@
   }
 
   initReveal();
+  initAssistantTools();
   initMobileNav();
   initStatusBadge();
   initCharCounters();

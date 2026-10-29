@@ -8,6 +8,7 @@ pub mod article;
 pub mod chat;
 pub mod feed;
 pub mod github;
+pub mod glossary;
 pub mod goals;
 pub mod lead;
 pub mod media;
