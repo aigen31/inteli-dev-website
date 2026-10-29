@@ -410,7 +410,7 @@ pub const SERVICE_ART: [ServiceArt; 19] = [
         slug: "legacy-refactor",
         image: include_bytes!("../../assets/services/legacy-refactor.png"),
         width: 760,
-        height: 690,
+        height: 728,
     },
     ServiceArt {
         slug: "local-private-dev",
@@ -433,8 +433,8 @@ pub const SERVICE_ART: [ServiceArt; 19] = [
     ServiceArt {
         slug: "small-fixes",
         image: include_bytes!("../../assets/services/small-fixes.png"),
-        width: 737,
-        height: 706,
+        width: 760,
+        height: 713,
     },
     ServiceArt {
         slug: "support",
@@ -451,8 +451,8 @@ pub const SERVICE_ART: [ServiceArt; 19] = [
     ServiceArt {
         slug: "voice-ai",
         image: include_bytes!("../../assets/services/voice-ai.png"),
-        width: 697,
-        height: 706,
+        width: 729,
+        height: 774,
     },
     ServiceArt {
         slug: "web-any",
