@@ -507,6 +507,12 @@ pub fn version() -> &'static str {
         for image in &PROJECT_IMAGES {
             hasher.update(image.image);
         }
+        // Иллюстрации услуг меняются чаще остального, а кэш у них годовой.
+        // Без них версия адреса не двигалась, и браузер показывал старые
+        // картинки после каждой новой генерации.
+        for art in &SERVICE_ART {
+            hasher.update(art.image);
+        }
 
         hex::encode(hasher.finalize())[..8].to_string()
     })
