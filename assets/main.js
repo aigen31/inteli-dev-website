@@ -928,7 +928,7 @@
       table.textContent = '';
 
       var head = document.createElement('tr');
-      ['Название', 'Описание', 'От', 'До', 'Единица', 'Показ', ''].forEach(function (label) {
+      ['Название', 'Описание', 'От', 'Единица', 'Показ', ''].forEach(function (label) {
         var th = document.createElement('th');
         th.textContent = label;
         head.appendChild(th);
@@ -938,7 +938,7 @@
       if (!priceRows.length) {
         var empty = document.createElement('tr');
         var td = document.createElement('td');
-        td.colSpan = 7;
+        td.colSpan = 6;
         td.className = 'admin-empty';
         td.textContent = 'Прайс пуст. Добавьте строку — ассистент перестанет говорить «цен нет».';
         empty.appendChild(td);
@@ -951,7 +951,6 @@
         tr.appendChild(priceCell(priceInput(row, 'title', '')));
         tr.appendChild(priceCell(priceInput(row, 'description', '')));
         tr.appendChild(priceCell(priceInput(row, 'price_from', 'admin-price')));
-        tr.appendChild(priceCell(priceInput(row, 'price_to', 'admin-price')));
         tr.appendChild(priceCell(priceInput(row, 'unit', 'admin-price')));
         tr.appendChild(priceCell(priceToggle(row)));
         tr.appendChild(priceCell(priceRemove(index)));

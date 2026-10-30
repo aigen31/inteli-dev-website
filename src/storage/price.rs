@@ -37,11 +37,12 @@ pub struct PriceItem {
 impl PriceItem {
     /// Одна строка для промпта и MCP: «Название — от X до Y ₽, единица».
     pub fn line(&self) -> String {
-        let range = match (self.price_from.trim(), self.price_to.trim()) {
-            ("", "") => "по запросу".to_string(),
-            (from, "") => format!("от {from}"),
-            ("", to) => format!("до {to}"),
-            (from, to) => format!("{from} – {to}"),
+        // В прайсе осталась только цена «от». Поле price_to сохранено в схеме
+        // для старых строк, но в ответы и на сайт не выводится.
+        let range = if self.price_from.trim().is_empty() {
+            "по запросу".to_string()
+        } else {
+            format!("от {}", self.price_from.trim())
         };
 
         let unit = if self.unit.trim().is_empty() {
@@ -133,7 +134,7 @@ const CATALOG_HASH_KEY: &str = "price_catalog_hash";
 /// иначе существующая база не увидит новые строки, ведь отпечаток услуг может
 /// остаться прежним.
 const PRICE_SEED_KEY: &str = "price_seed_version";
-const PRICE_SEED_VERSION: &str = "2026-10-30-task-book-v1";
+const PRICE_SEED_VERSION: &str = "2026-10-30-task-book-v2-from-only";
 
 /// Синхронизация прайса с каталогом услуг.
 ///
@@ -263,8 +264,8 @@ mod tests {
     }
 
     #[test]
-    fn line_formats_ranges() {
-        assert_eq!(item("a", "100", "200").line(), "Проверка — 100 – 200 / проект");
+    fn line_formats_from_only() {
+        assert_eq!(item("a", "100", "200").line(), "Проверка — от 100 / проект");
         assert_eq!(item("a", "100", "").line(), "Проверка — от 100 / проект");
         assert_eq!(item("a", "", "").line(), "Проверка — по запросу / проект");
     }

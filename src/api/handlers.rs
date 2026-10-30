@@ -355,6 +355,9 @@ pub async fn admin_update_prices(
         }
         item.slug = slugify(&item.slug);
         item.updated_at = now.clone();
+        // В прайсе осталась только цена «от»: даже старая строка из админки
+        // не должна вернуть колонку «до».
+        item.price_to.clear();
 
         if item.title.trim().is_empty() {
             return Err(AppError::Validation(format!(

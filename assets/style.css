@@ -4432,13 +4432,12 @@ a:hover { color: #fff; }
 /* Колонки прайса: название и описание — широкие, цены — узкие. Без явных
    ширин `table-layout: auto` отдаёт всё место описанию и режет названия. */
 .admin-prices { table-layout: fixed; width: 100%; }
-.admin-prices th:nth-child(1) { width: 24%; }
-.admin-prices th:nth-child(2) { width: 28%; }
-.admin-prices th:nth-child(3) { width: 12%; }
-.admin-prices th:nth-child(4) { width: 11%; }
-.admin-prices th:nth-child(5) { width: 10%; }
-.admin-prices th:nth-child(6) { width: 6%; }
-.admin-prices th:nth-child(7) { width: 9%; }
+.admin-prices th:nth-child(1) { width: 26%; }
+.admin-prices th:nth-child(2) { width: 30%; }
+.admin-prices th:nth-child(3) { width: 14%; }
+.admin-prices th:nth-child(4) { width: 12%; }
+.admin-prices th:nth-child(5) { width: 9%; }
+.admin-prices th:nth-child(6) { width: 9%; }
 .admin-prices-toolbar { justify-content: flex-start; }
 
 

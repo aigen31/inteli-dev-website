@@ -194,11 +194,9 @@ fn list_services() -> String {
     let mut lines = vec!["# Услуги".to_string()];
 
     for service in &content.services {
-        let price = match (&service.price_from, &service.price_to) {
-            (Some(from), Some(to)) => format!("{from} – {to}"),
-            (Some(from), None) => format!("от {from}"),
-            (None, Some(to)) => format!("до {to}"),
-            (None, None) => "по запросу".to_string(),
+        let price = match &service.price_from {
+            Some(from) => format!("от {from}"),
+            None => "по запросу".to_string(),
         };
         lines.push(format!(
             "\n## {}\n{}\nОриентир: {price}\nСтраница: /services",

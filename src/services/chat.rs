@@ -437,11 +437,9 @@ fn answer_pricing() -> String {
 
 /// Цена услуги одной строкой.
 fn price_range(service: &crate::memory::content::Service) -> String {
-    match (&service.price_from, &service.price_to) {
-        (Some(from), Some(to)) => format!("{from} – {to}"),
-        (Some(from), None) => format!("от {from}"),
-        (None, Some(to)) => format!("до {to}"),
-        (None, None) => "по запросу".to_string(),
+    match &service.price_from {
+        Some(from) => format!("от {from}"),
+        None => "по запросу".to_string(),
     }
 }
 
