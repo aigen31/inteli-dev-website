@@ -444,6 +444,20 @@
       return new Promise(function (resolve) { setTimeout(resolve, left); });
     }
 
+    // Быстрый ответ из готового текста (термин, почта) проходит тот же
+    // индикатор, что и ответ ИИ: иначе кнопка «выстреливает» текстом без
+    // паузы, пока обычный ответ показывает «печатает».
+    function replyWithTyping(text) {
+      if (isWaiting) return;
+      setWaiting(true);
+      var typingEl = showTyping();
+      window.setTimeout(function () {
+        typingEl.remove();
+        addMessage(text, 'bot');
+        setWaiting(false);
+      }, MIN_TYPING_MS);
+    }
+
     async function send(payload) {
       if (isWaiting) return;
       setWaiting(true);
@@ -498,7 +512,7 @@
         addMessage('Когда свободны?', 'user');
         send({ message: 'Когда свободны?', question_type: 'availability', preset_index: 5 });
       },
-      reply: function (text) { addMessage(text, 'bot'); }
+      reply: replyWithTyping
     });
 
     app.querySelectorAll('.preset-button[data-kind]').forEach(function (btn) {
@@ -2115,7 +2129,16 @@
         sendMessage('Когда свободны?', 'availability', { preset_index: 5 }, true);
       },
       reply: function (text) {
-        appendLine('terminal-line terminal-bot-response', text);
+        // Готовый текст (термин, скопированная почта) печатается тем же
+        // способом, что и ответ модели: без мгновенной вставки.
+        var line = document.createElement('div');
+        line.className = 'terminal-line terminal-bot-response';
+        output.appendChild(line);
+        if (mascot) mascot.thinking();
+        typeText(line, text, function () {
+          scrollToBottom();
+          if (mascot) mascot.done();
+        });
       },
       lastQuestion: function () { return lastQuestion; }
     });
@@ -2323,6 +2346,27 @@
       send({ message: text, question_type: 'free' });
     }
 
+    // Быстрый готовый ответ в панели проходит тот же индикатор, что и
+    // ответ ИИ: панель не должна «выстреливать» текстом без паузы.
+    function replyWithTyping(text) {
+      if (isWaiting) return;
+      isWaiting = true;
+      input.disabled = true;
+      sendBtn.disabled = true;
+      var typing = typingBubble();
+      messages.appendChild(typing);
+      scrollMessages();
+      window.setTimeout(function () {
+        typing.remove();
+        hideGreeting();
+        addMessage(text, 'bot');
+        isWaiting = false;
+        input.disabled = false;
+        sendBtn.disabled = false;
+        input.focus();
+      }, MIN_TYPING_MS);
+    }
+
     // Термины и действия в панели — те же общие компоненты, что в терминале
     // и на /chat. Кнопок-пресетов здесь нет: панель компактная.
     registerSurface(panel, {
@@ -2330,10 +2374,7 @@
         addMessage('Когда свободны?', 'user');
         send({ message: 'Когда свободны?', question_type: 'availability', preset_index: 5 });
       },
-      reply: function (text) {
-        hideGreeting();
-        addMessage(text, 'bot');
-      }
+      reply: replyWithTyping
     });
 
     toggle.addEventListener('click', function () {
