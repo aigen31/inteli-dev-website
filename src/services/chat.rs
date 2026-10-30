@@ -429,7 +429,7 @@ fn answer_pricing() -> String {
     let c = crate::memory::content::SiteContent::get();
     let mut out = String::from("Цены — ориентировочно, зависят от объёма:");
     for s in &c.services {
-        out.push_str(&format!("\n• {}: {}", s.title, price_range(s)));
+        out.push_str(&format!("\n{}: {}", s.title, price_range(s)));
     }
     out.push_str("\n\nЭто ориентир по прайсу. Точную смету считаю после короткого брифа.");
     out

@@ -345,7 +345,7 @@ pub struct ServiceArt {
 pub const SERVICE_ART_PATH_PREFIX: &str = "/assets/services/";
 
 /// Все иллюстрации услуг.
-pub const SERVICE_ART: [ServiceArt; 19] = [
+pub const SERVICE_ART: [ServiceArt; 20] = [
     ServiceArt {
         slug: "ai-assistants",
         image: include_bytes!("../../assets/services/ai-assistants.png"),
@@ -417,6 +417,12 @@ pub const SERVICE_ART: [ServiceArt; 19] = [
         image: include_bytes!("../../assets/services/local-private-dev.png"),
         width: 760,
         height: 661,
+    },
+    ServiceArt {
+        slug: "my-inference-dev",
+        image: include_bytes!("../../assets/services/my-inference-dev.png"),
+        width: 760,
+        height: 774,
     },
     ServiceArt {
         slug: "mobile-apps",

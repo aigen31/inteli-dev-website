@@ -247,6 +247,16 @@ pub fn fallback_content() -> SiteContent {
                 price_to: None,
             },
             Service {
+                slug: "my-inference-dev".into(),
+                category: "ai".into(),
+                title: "Приватная разработка в рамках моего инференса".into(),
+                icon_name: "server-cog".into(),
+                description:
+                    "Разработка идёт на моём inference-стенде: Ryzen 7 5800X, RTX 5080 + 3060, 64 ГБ DDR4. llama.cpp и PolyStrata держат локальные модели, LiteLLM маршрутизирует запросы. Файлы, код, базы, API-ключи и пароли остаются в локальном контуре, а облачная модель помогает с архитектурой.".into(),
+                price_from: None,
+                price_to: None,
+            },
+            Service {
                 slug: "ai-mcp".into(),
                 category: "ai".into(),
                 title: "MCP-серверы и AI Skills".into(),
