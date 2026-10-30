@@ -48,6 +48,13 @@ pub struct Service {
     pub price_to: Option<String>,
 }
 
+impl Service {
+    /// Адрес страницы услуги.
+    pub fn url_path(&self) -> String {
+        format!("/services/{}", self.slug)
+    }
+}
+
 /// Кейс (проект) для портфолио.
 ///
 /// Факты — из опубликованного портфолио автора, а не из головы: карточка в

@@ -6,6 +6,7 @@
 
 pub mod client;
 pub mod content;
+pub mod service_pages;
 
 pub use client::{MemoryResult, OpenVikingClient};
 pub use content::{AuthorProfile, Availability};

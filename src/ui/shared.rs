@@ -148,19 +148,25 @@ pub fn card_heading(level: u8, class: &'static str, title: String, link: Option<
     }
 }
 
+/// Цена услуги одной строкой: «от 25 000 ₽», «6 000 ₽/мес», «по запросу».
+pub fn price_label(service: &Service) -> String {
+    match (&service.price_from, &service.price_to) {
+        (Some(from), Some(to)) => format!("{from} – {to}"),
+        (Some(from), None) => format!("от {from}"),
+        (None, Some(to)) => format!("до {to}"),
+        (None, None) => "по запросу".to_string(),
+    }
+}
+
 /// Карточка услуги.
 ///
 /// `level` — уровень заголовка: 2 на `/services` (карточка — самостоятельный
 /// блок страницы), 3 на главной (карточка внутри секции «Услуги»).
 #[component]
 pub fn ServiceCard(service: Service, #[prop(default = 3)] level: u8) -> impl IntoView {
-    let price = match (&service.price_from, &service.price_to) {
-        (Some(from), Some(to)) => format!("{from} – {to}"),
-        (Some(from), None) => format!("от {from}"),
-        (None, Some(to)) => format!("до {to}"),
-        (None, None) => "по запросу".to_string(),
-    };
-    let heading = card_heading(level, "card-title", service.title.clone(), None);
+    let price = price_label(&service);
+    let href = service.url_path();
+    let heading = card_heading(level, "card-title", service.title.clone(), Some(href.clone()));
 
     let category = service.category.clone();
 
@@ -203,7 +209,13 @@ pub fn ServiceCard(service: Service, #[prop(default = 3)] level: u8) -> impl Int
                         </div>
                     }
                 })}
-                <span class="card-price">{price}</span>
+                <div class="card-foot">
+                    <span class="card-price">{price}</span>
+                    <a class="card-more" href=href.clone()>
+                        "Подробнее"
+                        <span aria-hidden="true">"↗"</span>
+                    </a>
+                </div>
             </div>
         </article>
     }

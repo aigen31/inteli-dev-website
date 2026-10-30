@@ -3,6 +3,7 @@
 //! Форма отправляется ванильным JS (`assets/main.js`) на POST /api/lead.
 
 use leptos::prelude::*;
+use leptos_router::hooks::use_query_map;
 
 use crate::limits::Limits;
 use crate::memory::content::SiteContent;
@@ -15,6 +16,29 @@ pub fn Contact() -> impl IntoView {
     let contacts = content.profile.contacts.clone();
     let limits = Limits::get();
 
+    // Ссылка со страницы услуги приносит слаг в query. Название услуги
+    // подставляется в текст заявки, а source хранит конкретную услугу: так
+    // видно, какая страница привела лид, без отдельной таблицы.
+    let query = use_query_map();
+    let service_slug = query.read().get("service").unwrap_or_default();
+    let service = content
+        .services
+        .iter()
+        .find(|s| s.slug == service_slug)
+        .cloned();
+    let service_title = service
+        .as_ref()
+        .map(|s| s.title.clone())
+        .unwrap_or_default();
+    let prefill = service
+        .as_ref()
+        .map(|s| format!("Интересует услуга: {}.\n\nКоротко о задаче: ", s.title))
+        .unwrap_or_default();
+    let source = service
+        .as_ref()
+        .map(|s| format!("service:{}", s.slug))
+        .unwrap_or_else(|| "form".to_string());
+
     view! {
         <section class="section">
             <div class="section-head">
@@ -22,6 +46,16 @@ pub fn Contact() -> impl IntoView {
                 <h1>Контакты</h1>
             </div>
             <p class="subtitle">{"Опишите проект: задача, сроки, бюджет — этого достаточно, чтобы начать."}</p>
+            {if service_title.is_empty() {
+                ().into_any()
+            } else {
+                view! {
+                    <p class="contact-service-note">
+                        "Заявка по услуге: "
+                        <strong>{service_title.clone()}</strong>
+                    </p>
+                }.into_any()
+            }}
 
             <div class="contact-grid">
                 // `data-goal` — цель аналитики (см. `services::goals`):
@@ -53,10 +87,10 @@ pub fn Contact() -> impl IntoView {
                         <label for="message">О проекте</label>
                         <textarea id="message" name="message" required rows="4"
                             maxlength=limits.lead_message_max_chars
-                            placeholder="Например: интернет-магазин, ~500 страниц, нужен рост заявок"></textarea>
+                            placeholder="Например: интернет-магазин, ~500 страниц, нужен рост заявок">{prefill.clone()}</textarea>
                         <span class="char-count" data-counter-for="message" aria-hidden="true"></span>
                     </div>
-                    <input type="hidden" name="source" value="form"/>
+                    <input type="hidden" name="source" value=source/>
                     <button type="submit" class="btn btn-primary">Отправить заявку</button>
                     <p id="lead-form-status" class="form-status" role="status" aria-live="polite"></p>
                 </form>

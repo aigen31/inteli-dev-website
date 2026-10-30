@@ -29,6 +29,7 @@ use std::time::Duration;
 
 use crate::api::assets;
 use crate::memory::content::SiteContent;
+use crate::memory::service_pages;
 use crate::services::article::Article;
 
 /// Имена в корне сайта, которые уже заняты статикой.
@@ -671,6 +672,34 @@ pub fn page_meta(path: &str, site_url: &str, article: Option<&Article>) -> PageM
         };
     }
 
+    // Страница услуги: свой заголовок, лид и иллюстрация. Заголовок начинается
+    // с названия услуги, потому что в поиске ищут «голосовой бот», а не имя.
+    if let Some(slug) = path.strip_prefix("/services/") {
+        let Some(service) = content.services.iter().find(|s| s.slug == slug) else {
+            return not_found(base, name);
+        };
+        let detail = service_pages::get(slug);
+        let description = detail
+            .map(|page| page.lead)
+            .unwrap_or(service.description.as_str());
+        let image = assets::service_art(slug)
+            .map(|art| {
+                absolute(
+                    base,
+                    &assets::versioned(&assets::service_art_path(art.slug)),
+                )
+            })
+            .unwrap_or_else(|| default_og_image(base));
+        return PageMeta {
+            title: format!("{}: {}", service.title.trim(), name),
+            description: clamp_description(description, DESCRIPTION_MAX),
+            canonical: absolute(base, &path),
+            og_type: OgType::Website,
+            image: Some(image),
+            noindex: false,
+        };
+    }
+
     // Страница кейса: заголовок, описание и картинка — из самого кейса.
     // Заголовок начинается с названия проекта, а не с имени автора: в выдаче
     // ищут «голосовой бот для недвижимости», а не фамилию.
@@ -958,6 +987,42 @@ mod tests {
                 "{path}: description повторяет другой"
             );
         }
+    }
+
+    /// У каждой услуги своя мета-пара: заголовок, описание и картинка.
+    /// Проверяем и уникальность title, иначе 19 страниц снова станут одним
+    /// сниппетом.
+    #[test]
+    fn every_service_page_has_its_own_meta() {
+        SiteContent::set_global(fallback_content());
+        let content = SiteContent::get();
+        let mut titles = std::collections::HashSet::new();
+
+        for service in &content.services {
+            let path = format!("/services/{}", service.slug);
+            let meta = page_meta(&path, SITE, None);
+
+            assert!(!meta.is_noindex(), "{path}: страница закрыта от индекса");
+            assert!(
+                meta.title().contains(service.title.trim()),
+                "{path}: в title нет названия услуги"
+            );
+            assert!(!meta.description().is_empty(), "{path}: пустое описание");
+            assert_eq!(
+                meta.canonical(),
+                format!("{SITE}{path}"),
+                "{path}: неверный canonical"
+            );
+            assert!(meta.image().is_some(), "{path}: нет картинки");
+            assert!(titles.insert(meta.title().to_string()), "{path}: повтор title");
+        }
+    }
+
+    #[test]
+    fn unknown_service_is_not_found() {
+        SiteContent::set_global(fallback_content());
+        let meta = page_meta("/services/no-such-service", SITE, None);
+        assert!(meta.is_noindex(), "несуществующая услуга должна быть noindex");
     }
 
     #[test]

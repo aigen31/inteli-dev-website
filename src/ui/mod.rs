@@ -33,6 +33,7 @@ pub fn App() -> impl IntoView {
                 <Routes fallback=|| view! { <NotFound/> }>
                     <Route path=path!("/") view=home::Home/>
                     <Route path=path!("/services") view=services::Services/>
+                    <Route path=path!("/services/:slug") view=services::ServicePage/>
                     <Route path=path!("/projects") view=projects::Projects/>
                     <Route path=path!("/projects/:slug") view=projects::ProjectPage/>
                     <Route path=path!("/blog") view=blog::Blog/>

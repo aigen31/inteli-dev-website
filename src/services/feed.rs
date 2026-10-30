@@ -83,9 +83,16 @@ pub fn rss_xml(articles: &[Article], public_url: &str) -> String {
 ///
 /// Слаги кейсов передаёт вызывающий, как и статьи: функция остаётся чистой и
 /// проверяемой, без чтения глобального контента изнутри.
-pub fn sitemap_xml(articles: &[ArticleHead], project_slugs: &[String], public_url: &str) -> String {
+pub fn sitemap_xml(
+    articles: &[ArticleHead],
+    project_slugs: &[String],
+    service_slugs: &[String],
+    public_url: &str,
+) -> String {
     let base = public_url.trim_end_matches('/');
-    let mut out = String::with_capacity(512 + articles.len() * 256 + project_slugs.len() * 96);
+    let mut out = String::with_capacity(
+        512 + articles.len() * 256 + project_slugs.len() * 96 + service_slugs.len() * 96,
+    );
 
     out.push_str("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
     out.push_str("<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">\n");
@@ -97,6 +104,13 @@ pub fn sitemap_xml(articles: &[ArticleHead], project_slugs: &[String], public_ur
     for slug in project_slugs {
         out.push_str(&format!(
             "  <url><loc>{base}/projects/{}</loc></url>\n",
+            escape_xml(slug)
+        ));
+    }
+
+    for slug in service_slugs {
+        out.push_str(&format!(
+            "  <url><loc>{base}/services/{}</loc></url>\n",
             escape_xml(slug)
         ));
     }
@@ -161,12 +175,18 @@ pub fn current_rss(public_url: &str) -> String {
 
 /// Снимок карты сайта для текущего состояния сайта.
 pub fn current_sitemap(public_url: &str) -> String {
-    let projects: Vec<String> = SiteContent::get()
+    let content = SiteContent::get();
+    let projects: Vec<String> = content
         .projects
         .iter()
         .map(|project| project.slug.clone())
         .collect();
-    sitemap_xml(&PublishedArticles::heads(), &projects, public_url)
+    let services: Vec<String> = content
+        .services
+        .iter()
+        .map(|service| service.slug.clone())
+        .collect();
+    sitemap_xml(&PublishedArticles::heads(), &projects, &services, public_url)
 }
 
 #[cfg(test)]
@@ -246,12 +266,18 @@ mod tests {
     #[test]
     fn sitemap_lists_static_pages_and_articles() {
         let head = article("hello", "t", "body").head();
-        let xml = sitemap_xml(&[head], &["coffee-b2b-platform".to_string()], "https://x.ru");
+        let xml = sitemap_xml(
+            &[head],
+            &["coffee-b2b-platform".to_string()],
+            &["voice-ai".to_string()],
+            "https://x.ru",
+        );
 
         assert!(xml.contains("<loc>https://x.ru/</loc>"));
         assert!(xml.contains("<loc>https://x.ru/blog</loc>"));
         assert!(xml.contains("<loc>https://x.ru/blog/hello</loc>"));
         assert!(xml.contains("<loc>https://x.ru/projects/coffee-b2b-platform</loc>"));
+        assert!(xml.contains("<loc>https://x.ru/services/voice-ai</loc>"));
         assert!(xml.contains("<lastmod>2026-09-24</lastmod>"));
     }
 
