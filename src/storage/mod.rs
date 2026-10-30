@@ -9,6 +9,7 @@ pub mod chat;
 pub mod lead;
 pub mod media;
 pub mod price;
+pub mod price_catalog;
 pub mod settings;
 
 use sqlx::sqlite::{SqlitePool, SqlitePoolOptions};

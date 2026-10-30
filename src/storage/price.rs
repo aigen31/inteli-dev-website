@@ -12,6 +12,7 @@
 use sqlx::sqlite::SqlitePool;
 
 use crate::error::AppResult;
+use crate::storage::price_catalog;
 
 /// Строка прайса.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -128,6 +129,12 @@ pub async fn replace_all(
 /// Ключ в `site_settings` с отпечатком каталога услуг.
 const CATALOG_HASH_KEY: &str = "price_catalog_hash";
 
+/// Версия стартового прайса. Меняется, когда набор задач и цен пересобран:
+/// иначе существующая база не увидит новые строки, ведь отпечаток услуг может
+/// остаться прежним.
+const PRICE_SEED_KEY: &str = "price_seed_version";
+const PRICE_SEED_VERSION: &str = "2026-10-30-task-book-v1";
+
 /// Синхронизация прайса с каталогом услуг.
 ///
 /// Прайс — не копия услуг, а отдельная таблица, которую владелец правит в
@@ -144,39 +151,38 @@ pub async fn sync_with_services(pool: &SqlitePool, updated_at: &str) -> AppResul
             .bind(CATALOG_HASH_KEY)
             .fetch_optional(pool)
             .await?;
+    let stored_seed: Option<String> =
+        sqlx::query_scalar("SELECT value FROM site_settings WHERE key = ?")
+            .bind(PRICE_SEED_KEY)
+            .fetch_optional(pool)
+            .await?;
 
-    if stored.as_deref() == Some(hash.as_str()) {
+    if stored.as_deref() == Some(hash.as_str())
+        && stored_seed.as_deref() == Some(PRICE_SEED_VERSION)
+    {
         return Ok(false);
     }
 
-    let items: Vec<PriceItem> = content
-        .services
-        .iter()
-        .enumerate()
-        .map(|(index, service)| PriceItem {
-            slug: service.slug.clone(),
-            title: service.title.clone(),
-            description: String::new(),
-            price_from: service.price_from.clone().unwrap_or_default(),
-            price_to: service.price_to.clone().unwrap_or_default(),
-            unit: "проект".to_string(),
-            sort: index as i64,
-            is_active: true,
-            updated_at: updated_at.to_string(),
-        })
-        .collect();
-
+    // Стартовый прайс: базовый формат каждой услуги плюс задачи из каталога.
+    // Ручные правки владельца сохраняются, пока не изменился каталог услуг
+    // или версия стартового набора.
+    let items = price_catalog::build(&content.services, updated_at);
     replace_all(pool, &items, updated_at).await?;
 
-    sqlx::query(
-        r#"INSERT INTO site_settings (key, value, updated_at) VALUES (?, ?, ?)
-           ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at"#,
-    )
-    .bind(CATALOG_HASH_KEY)
-    .bind(hash)
-    .bind(updated_at)
-    .execute(pool)
-    .await?;
+    for (key, value) in [
+        (CATALOG_HASH_KEY, hash.as_str()),
+        (PRICE_SEED_KEY, PRICE_SEED_VERSION),
+    ] {
+        sqlx::query(
+            r#"INSERT INTO site_settings (key, value, updated_at) VALUES (?, ?, ?)
+               ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at"#,
+        )
+        .bind(key)
+        .bind(value)
+        .bind(updated_at)
+        .execute(pool)
+        .await?;
+    }
 
     Ok(true)
 }
