@@ -414,16 +414,12 @@ fn answer_who() -> String {
 /// подробности клиент читает на `/services`.
 fn answer_services() -> String {
     let c = crate::memory::content::SiteContent::get();
-    let mut out = String::from("Коротко — направления, подробности на /services:");
+    let mut out = String::from("Направления (подробности на /services):");
     for s in &c.services {
-        // Разделитель — двоеточие, а не тире: описания сами содержат тире
-        // («ComfyUI Mass Production — Массовая генерация…»), и второе тире
-        // подряд читалось бы как опечатка.
-        out.push_str(&format!(
-            "\n• {}: {}",
-            s.title,
-            first_sentence(&s.description)
-        ));
+        // В чате нужен список, по которому видно, подходит ли специалист.
+        // Описания и первые предложения оставляем страницам услуг: 19 строк
+        // с пояснениями превращаются в простыню на несколько экранов.
+        out.push_str(&format!("\n• {}", s.title));
     }
     out
 }
@@ -435,10 +431,7 @@ fn answer_pricing() -> String {
     for s in &c.services {
         out.push_str(&format!("\n• {}: {}", s.title, price_range(s)));
     }
-    out.push_str(
-        "\n\nЭто ориентир по прайсу сайта. Точную смету считаю после короткого брифа: \
-         задача, объём, сроки — присылайте на /contact или в телеграм.",
-    );
+    out.push_str("\n\nЭто ориентир по прайсу. Точную смету считаю после короткого брифа.");
     out
 }
 
@@ -614,8 +607,10 @@ mod tests {
             );
         }
         assert!(resp.answer.contains("₽"), "нет ни одной цены: {}", resp.answer);
+        // «Инференс» есть в названии услуги, поэтому проверяем не слово, а
+        // объяснение темы: в ответе о ценах его быть не должно.
         assert!(
-            !resp.answer.contains("инференс"),
+            !resp.answer.contains("работает на вашем железе"),
             "ответ о ценах ушёл в тему инференса: {}",
             resp.answer
         );

@@ -96,6 +96,7 @@ mod tests {
             assert!(
                 !entry.answer.to_lowercase().contains("оставьте заявку"),
                 "{}: объяснение зовёт оставить заявку",
+                entry.slug,
             );
         }
     }
