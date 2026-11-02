@@ -20,6 +20,7 @@ use crate::llm::prompt::{
 };
 use crate::llm::ChatProvider;
 use crate::memory::{Availability, OpenVikingClient};
+use crate::services::kernel::KernelClient;
 use crate::storage::chat::{self, NewChat};
 
 /// Входной запрос чата (POST /api/chat).
@@ -153,8 +154,9 @@ pub const PRESETS: &[Preset] = &[
 
 /// Сервис чата.
 pub struct ChatService {
-    llm: Arc<dyn ChatProvider>,
-    memory: Arc<OpenVikingClient>,
+    llm: Option<Arc<dyn ChatProvider>>,
+    memory: Option<Arc<OpenVikingClient>>,
+    kernel: Option<Arc<KernelClient>>,
     cache: Arc<InMemoryCache>,
     db: SqlitePool,
     /// Бюджет RAG-контекста (сколько тратим входных токенов на справку).
@@ -182,8 +184,9 @@ impl ChatService {
         context: ContextSettings,
     ) -> Self {
         Self {
-            llm,
-            memory,
+            llm: Some(llm),
+            memory: Some(memory),
+            kernel: None,
             cache,
             db,
             context,
@@ -193,11 +196,26 @@ impl ChatService {
         }
     }
 
+    /// Production constructor: the site delegates free-form answers to the
+    /// central kernel. Preset and availability answers stay local.
+    pub fn with_kernel(kernel: Arc<KernelClient>, cache: Arc<InMemoryCache>, db: SqlitePool) -> Self {
+        Self {
+            llm: None,
+            memory: None,
+            kernel: Some(kernel),
+            cache,
+            db,
+            context: ContextSettings::default(),
+            search_limit: 1,
+        }
+    }
+
     /// Ответ уже в кэше — запрос не потратит токены LLM.
     ///
     /// Используется, чтобы не списывать часовую квоту за повторный вопрос.
     pub fn is_cached(&self, req: &ChatRequest) -> bool {
-        matches!(resolve_kind(req), QuestionKind::Free)
+        self.kernel.is_none()
+            && matches!(resolve_kind(req), QuestionKind::Free)
             && self.cache.get(&cache_key(&req.message)).is_some()
     }
 
@@ -212,20 +230,20 @@ impl ChatService {
         let started = Instant::now();
         let kind = resolve_kind(&req);
 
-        let (answer, source) = match kind {
-            QuestionKind::Who => (answer_who(), "openviking_direct".to_string()),
-            QuestionKind::Services => (answer_services(), "openviking_direct".to_string()),
-            QuestionKind::Pricing => (answer_pricing(), "openviking_direct".to_string()),
-            QuestionKind::LocalInference => (answer_local_inference(), "openviking_direct".to_string()),
-            QuestionKind::Availability => (answer_availability(), "openviking_direct".to_string()),
-            QuestionKind::LeadRequest => (answer_lead_request(), "openviking_direct".to_string()),
-            QuestionKind::Free => self.answer_free(&req).await?,
+        let (answer, source, suggested_next) = match kind {
+            QuestionKind::Who => (answer_who(), "openviking_direct".to_string(), suggested_next(kind)),
+            QuestionKind::Services => (answer_services(), "openviking_direct".to_string(), suggested_next(kind)),
+            QuestionKind::Pricing => (answer_pricing(), "openviking_direct".to_string(), suggested_next(kind)),
+            QuestionKind::LocalInference => (answer_local_inference(), "openviking_direct".to_string(), suggested_next(kind)),
+            QuestionKind::Availability => (answer_availability(), "openviking_direct".to_string(), suggested_next(kind)),
+            QuestionKind::LeadRequest => (answer_lead_request(), "openviking_direct".to_string(), suggested_next(kind)),
+            QuestionKind::Free => self.answer_free(&req, client_hash.as_deref()).await?,
         };
 
         let response = ChatResponse {
             answer,
             source,
-            suggested_next: suggested_next(kind),
+            suggested_next,
         };
 
         let response_time_ms = Some(started.elapsed().as_millis() as i64);
@@ -236,16 +254,46 @@ impl ChatService {
     }
 
     /// Свободный вопрос: кэш → семантический поиск → LLM → кэш.
-    async fn answer_free(&self, req: &ChatRequest) -> AppResult<(String, String)> {
+    async fn answer_free(
+        &self,
+        req: &ChatRequest,
+        client_hash: Option<&str>,
+    ) -> AppResult<(String, String, Vec<SuggestedAction>)> {
+        if let Some(kernel) = &self.kernel {
+            let actor_id = client_hash
+                .or(req.session_id.as_deref())
+                .unwrap_or("site-visitor");
+            let response = kernel
+                .chat(
+                    &req.message,
+                    actor_id,
+                    req.session_id.as_deref(),
+                    serde_json::json!({ "url": req.url }),
+                )
+                .await?;
+            let suggestions = response
+                .suggested_next
+                .into_iter()
+                .map(|item| SuggestedAction { text: item.text, kind: item.kind })
+                .collect();
+            return Ok((response.answer, response.source, suggestions));
+        }
+
         let cache_key = cache_key(&req.message);
         if let Some(cached) = self.cache.get(&cache_key) {
-            return Ok((cached, "cached".to_string()));
+            return Ok((cached, "cached".to_string(), suggested_next(QuestionKind::Free)));
         }
 
         let content = crate::memory::content::SiteContent::get();
 
         // Семантический контекст из OpenViking (при ошибке — пустой контекст).
-        let context = match self.memory.semantic_search(&req.message, self.search_limit).await {
+        let context = match self
+            .memory
+            .as_ref()
+            .expect("legacy chat memory is configured")
+            .semantic_search(&req.message, self.search_limit)
+            .await
+        {
             Ok(results) => build_context_string(&results, &self.context),
             Err(e) => {
                 tracing::debug!("OpenViking search failed, empty context: {e}");
@@ -274,7 +322,13 @@ impl ChatService {
             )
         };
 
-        let (answer, source) = match self.llm.chat_with_system(system, user).await {
+        let (answer, source) = match self
+            .llm
+            .as_ref()
+            .expect("legacy chat provider is configured")
+            .chat_with_system(system, user)
+            .await
+        {
             Ok(answer) => (answer, "llm".to_string()),
             Err(e) => {
                 tracing::warn!("free-form LLM failed: {e}");
@@ -289,7 +343,7 @@ impl ChatService {
             self.cache.set(cache_key, answer.clone());
         }
 
-        Ok((answer, source))
+        Ok((answer, source, suggested_next(QuestionKind::Free)))
     }
 
     /// Сохраняет диалог в SQLite для аналитики (см. admin-panel.md).

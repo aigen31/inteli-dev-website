@@ -37,6 +37,9 @@ pub enum AppError {
     #[error("OpenViking error: {0}")]
     OpenViking(String),
 
+    #[error("assistant kernel error: {0}")]
+    Kernel(String),
+
     #[error("Telegram API error ({status}): {body}")]
     TelegramError { status: u16, body: String },
 
@@ -74,7 +77,8 @@ impl AppError {
             AppError::LlmApiError { .. }
             | AppError::TelegramError { .. }
             | AppError::VkError { .. }
-            | AppError::OpenViking(_) => StatusCode::BAD_GATEWAY,
+            | AppError::OpenViking(_)
+            | AppError::Kernel(_) => StatusCode::BAD_GATEWAY,
             _ => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }

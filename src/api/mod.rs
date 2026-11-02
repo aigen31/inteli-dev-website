@@ -6,6 +6,7 @@
 
 pub mod assets;
 pub mod handlers;
+pub mod kernel;
 
 use axum::extract::DefaultBodyLimit;
 use axum::http::header::HeaderMap;
@@ -46,6 +47,9 @@ pub fn routes(seo: &SeoConfig) -> Router<AppState> {
         .route("/api/status", get(handlers::status))
         .route("/api/status.json", get(handlers::status))
         .route("/api/chat", post(handlers::chat))
+        // Internal tool contract for the central Kiki kernel. Service token only.
+        .route("/internal/assistant/profile", get(kernel::profile))
+        .route("/internal/assistant/tools/:tool", post(kernel::tool))
         // MCP-сервер сайта: JSON-RPC 2.0, только чтение публичных данных.
         .route("/mcp", post(handlers::mcp))
         .route("/api/lead", post(handlers::lead))

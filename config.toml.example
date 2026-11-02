@@ -36,6 +36,14 @@ context_snippet_chars = 400   # сколько символов брать из 
 context_max_chars = 1600      # жёсткий бюджет RAG-контекста
 context_min_score = 0.35      # порог релевантности
 
+[kernel]
+# Центральное AI-ядро. Пусто = старый встроенный LLM-путь (только для тестов).
+url = "http://kernel:8080"
+channel = "site"
+timeout_seconds = 90
+# token и service_token читаются только из env KERNEL_TOKEN и
+# KERNEL_SERVICE_TOKEN. Не храните их здесь.
+
 [telegram]
 bot_token = ""                # или TELEGRAM_BOT_TOKEN env
 admin_chat_id = 0             # или TELEGRAM_ADMIN_CHAT_ID env

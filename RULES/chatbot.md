@@ -10,6 +10,15 @@
 - [UX/UI чата](#uxui-чата)
 - [Аналитика чата](#аналитика-чата)
 
+> **Обновление 2026-11.** Свободные вопросы (`QuestionKind::Free`) больше не
+> ходят напрямую в DeepSeek/OpenViking из `ChatService`. Сайт вызывает
+> `inteli-dev-kiki-assistant-kernel-api` (`KERNEL_URL`); ядро владеет промптом,
+> моделью, историей и tool loop, а сайт отдаёт ему `site_lookup` через
+> `/internal/assistant`. Preset/availability/lead_request остаются локальными
+> прямыми ответами. Схема ниже описывает исторический встроенный путь и
+> сохраняется для контекста; актуальные границы — в
+> `RULES/architecture.md` и ADR ядра.
+
 ---
 
 ## Назначение чата

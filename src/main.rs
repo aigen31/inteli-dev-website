@@ -19,8 +19,8 @@ use inteli_dev::memory::content::SiteContent;
 use inteli_dev::memory::OpenVikingClient;
 use inteli_dev::notification::NotificationService;
 use inteli_dev::services::{
-    ArticleService, ChatService, GitHubService, LeadService, MediaService, SettingsBot,
-    PublishedArticles,
+    kernel::KernelClient, ArticleService, ChatService, GitHubService, LeadService, MediaService,
+    SettingsBot, PublishedArticles,
 };
 use inteli_dev::settings::SiteSettings;
 use inteli_dev::state::AppState;
@@ -168,18 +168,30 @@ async fn run(config: AppConfig) -> AppResult<()> {
         config.vk.oauth_token.clone(),
         config.vk.admin_user_id,
     ));
-    let chat = Arc::new(ChatService::with_context(
-        llm,
-        Arc::new(viking),
-        cache.clone(),
-        db.clone(),
-        ContextSettings {
-            top_k: config.llm.context_top_k,
-            snippet_chars: config.llm.context_snippet_chars,
-            max_chars: config.llm.context_max_chars,
-            min_score: config.llm.context_min_score,
-        },
-    ));
+    // 5.1. AI-ядро. В продакшене свободные вопросы идут в отдельный kernel.
+    // Прямые ответы (цены, статус, услуги) остаются локальными и бесплатными.
+    let chat = if config.kernel.url.trim().is_empty() {
+        tracing::warn!("KERNEL_URL не задан: используется старый встроенный LLM-путь");
+        Arc::new(ChatService::with_context(
+            llm,
+            Arc::new(viking),
+            cache.clone(),
+            db.clone(),
+            ContextSettings {
+                top_k: config.llm.context_top_k,
+                snippet_chars: config.llm.context_snippet_chars,
+                max_chars: config.llm.context_max_chars,
+                min_score: config.llm.context_min_score,
+            },
+        ))
+    } else {
+        tracing::info!("AI-ядро: {}", config.kernel.url);
+        Arc::new(ChatService::with_kernel(
+            Arc::new(KernelClient::new(&config.kernel)),
+            cache.clone(),
+            db.clone(),
+        ))
+    };
     let leads = Arc::new(LeadService::new(db.clone(), notifications.clone()));
 
     // 5.0. Статьи блога. Снимок опубликованного нужен до старта сервера:

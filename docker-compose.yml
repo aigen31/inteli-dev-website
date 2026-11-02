@@ -59,6 +59,14 @@ services:
       # SQLite: DB пишется в volume, примонтированный в DATA_DIR.
       - DATA_DIR=/data
       - DB_PATH=/data/chats.db
+      # Central Kiki assistant kernel (server-to-server, no browser token).
+      - KERNEL_URL=http://kernel:8080
+      - KERNEL_TOKEN=${KERNEL_SITE_TOKEN:-}
+      - KERNEL_SERVICE_TOKEN=${KERNEL_SITE_PROVIDER_TOKEN:-}
+      - KERNEL_CHANNEL=site
+    networks:
+      - default
+      - assistant
     volumes:
       - db-data:/data
       - ./config.toml:/app/config.toml:ro
@@ -92,6 +100,11 @@ services:
     command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
     volumes:
       - redis-data:/data
+
+networks:
+  assistant:
+    external: true
+    name: inteli-dev-assistant
 
 volumes:
   db-data:

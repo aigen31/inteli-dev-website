@@ -41,6 +41,10 @@ pub struct AppConfig {
     /// по умолчанию, поэтому старый config.toml не ломает запуск.
     #[serde(default)]
     pub limits: crate::limits::Limits,
+    /// Центральное AI-ядро. Пустой URL оставляет старый встроенный путь для
+    /// локальной разработки и тестов; в продакшене ядро обязательно.
+    #[serde(default)]
+    pub kernel: KernelConfig,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -58,6 +62,45 @@ pub struct ServerConfig {
     pub read_timeout_ms: u64,
     #[serde(default = "default_write_timeout_ms")]
     pub write_timeout_ms: u64,
+}
+
+/// Подключение к центральному AI-ядру и внутренний контракт провайдера.
+#[derive(Debug, Clone, Deserialize)]
+pub struct KernelConfig {
+    /// Базовый адрес ядра, например `http://kernel:8080`.
+    #[serde(default)]
+    pub url: String,
+    /// Входящий токен сайта в ядре.
+    #[serde(default)]
+    pub token: String,
+    /// Токен, которым ядро вызывает `/internal/assistant` сайта.
+    #[serde(default)]
+    pub service_token: String,
+    /// Канал в запросах к ядру.
+    #[serde(default = "default_kernel_channel")]
+    pub channel: String,
+    #[serde(default = "default_kernel_timeout_seconds")]
+    pub timeout_seconds: u64,
+}
+
+fn default_kernel_channel() -> String {
+    "site".to_string()
+}
+
+fn default_kernel_timeout_seconds() -> u64 {
+    90
+}
+
+impl Default for KernelConfig {
+    fn default() -> Self {
+        Self {
+            url: String::new(),
+            token: String::new(),
+            service_token: String::new(),
+            channel: default_kernel_channel(),
+            timeout_seconds: default_kernel_timeout_seconds(),
+        }
+    }
 }
 
 /// Внешние интеграции. Секция опциональна: без неё кросспостинг выключен.
@@ -617,6 +660,31 @@ impl AppConfig {
         }
         if let Ok(v) = std::env::var("RUST_LOG") {
             self.logging.level = v;
+        }
+        if let Ok(v) = std::env::var("KERNEL_URL") {
+            if !v.trim().is_empty() {
+                self.kernel.url = v.trim().trim_end_matches('/').to_string();
+            }
+        }
+        if let Ok(v) = std::env::var("KERNEL_TOKEN") {
+            if !v.trim().is_empty() {
+                self.kernel.token = v;
+            }
+        }
+        if let Ok(v) = std::env::var("KERNEL_SERVICE_TOKEN") {
+            if !v.trim().is_empty() {
+                self.kernel.service_token = v;
+            }
+        }
+        if let Ok(v) = std::env::var("KERNEL_CHANNEL") {
+            if !v.trim().is_empty() {
+                self.kernel.channel = v;
+            }
+        }
+        if let Ok(v) = std::env::var("KERNEL_TIMEOUT_SECONDS") {
+            if let Ok(parsed) = v.trim().parse() {
+                self.kernel.timeout_seconds = parsed;
+            }
         }
         if let Ok(v) = std::env::var("PORT") {
             if let Ok(parsed) = v.parse() {
