@@ -1,72 +1,66 @@
-# docker-compose.prod.yml — ПРОДАКШЕН (сервер inteli-dev.ru).
+# compose.yaml — production-стек для inteli-dev.ru.
 #
-# Отличия от dev (docker-compose.yml):
-#   • порты приложения наружу не публикуются: трафик идёт Nginx → web;
-#   • Nginx подключён к внешней сети Traefik `traefik-public` и получает TLS;
-#   • сертификат Let's Encrypt выпускается автоматически Traefik (HTTP-01);
-#   • секреты только из env (.env.prod), config монтируется read-only;
-#   • у томов явные имена — предсказуемые бэкапы.
+# Трафик: клиент → Traefik (TLS, сжатие, www→apex) → nginx → web.
+# Контейнеры и тома с префиксом inteli-dev-prod, чтобы production можно было
+# держать рядом с dev-стеком на одном Docker-хосте.
 #
-# Запуск на сервере:
-#   cp .env.prod.example .env.prod      # заполнить секреты
-#   docker compose -f docker-compose.prod.yml up -d --build
+# Запуск:
+#   cp .env.prod.example .env.prod   # заполнить секреты
+#   docker compose up -d --build
 #
-# Один раз должна существовать внешняя сеть Traefik:
+# Требуется один раз создать внешние сети:
 #   docker network create traefik-public
+#   docker network create inteli-dev-assistant
 #
-# Обновление версии: приложение пересобирается из исходников; при использовании
-# реестра задайте APP_IMAGE и добавьте `pull_policy: always` сервису web.
+# Внешние образы закреплены digest-ами, чтобы перезапуск не подтянул
+# несовместимый тег. Обновление — осознанная замена digest + `docker compose pull`.
 
 name: inteli-dev-prod
 
 services:
-  # --- Приложение (Leptos SSR + axum). Наружу не публикуется: только через nginx. ---
   web:
     build:
       context: .
       dockerfile: Dockerfile
       args:
-        - APP_VERSION=${APP_VERSION:-latest}
-    image: ${APP_IMAGE:-inteli-dev.ru:latest}
-    container_name: inteli-dev-web
+        APP_VERSION: ${APP_VERSION:-0.1.0}
+    image: inteli-dev-prod:${APP_VERSION:-0.1.0}
+    container_name: inteli-dev-prod-web
     restart: unless-stopped
     env_file:
-      - path: .env.prod
-        required: false
+      - .env.prod
     environment:
-      - PORT=8080
-      - CONFIG_PATH=/app/config.toml
-      - OPENVIKING_BASE_URL=http://viking:1933/mcp
-      # SQLite пишется в volume, примонтированный в DATA_DIR.
-      - DATA_DIR=/data
-      - DB_PATH=/data/chats.db
-      - KERNEL_URL=http://kernel:8080
-      - KERNEL_TOKEN=${KERNEL_SITE_TOKEN:-}
-      - KERNEL_SERVICE_TOKEN=${KERNEL_SITE_PROVIDER_TOKEN:-}
-      - KERNEL_CHANNEL=site
+      PORT: "8080"
+      CONFIG_PATH: /app/config.toml
+      OPENVIKING_BASE_URL: http://viking:1933/mcp
+      DATA_DIR: /data
+      DB_PATH: /data/chats.db
+      KERNEL_URL: http://kernel:8080
+      KERNEL_TOKEN: ${KERNEL_SITE_TOKEN:-}
+      KERNEL_SERVICE_TOKEN: ${KERNEL_SITE_PROVIDER_TOKEN:-}
+      KERNEL_CHANNEL: site
     volumes:
       - db-data:/data
       - ./config/config.prod.toml:/app/config.toml:ro
     depends_on:
       redis:
-        condition: service_started
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/api/health"]
       interval: 30s
       timeout: 5s
       retries: 3
       start_period: 15s
-    # Если LLM крутится на хосте (как в dev) — раскомментируйте:
-    # extra_hosts:
-    #   - "host.docker.internal:host-gateway"
+    security_opt:
+      - no-new-privileges:true
     networks:
       - internal
       - assistant
 
-  # --- Nginx: reverse proxy перед web, точка входа для Traefik. ---
   nginx:
-    image: nginx:1.27-alpine
-    container_name: inteli-dev-nginx
+    # nginx:1.27-alpine, digest на момент подготовки production-стека.
+    image: nginx@sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17a54ef4b76fb8e2f2a10
+    container_name: inteli-dev-prod-nginx
     restart: unless-stopped
     volumes:
       - ./docker/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
@@ -105,8 +99,7 @@ services:
 
       # www → apex: канонический домен для SEO.
       # Сжатие — здесь, а не в nginx: Traefik умеет brotli и zstd, а nginx в
-      # этом образе только gzip. Порядок `br,zstd,gzip` задаёт приоритет (по
-      # умолчанию первым идёт gzip, и brotli до клиента не дошёл бы).
+      # этом образе только gzip. Порядок `br,zstd,gzip` задаёт приоритет.
       - traefik.http.routers.inteli-dev.middlewares=inteli-dev-www-to-apex,inteli-dev-compress
       - traefik.http.middlewares.inteli-dev-www-to-apex.redirectregex.regex=^https?://www\.inteli-dev\.ru/(.*)
       - traefik.http.middlewares.inteli-dev-www-to-apex.redirectregex.replacement=https://inteli-dev.ru/$$1
@@ -114,42 +107,47 @@ services:
       - traefik.http.middlewares.inteli-dev-compress.compress=true
       - traefik.http.middlewares.inteli-dev-compress.compress.encodings=br,zstd,gzip
 
-  # --- OpenViking: семантическая память (приложение деградирует на fallback). ---
   viking:
-    image: ghcr.io/volcengine/openviking:latest
-    container_name: inteli-dev-viking
+    # ghcr.io/volcengine/openviking:latest, digest на момент подготовки.
+    image: ghcr.io/volcengine/openviking@sha256:14553ec16f2bda9bd08a188cffb659fcfff4fde5891cbb881ed1bd8488b23294
+    container_name: inteli-dev-prod-viking
     restart: unless-stopped
     volumes:
       - viking-data:/data
     networks:
       - internal
 
-  # --- Redis: кэш/rate limiting (приложение работает и без него). ---
   redis:
-    image: redis:7-alpine
-    container_name: inteli-dev-redis
+    # redis:7-alpine, digest на момент подготовки production-стека.
+    image: redis@sha256:892022f9f18c26c92c30e15194d132f90044af87b94a491a75429bbc3982eab1
+    container_name: inteli-dev-prod-redis
     restart: unless-stopped
     command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
     volumes:
       - redis-data:/data
     networks:
       - internal
 
 networks:
-  # Внутренняя сеть приложения: web ↔ nginx ↔ viking ↔ redis.
   internal:
     driver: bridge
-  # Внешняя сеть Traefik (см. /mnt/disk1/work/traefik/docker-compose.yml).
   traefik-public:
     external: true
+    name: traefik-public
   assistant:
     external: true
     name: inteli-dev-assistant
 
 volumes:
   db-data:
-    name: inteli-dev_db-data
+    name: inteli-dev-prod_db-data
   viking-data:
-    name: inteli-dev_viking-data
+    name: inteli-dev-prod_viking-data
   redis-data:
-    name: inteli-dev_redis-data
+    name: inteli-dev-prod_redis-data

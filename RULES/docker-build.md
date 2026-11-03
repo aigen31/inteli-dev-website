@@ -147,14 +147,15 @@ CMD ["/app/server"]
 | Файл | Назначение |
 |---|---|
 | `docker-compose.yml` | **Dev** — сборка из исходников, порты на хост, `host.docker.internal` для локальной LLM |
-| `docker-compose.prod.yml` | **Prod** — Nginx + внешний Traefik (`traefik-public`), TLS Let's Encrypt, секреты из `.env.prod` |
+| `compose.yaml` | **Prod** — Nginx + внешний Traefik (`traefik-public`), TLS Let's Encrypt, секреты из `.env.prod` |
 
 ```bash
 # Dev
-docker compose up --build
+docker compose -f docker-compose.yml up --build
 
 # Prod
-docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --build
+
+docker compose up -d --build
 ```
 
 ### Кто за что отвечает на проде
@@ -164,7 +165,7 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --build
 
 | Что | Где | Почему не в другом месте |
 |---|---|---|
-| TLS, редирект `www → apex`, сжатие (`compress`: brotli, zstd, gzip) | Traefik (labels в `docker-compose.prod.yml`) | Traefik терминирует TLS и умеет brotli; `gzip on` в nginx не дал бы brotli дойти до клиента — ответ с готовым `Content-Encoding` Traefik не пережимает |
+| TLS, редирект `www → apex`, сжатие (`compress`: brotli, zstd, gzip) | Traefik (labels в `compose.yaml`) | Traefik терминирует TLS и умеет brotli; `gzip on` в nginx не дал бы brotli дойти до клиента — ответ с готовым `Content-Encoding` Traefik не пережимает |
 | `server_tokens off`, HSTS, `client_max_body_size` | nginx (`docker/nginx/default.conf`) | транспорт и лимиты запроса — рядом с проксированием |
 | CSP с nonce, `X-Content-Type-Options`, `Referrer-Policy`, `Permissions-Policy`, COOP, CORP | приложение (`src/security.rs`) | CSP обязан содержать nonce конкретного ответа, а его генерирует Leptos. В nginx их дублировать нельзя: `add_header` добавит второй заголовок (`nosniff, nosniff` — это замечание аудита) |
 | `frame-ancestors` (кто вправе встраивать нас во фрейм) | приложение (`src/security.rs`), **без** `X-Frame-Options` | XFO умеет только `DENY`/`SAMEORIGIN` и не выражает список, а Метрике нужно открывать страницу в конструкторе целей и Вебвизоре. В nginx `X-Frame-Options` тоже не ставить — вернётся та же ошибка |
@@ -275,10 +276,10 @@ volumes:
 ```
 
 ### docker-compose.override.yml (вариант для разработки)
-> Актуальная реализация: dev — это `docker-compose.yml`, prod — `docker-compose.prod.yml`.
+> Актуальная реализация: dev — это `docker-compose.yml`, prod — `compose.yaml`.
 > Override-файл ниже — альтернативный подход (hot-reload), при необходимости сохраните
 > его как `docker-compose.override.yml`; тогда для prod обязательно
-> `docker compose -f docker-compose.yml -f docker-compose.prod.yml ...`.
+> `docker compose -f docker-compose.yml -f compose.yaml ...`.
 ```yaml
 # docker-compose.override.yml — монтирует исходный код для hot-reload при разработке
 version: "3.9"
@@ -330,7 +331,7 @@ VIKING_PORT=1933
 ### Production .env (`.env.prod`)
 Продакшен-окружение отделено от dev. Секреты — в `.env.prod` (шаблон: `.env.prod.example`),
 конфигурация приложения — в `config/config.prod.toml` (монтируется как `/app/config.toml`,
-read-only, без секретов). Запуск: `docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --build`.
+read-only, без секретов). Запуск: `docker compose up -d --build`.
 ```bash
 # .env.prod — на продакшен-сервере (НЕ коммитить)
 LLM_API_KEY=sk-prod-xxxxxxxxxxxxxxxx
@@ -486,15 +487,15 @@ docker compose logs -f viking   # Просмотр логов OpenViking
 docker network create traefik-public
 
 # 1. Скопировать prod-файлы (dev-файлы на сервере не нужны)
-scp docker-compose.prod.yml user@server:/opt/inteli-dev/docker-compose.prod.yml
+scp compose.yaml user@server:/opt/inteli-dev/compose.yaml
 scp -r docker/nginx config/config.prod.toml user@server:/opt/inteli-dev/
 scp .env.prod user@server:/opt/inteli-dev/.env.prod
 
 # 2. На сервере (домен должен уже резолвиться в этот сервер — иначе ACME HTTP-01 не пройдёт):
 cd /opt/inteli-dev
-docker compose --env-file .env.prod -f docker-compose.prod.yml pull   # OpenViking, Redis, Nginx
-docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --build
-docker compose --env-file .env.prod -f docker-compose.prod.yml ps     # Проверить все сервисы
+docker compose pull   # OpenViking, Redis, Nginx
+docker compose up -d --build
+docker compose ps     # Проверить все сервисы
 
 # ===== Обновление версии приложения =====
 # Локально:

@@ -60,19 +60,20 @@ cargo run
 
 ```bash
 cp .env.example .env    # заполнить секреты
-docker compose up --build
+docker compose -f docker-compose.yml up --build
 # → http://localhost:8080
 ```
 
 ### Docker (prod)
 
-Продакшен — отдельный файл `docker-compose.prod.yml`: приложение за Nginx,
-трафик и TLS — через внешний Traefik (сеть `traefik-public`), сертификат
-Let's Encrypt выпускается Traefik автоматически.
+Продакшен — канонический `compose.yaml`: приложение за Nginx, трафик и TLS
+через внешний Traefik (сеть `traefik-public`), сертификат Let's Encrypt
+выпускается автоматически. Контейнеры и тома имеют префикс `inteli-dev-prod`,
+поэтому production можно держать рядом с dev-стеком.
 
 ```bash
 cp .env.prod.example .env.prod    # заполнить секреты
-docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --build
+docker compose up -d --build
 ```
 
 Требования к серверу:
