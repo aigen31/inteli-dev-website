@@ -196,7 +196,7 @@ pub fn ServiceCard(service: Service, #[prop(default = 3)] level: u8) -> impl Int
                     view! {
                         <div class="card-plate">
                             <img
-                                class="card-art card-art-crop"
+                                class="card-art"
                                 src=src
                                 alt=art_alt
                                 width=width

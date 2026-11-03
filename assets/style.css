@@ -3554,13 +3554,6 @@ a:hover { color: #fff; }
     filter 420ms var(--transition-fast),
     transform 420ms cubic-bezier(0.2, 0.7, 0.2, 1);
 }
-/* Карточки каталога и главной показывают Кики по пояс: нижняя часть
-   прозрачного холста обрезается, поэтому лицо, шляпа и предмет читаются
-   крупнее. На странице услуги тот же файл показывается целиком. */
-.card-art-crop {
-  clip-path: inset(0 0 48% 0);
-}
-
 .card:hover .card-art {
   filter: drop-shadow(0 0 1px rgba(220, 212, 255, 0.55))
     drop-shadow(0 0 22px rgba(139, 127, 245, 0.5));
