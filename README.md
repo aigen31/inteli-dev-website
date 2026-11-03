@@ -60,7 +60,7 @@ cargo run
 
 ```bash
 cp .env.example .env    # заполнить секреты
-docker compose -f docker-compose.yml up --build
+docker compose -f compose.dev.yaml up --build
 # → http://localhost:8080
 ```
 

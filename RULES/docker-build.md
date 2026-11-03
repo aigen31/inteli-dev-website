@@ -3,7 +3,7 @@
 ## 📋 Содержание
 - [Принципы сборки](#принципы-сборки)
 - [Multi-stage Dockerfile](#multi-stage-dockerfile)
-- [docker-compose.yml](#docker-composeyml)
+- [compose.dev.yaml](#docker-composeyml)
 - [Конфигурация окружений](#конфигурация-окружений)
 - [Правила оптимизации образа](#правила-оптимизации-образа)
 - [Health check и мониторинг](#health-check-и-мониторинг)
@@ -140,18 +140,18 @@ CMD ["/app/server"]
 
 ---
 
-## docker-compose.yml
+## compose.dev.yaml
 
 Окружения разделены на два файла:
 
 | Файл | Назначение |
 |---|---|
-| `docker-compose.yml` | **Dev** — сборка из исходников, порты на хост, `host.docker.internal` для локальной LLM |
+| `compose.dev.yaml` | **Dev** — сборка из исходников, порты на хост, `host.docker.internal` для локальной LLM |
 | `compose.yaml` | **Prod** — Nginx + внешний Traefik (`traefik-public`), TLS Let's Encrypt, секреты из `.env.prod` |
 
 ```bash
 # Dev
-docker compose -f docker-compose.yml up --build
+docker compose -f compose.dev.yaml up --build
 
 # Prod
 
@@ -187,7 +187,7 @@ curl -sI https://inteli-dev.ru/contact | grep -o "frame-ancestors [^;]*"
 
 ### Базовая конфигурация (все сервисы)
 ```yaml
-# docker-compose.yml
+# compose.dev.yaml
 version: "3.9"
 
 services:
@@ -276,10 +276,10 @@ volumes:
 ```
 
 ### docker-compose.override.yml (вариант для разработки)
-> Актуальная реализация: dev — это `docker-compose.yml`, prod — `compose.yaml`.
+> Актуальная реализация: dev — это `compose.dev.yaml`, prod — `compose.yaml`.
 > Override-файл ниже — альтернативный подход (hot-reload), при необходимости сохраните
 > его как `docker-compose.override.yml`; тогда для prod обязательно
-> `docker compose -f docker-compose.yml -f compose.yaml ...`.
+> `docker compose -f compose.dev.yaml up ...`.
 ```yaml
 # docker-compose.override.yml — монтирует исходный код для hot-reload при разработке
 version: "3.9"
@@ -527,7 +527,7 @@ docker compose up -d              # Создёт volumes заново, данн�
 
 # Полное восстановление (все данные потеряны):
 cd /opt/inteli-dev
-cp /backup/docker-compose.yml .  # из бэкапа на S3/Git
+cp /backup/compose.yaml .  # из бэкапа на S3/Git
 cp /backup/.env .                # из encrypted backup
 docker compose up -d --build
 ```
