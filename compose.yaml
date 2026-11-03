@@ -36,8 +36,6 @@ services:
       DATA_DIR: /data
       DB_PATH: /data/chats.db
       KERNEL_URL: http://kernel:8080
-      KERNEL_TOKEN: ${KERNEL_SITE_TOKEN:-}
-      KERNEL_SERVICE_TOKEN: ${KERNEL_SITE_PROVIDER_TOKEN:-}
       KERNEL_CHANNEL: site
     volumes:
       - db-data:/data
