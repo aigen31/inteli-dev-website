@@ -105,16 +105,6 @@ services:
       - traefik.http.middlewares.inteli-dev-compress.compress=true
       - traefik.http.middlewares.inteli-dev-compress.compress.encodings=br,zstd,gzip
 
-  viking:
-    # ghcr.io/volcengine/openviking:latest, digest на момент подготовки.
-    image: ghcr.io/volcengine/openviking@sha256:14553ec16f2bda9bd08a188cffb659fcfff4fde5891cbb881ed1bd8488b23294
-    container_name: inteli-dev-prod-viking
-    restart: unless-stopped
-    volumes:
-      - viking-data:/data
-    networks:
-      - internal
-
   redis:
     # redis:7-alpine, digest на момент подготовки production-стека.
     image: redis@sha256:892022f9f18c26c92c30e15194d132f90044af87b94a491a75429bbc3982eab1
@@ -145,7 +135,5 @@ networks:
 volumes:
   db-data:
     name: inteli-dev-prod_db-data
-  viking-data:
-    name: inteli-dev-prod_viking-data
   redis-data:
     name: inteli-dev-prod_redis-data
