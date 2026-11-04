@@ -81,15 +81,26 @@ services:
       - traefik.docker.network=traefik-public
 
       # HTTPS-роутер: автоматический выпуск сертификата Let's Encrypt.
-      - traefik.http.routers.inteli-dev.rule=Host(`inteli-dev.ru`) || Host(`www.inteli-dev.ru`)
+      - traefik.http.routers.inteli-dev.rule=Host(`inteli-dev.ru`)
       - traefik.http.routers.inteli-dev.entrypoints=websecure
       - traefik.http.routers.inteli-dev.tls=true
       - traefik.http.routers.inteli-dev.tls.certresolver=letsencrypt
       - traefik.http.routers.inteli-dev.service=inteli-dev
       - traefik.http.services.inteli-dev.loadbalancer.server.port=80
 
-      # HTTP-роутер: редирект на HTTPS (ACME-челлендж Traefik отдаёт сам).
-      - traefik.http.routers.inteli-dev-http.rule=Host(`inteli-dev.ru`) || Host(`www.inteli-dev.ru`)
+      # www обслуживается отдельным TLS-роутером: свой сертификат можно
+      # выпустить независимо от apex. Пока DNS www не переключён, apex-сертификат
+      # всё равно выпускается.
+      - traefik.http.routers.inteli-dev-www.rule=Host(`www.inteli-dev.ru`)
+      - traefik.http.routers.inteli-dev-www.entrypoints=websecure
+      - traefik.http.routers.inteli-dev-www.tls=true
+      - traefik.http.routers.inteli-dev-www.tls.certresolver=letsencrypt
+      - traefik.http.routers.inteli-dev-www.service=inteli-dev
+      - traefik.http.routers.inteli-dev-www.middlewares=inteli-dev-www-to-apex,inteli-dev-compress
+
+      # HTTP-роутер: редирект на HTTPS. ACME HTTP-01 не редиректим:
+      # иначе Let's Encrypt получает 301 вместо challenge-токена.
+      - traefik.http.routers.inteli-dev-http.rule=(Host(`inteli-dev.ru`) || Host(`www.inteli-dev.ru`)) && !PathPrefix(`/.well-known/acme-challenge/`)
       - traefik.http.routers.inteli-dev-http.entrypoints=web
       - traefik.http.routers.inteli-dev-http.middlewares=inteli-dev-redirect-https
       - traefik.http.middlewares.inteli-dev-redirect-https.redirectscheme.scheme=https
