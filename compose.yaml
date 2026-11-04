@@ -83,6 +83,9 @@ services:
       # HTTPS-роутер: автоматический выпуск сертификата Let's Encrypt.
       - traefik.http.routers.inteli-dev.rule=Host(`inteli-dev.ru`)
       - traefik.http.routers.inteli-dev.entrypoints=websecure
+      # Старый landing@docker из CRM тоже матчит inteli-dev.ru. Явный
+      # приоритет гарантирует, что apex обслуживает production-nginx.
+      - traefik.http.routers.inteli-dev.priority=1000
       - traefik.http.routers.inteli-dev.tls=true
       - traefik.http.routers.inteli-dev.tls.certresolver=letsencrypt
       - traefik.http.routers.inteli-dev.service=inteli-dev
@@ -96,6 +99,7 @@ services:
       # иначе Let's Encrypt получает 301 вместо challenge-токена.
       - traefik.http.routers.inteli-dev-http.rule=(Host(`inteli-dev.ru`) || Host(`www.inteli-dev.ru`)) && !PathPrefix(`/.well-known/acme-challenge/`)
       - traefik.http.routers.inteli-dev-http.entrypoints=web
+      - traefik.http.routers.inteli-dev-http.priority=1000
       - traefik.http.routers.inteli-dev-http.middlewares=inteli-dev-redirect-https
       - traefik.http.middlewares.inteli-dev-redirect-https.redirectscheme.scheme=https
       - traefik.http.middlewares.inteli-dev-redirect-https.redirectscheme.permanent=true
