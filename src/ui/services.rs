@@ -44,7 +44,7 @@ pub fn Services() -> impl IntoView {
         .filter(|(_, _, count)| *count > 0)
         .collect::<Vec<_>>();
 
-    // Услуги без категории (контент из OpenViking без поля) не теряются.
+    // Услуги без категории (в контенте пустое поле) не теряются.
     let uncategorized = services.iter().filter(|s| s.category.is_empty()).count();
 
     view! {

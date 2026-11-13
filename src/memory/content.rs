@@ -1,15 +1,13 @@
 //! Контент сайта: профиль автора, услуги, проекты, статус занятости.
 //!
-//! В идеале загружается из OpenViking. Если OpenViking недоступен или ещё не
-//! настроен — используется [`fallback_content`] (встроенные значения, которые
-//! владелец правит через админку в OpenViking).
+//! Значения встроены в [`builtin_content`] и меняются вместе с кодом. Живые
+//! настройки — статус занятости и прайс — хранятся в SQLite и правятся из
+//! админки или Telegram-бота, поэтому переживают рестарт.
 
 use std::sync::OnceLock;
 
 use serde::{Deserialize, Serialize};
 
-use crate::error::AppResult;
-use crate::memory::OpenVikingClient;
 
 /// Контакты автора.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -128,90 +126,12 @@ impl SiteContent {
     pub fn get() -> &'static SiteContent {
         CONTENT.get().expect("SiteContent not initialized")
     }
-
-    /// Загружает контент: пробует OpenViking, при ошибке — fallback.
-    pub async fn load(client: &OpenVikingClient) -> SiteContent {
-        match Self::load_from_openviking(client).await {
-            Ok(content) => content,
-            Err(e) => {
-                tracing::warn!("OpenViking unavailable, using fallback content: {e}");
-                fallback_content()
-            }
-        }
-    }
-
-    async fn load_from_openviking(client: &OpenVikingClient) -> AppResult<SiteContent> {
-        client.health_check().await?;
-
-        // Минимально-жизнеспособная загрузка: профиль из OpenViking, остальное — fallback.
-        // Полная загрузка всех URI добавляется по мере наполнения OpenViking.
-        let profile = client
-            .read_uri("viking://user/inteli-dev/profile/main.md")
-            .await
-            .map(|md| parse_profile_markdown(&md))
-            .unwrap_or_else(|_| fallback_content().profile);
-
-        let mut content = fallback_content();
-        content.profile = profile;
-        Ok(content)
-    }
 }
 
-/// Разбирает markdown-профиль в [`AuthorProfile`] (формат ключ-значение из правил).
-fn parse_profile_markdown(md: &str) -> AuthorProfile {
-    let mut profile = fallback_content().profile;
-
-    for line in md.lines() {
-        let line = line.trim();
-        // Убираем маркер списка (`- ` или `* `), сохраняя markdown-bold `**Key**`.
-        let line = line
-            .strip_prefix("- ")
-            .or_else(|| line.strip_prefix("* "))
-            .unwrap_or(line);
-        if let Some(rest) = line.strip_prefix("**Имя**") {
-            profile.name = strip_markdown(rest);
-        } else if let Some(rest) = line.strip_prefix("**Должность**") {
-            profile.title = strip_markdown(rest);
-        } else if let Some(rest) = line.strip_prefix("**Опыт**") {
-            if let Some(years) = first_number(rest) {
-                profile.experience_years = years as u8;
-            }
-        } else if let Some(rest) = line.strip_prefix("**Telegram**") {
-            profile.contacts.telegram = strip_markdown(rest);
-        } else if let Some(rest) = line.strip_prefix("**Email**") {
-            profile.contacts.email = strip_markdown(rest);
-        } else if let Some(rest) = line.strip_prefix("**VK**") {
-            profile.contacts.vk = strip_markdown(rest);
-        } else if let Some(rest) = line.strip_prefix("**Телефон**") {
-            profile.contacts.phone = strip_markdown(rest);
-        }
-    }
-
-    profile
-}
-
-fn strip_markdown(s: &str) -> String {
-    s.trim()
-        .trim_start_matches(':')
-        .trim()
-        .trim_start_matches('[')
-        .trim_end_matches(']')
-        .to_string()
-}
-
-fn first_number(s: &str) -> Option<u32> {
-    s.chars()
-        .skip_while(|c| !c.is_ascii_digit())
-        .take_while(|c| c.is_ascii_digit())
-        .collect::<String>()
-        .parse()
-        .ok()
-}
-
-/// Встроенный fallback-контент (источник правды до настройки OpenViking).
+/// Встроенный контент сайта — единственный источник профиля, услуг и кейсов.
 ///
-/// Владелец меняет эти значения через админ-панель → OpenViking, не через код.
-pub fn fallback_content() -> SiteContent {
+/// Меняется вместе с кодом; живое состояние (статус, прайс) живёт в SQLite.
+pub fn builtin_content() -> SiteContent {
     SiteContent {
         profile: AuthorProfile {
             name: "Евгений Биль".to_string(),
@@ -721,8 +641,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn fallback_content_is_complete() {
-        let c = fallback_content();
+    fn builtin_content_is_complete() {
+        let c = builtin_content();
         assert!(!c.profile.name.is_empty());
         assert!(c.services.len() >= 10, "каталог услуг подозрительно короткий");
         assert!(c.projects.len() >= 3);
@@ -737,7 +657,7 @@ mod tests {
     #[test]
     fn every_service_icon_exists_in_lucide_set() {
         use crate::ui::icon::ICON_PATHS;
-        let c = fallback_content();
+        let c = builtin_content();
         for s in &c.services {
             assert!(
                 ICON_PATHS.iter().any(|(k, _)| *k == s.icon_name),
@@ -746,22 +666,5 @@ mod tests {
                 s.title
             );
         }
-    }
-
-    #[test]
-    fn profile_markdown_parses_name_and_contacts() {
-        let md = r#"
-# Профиль
-- **Имя**: Иван Петров
-- **Должность**: Специалист по SEO
-- **Опыт**: 10 лет
-- **Telegram**: @ivanov
-- **Email**: ivan@example.com
-"#;
-        let p = parse_profile_markdown(md);
-        assert_eq!(p.name, "Иван Петров");
-        assert_eq!(p.experience_years, 10);
-        assert_eq!(p.contacts.telegram, "@ivanov");
-        assert_eq!(p.contacts.email, "ivan@example.com");
     }
 }

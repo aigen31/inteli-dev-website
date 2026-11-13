@@ -35,7 +35,7 @@ sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio",
 # --- Time ---
 chrono = { version = "0.4", features = ["serde"] }
 
-# --- HTTP client (OpenViking / LLM / Telegram / VK) ---
+# --- HTTP client (LLM / Telegram / VK / GitHub) ---
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 
 # --- Markdown (статьи блога) ---

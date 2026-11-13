@@ -61,7 +61,7 @@ pub async fn save_availability(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::memory::content::fallback_content;
+    use crate::memory::content::builtin_content;
     use crate::storage::init_memory_pool;
 
     #[tokio::test]
@@ -73,7 +73,7 @@ mod tests {
     #[tokio::test]
     async fn save_then_load_roundtrips() {
         let pool = init_memory_pool().await.unwrap();
-        let mut availability = fallback_content().availability;
+        let mut availability = builtin_content().availability;
         availability.status = "busy".into();
         availability.current_projects = 3;
         availability.next_free_slot = "с 1 октября".into();
@@ -90,7 +90,7 @@ mod tests {
     #[tokio::test]
     async fn save_overwrites_previous_value() {
         let pool = init_memory_pool().await.unwrap();
-        let mut availability = fallback_content().availability;
+        let mut availability = builtin_content().availability;
 
         availability.status = "busy".into();
         save_availability(&pool, &availability, "2026-09-24T12:00:00Z")

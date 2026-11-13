@@ -169,7 +169,7 @@ pub fn ServiceCard(service: Service, #[prop(default = 3)] level: u8) -> impl Int
     let category = service.category.clone();
 
     // Иллюстрация Кики: у каждой услуги свой предмет. Если для слага рисунка
-    // нет (контент из OpenViking опередил код), карточка остаётся текстовой.
+    // нет (услуга добавлена раньше рисунка), карточка остаётся текстовой.
     let art = crate::api::assets::service_art(&service.slug);
     let art_src = art.map(|a| {
         crate::api::assets::versioned(&crate::api::assets::service_art_path(a.slug))

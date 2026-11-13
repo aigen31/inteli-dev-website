@@ -927,7 +927,7 @@ fn clamp_description(text: &str, max: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::memory::content::fallback_content;
+    use crate::memory::content::builtin_content;
     use crate::services::article::ArticleStatus;
 
     /// Публичный адрес сайта в тестах.
@@ -940,7 +940,7 @@ mod tests {
     /// `page_meta` читает автора из глобального контента. `set_global`
     /// идемпотентен, поэтому звать его из тестов безопасно.
     fn article(slug: &str) -> Article {
-        SiteContent::set_global(fallback_content());
+        SiteContent::set_global(builtin_content());
 
         Article {
             id: 1,
@@ -963,7 +963,7 @@ mod tests {
 
     #[test]
     fn static_pages_have_unique_titles_and_descriptions() {
-        SiteContent::set_global(fallback_content());
+        SiteContent::set_global(builtin_content());
 
         let mut titles = std::collections::HashSet::new();
         let mut descriptions = std::collections::HashSet::new();
@@ -994,7 +994,7 @@ mod tests {
     /// сниппетом.
     #[test]
     fn every_service_page_has_its_own_meta() {
-        SiteContent::set_global(fallback_content());
+        SiteContent::set_global(builtin_content());
         let content = SiteContent::get();
         let mut titles = std::collections::HashSet::new();
 
@@ -1020,14 +1020,14 @@ mod tests {
 
     #[test]
     fn unknown_service_is_not_found() {
-        SiteContent::set_global(fallback_content());
+        SiteContent::set_global(builtin_content());
         let meta = page_meta("/services/no-such-service", SITE, None);
         assert!(meta.is_noindex(), "несуществующая услуга должна быть noindex");
     }
 
     #[test]
     fn canonical_is_absolute_and_points_at_the_same_page() {
-        SiteContent::set_global(fallback_content());
+        SiteContent::set_global(builtin_content());
 
         for path in STATIC_PATHS {
             let meta = page_meta(path, "https://inteli-dev.ru/", None);
@@ -1045,7 +1045,7 @@ mod tests {
     fn trailing_slash_and_query_string_are_the_same_page() {
         // `/blog/`, `/blog?utm=x` и `/blog` — одна страница: разными canonical
         // мы сами создали бы дубликаты.
-        SiteContent::set_global(fallback_content());
+        SiteContent::set_global(builtin_content());
 
         let plain = page_meta("/blog", SITE, None);
         for alias in ["/blog/", "/blog?utm_source=vk", "/blog#top"] {
@@ -1057,7 +1057,7 @@ mod tests {
 
     #[test]
     fn unknown_path_is_a_noindex_404() {
-        SiteContent::set_global(fallback_content());
+        SiteContent::set_global(builtin_content());
 
         let meta = page_meta("/net-takoy-stranicy", SITE, None);
         assert!(meta.is_noindex(), "404 обязан быть noindex");
@@ -1073,7 +1073,7 @@ mod tests {
 
     #[test]
     fn admin_is_noindex() {
-        SiteContent::set_global(fallback_content());
+        SiteContent::set_global(builtin_content());
         assert!(page_meta("/admin", SITE, None).is_noindex());
     }
 
@@ -1128,7 +1128,7 @@ mod tests {
 
     #[test]
     fn missing_article_is_a_noindex_404() {
-        SiteContent::set_global(fallback_content());
+        SiteContent::set_global(builtin_content());
 
         // Слаг есть в адресе, но статьи с ним нет — это 404, и индексировать
         // его нельзя.

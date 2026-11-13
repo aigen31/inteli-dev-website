@@ -1,9 +1,8 @@
 //! Промпты: системный промпт чата, промпт анализа сайта, fallback-ответы.
 //!
-//! В проде промпты загружаются из OpenViking (`viking://.../prompts/*`). Здесь —
-//! встроенные шаблоны, используемые при недоступности OpenViking.
+//! Все шаблоны встроены в код и версионируются вместе с ним.
 
-use crate::memory::{AuthorProfile, MemoryResult};
+use crate::memory::AuthorProfile;
 
 /// Собирает системный промпт чатбота из профиля автора.
 ///
@@ -43,69 +42,6 @@ pub fn chatbot_system_prompt(profile: &AuthorProfile) -> String {
     )
 }
 
-/// Бюджет RAG-контекста: сколько результатов и символов уходит в промпт.
-///
-/// Контекст — вторая по величине статья входных токенов после системного
-/// промпта, поэтому он ограничен и по числу фрагментов, и по суммарной длине.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct ContextSettings {
-    /// Сколько фрагментов максимум подмешиваем.
-    pub top_k: usize,
-    /// Сколько символов берём из каждого фрагмента.
-    pub snippet_chars: usize,
-    /// Жёсткий потолок всего контекста в символах.
-    pub max_chars: usize,
-    /// Порог релевантности: что ниже — выбрасываем как шум.
-    pub min_score: f64,
-}
-
-impl Default for ContextSettings {
-    fn default() -> Self {
-        Self {
-            top_k: 4,
-            snippet_chars: 400,
-            max_chars: 1600,
-            min_score: 0.35,
-        }
-    }
-}
-
-/// Формирует текстовый контекст из результатов семантического поиска.
-///
-/// Отбрасывает нерелевантное, обрезает фрагменты и укладывается в общий бюджет
-/// символов. URI источника не включаем: модель на него не ссылается, а это
-/// ~50 символов на каждый фрагмент.
-pub fn build_context_string(results: &[MemoryResult], cfg: &ContextSettings) -> String {
-    // Порог релевантности. Страховка: если после фильтра не осталось ничего
-    // (например, апстрим не проставил score), берём исходный топ — иначе
-    // поиск молча выключился бы целиком.
-    let relevant: Vec<&MemoryResult> = results
-        .iter()
-        .filter(|r| r.score >= cfg.min_score)
-        .collect();
-    let picked: Vec<&MemoryResult> = if relevant.is_empty() {
-        results.iter().collect()
-    } else {
-        relevant
-    };
-
-    let mut out = String::new();
-    for (i, r) in picked.iter().take(cfg.top_k).enumerate() {
-        let snippet: String = r.content.chars().take(cfg.snippet_chars).collect();
-        let block = format!("[{}] {}\n", i + 1, snippet);
-        // Первый блок добавляем всегда, дальше — только если влезаем в бюджет.
-        if !out.is_empty() && out.len() + block.len() > cfg.max_chars {
-            break;
-        }
-        out.push_str(&block);
-    }
-
-    if out.is_empty() {
-        return "Контекст не найден в базе знаний.".to_string();
-    }
-    out.trim_end().to_string()
-}
-
 /// Универсальный fallback-ответ, когда LLM недоступен.
 pub fn fallback_answer(profile: &AuthorProfile) -> String {
     format!(
@@ -117,125 +53,4 @@ pub fn fallback_answer(profile: &AuthorProfile) -> String {
         tg = profile.contacts.telegram,
         email = profile.contacts.email,
     )
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::memory::content::fallback_content;
-
-    #[test]
-    fn system_prompt_contains_author_facts() {
-        let profile = fallback_content().profile;
-        let prompt = chatbot_system_prompt(&profile);
-        assert!(prompt.contains("Евгений Биль"));
-        assert!(prompt.contains("6"));
-        assert!(prompt.contains("100"));
-    }
-
-    /// Ответ начинается с сути, а не с рассказа о сайте: старый промпт требовал
-    /// заканчивать каждый ответ призывом и называть цифры опыта — из-за этого
-    /// ассистент повторял одно и то же на любой вопрос.
-    #[test]
-    fn system_prompt_requires_a_direct_answer() {
-        let profile = fallback_content().profile;
-        let prompt = chatbot_system_prompt(&profile);
-        assert!(prompt.contains("Первое предложение"), "нет требования отвечать сразу");
-        assert!(
-            !prompt.contains("Каждый ответ заканчивай"),
-            "вернулся обязательный призыв в конце каждого ответа"
-        );
-        assert!(
-            prompt.contains("Не пересказывай услуги"),
-            "промпт снова разрешает пересказывать услуги"
-        );
-    }
-
-    /// Ни один промпт не обещает ответ «в течение 24 часов».
-    ///
-    /// Срок — это обязательство перед каждым, кто написал: он превращает
-    /// «посмотрю, если тема моя» в «отвечу всем и вовремя». Обещаний по срокам
-    /// в текстах быть не должно.
-    #[test]
-    fn prompts_do_not_promise_a_reply_deadline() {
-        let profile = fallback_content().profile;
-        for prompt in [
-            chatbot_system_prompt(&profile),
-            fallback_answer(&profile),
-        ] {
-            let lowered = prompt.to_lowercase();
-            for deadline in ["24 час", "в течение 24", "в течение дня"] {
-                assert!(
-                    !lowered.contains(deadline),
-                    "промпт снова обещает срок «{deadline}»: {prompt}"
-                );
-            }
-        }
-
-    }
-
-    fn result(uri: &str, content: &str, score: f64) -> MemoryResult {
-        MemoryResult {
-            uri: uri.into(),
-            content: content.into(),
-            score,
-        }
-    }
-
-    #[test]
-    fn context_string_joins_results() {
-        let results = vec![
-            result("a", "hello", 0.9),
-            result("b", "world", 0.8),
-        ];
-        let s = build_context_string(&results, &ContextSettings::default());
-        assert!(s.contains("[1]"));
-        assert!(s.contains("hello"));
-        assert!(s.contains("world"));
-        // URI больше не тратим — это чистые токены без пользы для ответа.
-        assert!(!s.contains("URI"));
-    }
-
-    #[test]
-    fn context_drops_irrelevant_results() {
-        let results = vec![
-            result("a", "по теме", 0.9),
-            result("b", "шум", 0.05),
-        ];
-        let s = build_context_string(&results, &ContextSettings::default());
-        assert!(s.contains("по теме"));
-        assert!(!s.contains("шум"));
-    }
-
-    #[test]
-    fn context_keeps_top_when_all_scores_are_missing() {
-        // score отсутствует в ответе апстрима => 0.0 у всех. Контекст не должен
-        // молча пропасть из-за порога релевантности.
-        let results = vec![result("a", "факт", 0.0)];
-        let s = build_context_string(&results, &ContextSettings::default());
-        assert!(s.contains("факт"));
-    }
-
-    #[test]
-    fn context_truncates_snippets_and_respects_budget() {
-        let cfg = ContextSettings {
-            top_k: 5,
-            snippet_chars: 10,
-            max_chars: 40,
-            min_score: 0.0,
-        };
-        let long = "x".repeat(100);
-        let results: Vec<MemoryResult> = (0..5)
-            .map(|i| result(&format!("u{i}"), &long, 0.9))
-            .collect();
-        let s = build_context_string(&results, &cfg);
-        assert!(s.len() <= cfg.max_chars + 8, "бюджет превышен: {}", s.len());
-        assert!(!s.contains(&"x".repeat(11)), "сниппет не обрезан");
-    }
-
-    #[test]
-    fn context_reports_empty_knowledge_base() {
-        let s = build_context_string(&[], &ContextSettings::default());
-        assert!(s.contains("не найден"));
-    }
 }

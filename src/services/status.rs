@@ -116,7 +116,7 @@ pub struct StatusPayload {
 /// Формирует payload из живых настроек сайта.
 ///
 /// Источник — [`SiteSettings`], а не контент: статус меняется из Telegram-бота,
-/// и в API должно уходить именно живое значение. Контент из OpenViking остаётся
+/// и в API должно уходить именно живое значение. Встроенный контент остаётся
 /// значением по умолчанию (см. `src/settings.rs`).
 pub fn status_payload() -> StatusPayload {
     let availability = SiteSettings::availability();
@@ -134,11 +134,11 @@ pub fn status_payload() -> StatusPayload {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::memory::content::{fallback_content, SiteContent};
+    use crate::memory::content::{builtin_content, SiteContent};
     use crate::settings::SiteSettings;
 
     fn ensure_content() {
-        SiteContent::set_global(fallback_content());
+        SiteContent::set_global(builtin_content());
     }
 
     #[test]
@@ -153,14 +153,14 @@ mod tests {
         assert_eq!(p.status, "available");
         assert_eq!(p.label, "Приём заявок: открыт");
         assert_eq!(p.icon_name, "circle-check");
-        assert_eq!(p.updated_at, fallback_content().status_updated_at);
+        assert_eq!(p.updated_at, builtin_content().status_updated_at);
     }
 
     #[test]
     fn status_payload_follows_live_settings() {
         ensure_content();
         let _guard = crate::settings::test_lock();
-        let mut availability = fallback_content().availability;
+        let mut availability = builtin_content().availability;
         availability.status = "full".into();
         availability.current_projects = 5;
         availability.next_free_slot = "с 1 декабря".into();
@@ -214,7 +214,7 @@ mod tests {
     /// цвет точки.
     #[test]
     fn tooltip_carries_state_and_facts() {
-        let mut a = fallback_content().availability;
+        let mut a = builtin_content().availability;
         a.status = "busy".into();
         a.current_projects = 2;
         a.next_free_slot = "немедленно".into();
@@ -233,7 +233,7 @@ mod tests {
     /// разойтись по формулировкам.
     #[test]
     fn all_surfaces_share_one_vocabulary() {
-        let a = fallback_content().availability;
+        let a = builtin_content().availability;
         let line = status_line(&a.status);
         assert!(tooltip(&a).contains(presentation(&a.status).summary));
         assert!(aria_label(&a).starts_with(&line));

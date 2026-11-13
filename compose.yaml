@@ -32,7 +32,6 @@ services:
     environment:
       PORT: "8080"
       CONFIG_PATH: /app/config.toml
-      OPENVIKING_BASE_URL: http://viking:1933/mcp
       DATA_DIR: /data
       DB_PATH: /data/chats.db
       KERNEL_URL: http://kernel:8080

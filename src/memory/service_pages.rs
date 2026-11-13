@@ -881,11 +881,11 @@ pub fn get(slug: &str) -> Option<&'static ServicePage> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::memory::content::fallback_content;
+    use crate::memory::content::builtin_content;
 
     #[test]
     fn every_service_has_a_page_and_every_page_has_a_service() {
-        let content = fallback_content();
+        let content = builtin_content();
         for service in &content.services {
             assert!(
                 get(&service.slug).is_some(),
@@ -919,7 +919,7 @@ mod tests {
 
     #[test]
     fn links_point_to_existing_pages_and_projects() {
-        let content = fallback_content();
+        let content = builtin_content();
         for page in SERVICE_PAGES {
             for slug in page.related {
                 assert!(get(slug).is_some(), "{}: нет страницы {}", page.slug, slug);

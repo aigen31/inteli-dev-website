@@ -16,8 +16,7 @@ use inteli_dev::cache::{InMemoryCache, RateLimiter, SlidingWindowLimiter};
 use inteli_dev::config::{AppConfig, SettingsBotConfig};
 use inteli_dev::error::AppResult;
 use inteli_dev::llm::{ChatProvider, Message};
-use inteli_dev::memory::content::{fallback_content, SiteContent};
-use inteli_dev::memory::OpenVikingClient;
+use inteli_dev::memory::content::{builtin_content, SiteContent};
 use inteli_dev::notification::NotificationService;
 use inteli_dev::services::{ArticleService, ChatService, LeadService, SettingsBot};
 use inteli_dev::state::AppState;
@@ -69,9 +68,6 @@ path = "test.db"
 enabled = true
 ttl_seconds = 3600
 
-[openviking]
-base_url = "http://127.0.0.1:1"
-
 [llm]
 provider = "deepseek"
 base_url = "http://x"
@@ -120,7 +116,7 @@ async fn test_state_with_quota(llm_requests_per_hour: u32) -> AppState {
 /// `api_base` указывает на закрытый локальный порт: бот не должен ходить в
 /// реальный Telegram из тестов, а соединение там отбивается мгновенно.
 async fn test_state_with(bot_config: SettingsBotConfig, llm_requests_per_hour: u32) -> AppState {
-    SiteContent::set_global(fallback_content());
+    SiteContent::set_global(builtin_content());
 
     let config = Arc::new(test_config());
     let db_path = std::env::temp_dir().join(format!("inteli_test_{}.db", uuid::Uuid::new_v4()));
@@ -129,10 +125,6 @@ async fn test_state_with(bot_config: SettingsBotConfig, llm_requests_per_hour: u
         .expect("db");
 
     let llm: Arc<dyn ChatProvider> = Arc::new(MockProvider);
-    let memory = Arc::new(OpenVikingClient::new(
-        "http://127.0.0.1:1",
-        Duration::from_millis(10),
-    ));
     let cache = Arc::new(InMemoryCache::new(Duration::from_secs(3600)));
     let rate_limiter = Arc::new(RateLimiter::new(1000, Duration::from_secs(60)));
     // Часовая квота: в большинстве сценариев щедрая, чтобы обычные запросы не
@@ -142,7 +134,7 @@ async fn test_state_with(bot_config: SettingsBotConfig, llm_requests_per_hour: u
         Duration::from_secs(3600),
     ));
     let notifications = Arc::new(NotificationService::new(0, String::new(), String::new(), 0));
-    let chat = Arc::new(ChatService::new(llm, memory, cache.clone(), db.clone()));
+    let chat = Arc::new(ChatService::new(llm, cache.clone(), db.clone()));
     let leads = Arc::new(LeadService::new(db.clone(), notifications.clone()));
     let settings_bot = Arc::new(SettingsBot::new(&bot_config));
     let articles = Arc::new(ArticleService::new(db.clone(), test_public_url()));
@@ -252,11 +244,11 @@ async fn chat_preset_answers_without_llm() {
         serde_json::json!({ "message": "кто вы", "question_type": "preset", "preset_index": 0 });
     let (status, resp) = request(&state, "POST", "/api/chat", Some(body), None).await;
     assert_eq!(status, StatusCode::OK);
-    assert_eq!(resp["source"], "openviking_direct");
+    assert_eq!(resp["source"], "direct");
 
     // Имя берём из контента, а не хардкодом: прежний литерал «Иван Петров»
     // остался от SEO-версии сайта и ломал тест после смены позиционирования.
-    let expected = fallback_content().profile.name;
+    let expected = builtin_content().profile.name;
     assert!(
         resp["answer"].as_str().unwrap_or("").contains(&expected),
         "ответ должен содержать имя {expected}, получено: {resp}"
@@ -449,7 +441,7 @@ async fn presets_do_not_consume_ai_quota() {
             preset.index
         );
         assert_eq!(
-            resp["source"], "openviking_direct",
+            resp["source"], "direct",
             "«{}» должна отвечать из контента, а не через модель",
             preset.label
         );
@@ -750,7 +742,7 @@ async fn settings_bot_rejects_invalid_values_without_changing_state() {
 
     let (_, body) = request(&state, "GET", "/api/status", None, None).await;
     assert_eq!(body["status"], "available");
-    assert_eq!(body["current_projects"], fallback_content().availability.current_projects);
+    assert_eq!(body["current_projects"], builtin_content().availability.current_projects);
 }
 
 #[tokio::test]

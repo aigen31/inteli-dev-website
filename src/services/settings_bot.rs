@@ -551,10 +551,10 @@ fn truncate(text: &str, limit: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::memory::content::fallback_content;
+    use crate::memory::content::builtin_content;
 
     fn base() -> Availability {
-        fallback_content().availability
+        builtin_content().availability
     }
 
     /// Конфиг бота с общими дефолтами (адрес API в тестах не используется —

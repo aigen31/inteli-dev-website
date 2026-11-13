@@ -210,13 +210,13 @@ fn display_host(url: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::memory::content::fallback_content;
+    use crate::memory::content::builtin_content;
 
     /// Соседи по кругу: с последнего кейса «следующий» — первый, иначе на
     /// краю списка одна из ссылок пропадала бы.
     #[test]
     fn neighbours_wrap_around_the_list() {
-        SiteContent::set_global(fallback_content());
+        SiteContent::set_global(builtin_content());
         let all = SiteContent::get().projects.clone();
         assert!(all.len() > 2);
 

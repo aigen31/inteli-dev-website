@@ -632,7 +632,7 @@ mod tests {
 
     #[test]
     fn project_scoring_prefers_stack_match() {
-        SiteContent::set_global(crate::memory::content::fallback_content());
+        SiteContent::set_global(crate::memory::content::builtin_content());
         let content = SiteContent::get();
         let tokens = tokenize("wordpress");
         let mut best = (0usize, None);

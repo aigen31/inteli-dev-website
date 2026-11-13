@@ -2,7 +2,7 @@
 //!
 //! Источники ответа (см. chatbot.md):
 //! - preset/availability → прямой ответ из контента (без LLM, <50ms)
-//! - free → LLM (DeepSeek) с семантическим контекстом из OpenViking
+//! - free → LLM (DeepSeek) с фактами сайта из реестра
 //! - при недоступности LLM → fallback-ответ с контактами
 
 use std::sync::Arc;
@@ -15,11 +15,9 @@ use sqlx::sqlite::SqlitePool;
 use crate::cache::InMemoryCache;
 use crate::error::{AppError, AppResult};
 use crate::limits::Limits;
-use crate::llm::prompt::{
-    build_context_string, chatbot_system_prompt, fallback_answer, ContextSettings,
-};
+use crate::llm::prompt::{chatbot_system_prompt, fallback_answer};
 use crate::llm::ChatProvider;
-use crate::memory::{Availability, OpenVikingClient};
+use crate::memory::Availability;
 use crate::services::kernel::KernelClient;
 use crate::storage::chat::{self, NewChat};
 
@@ -79,7 +77,7 @@ impl ChatRequest {
 #[derive(Debug, Clone, Serialize)]
 pub struct ChatResponse {
     pub answer: String,
-    pub source: String, // openviking_direct | llm | llm_fallback | cached
+    pub source: String, // direct | llm | llm_fallback | cached
     pub suggested_next: Vec<SuggestedAction>,
 }
 
@@ -155,44 +153,18 @@ pub const PRESETS: &[Preset] = &[
 /// Сервис чата.
 pub struct ChatService {
     llm: Option<Arc<dyn ChatProvider>>,
-    memory: Option<Arc<OpenVikingClient>>,
     kernel: Option<Arc<KernelClient>>,
     cache: Arc<InMemoryCache>,
     db: SqlitePool,
-    /// Бюджет RAG-контекста (сколько тратим входных токенов на справку).
-    context: ContextSettings,
-    /// Сколько результатов запрашивать у OpenViking (обычно == `context.top_k`).
-    search_limit: usize,
 }
 
 impl ChatService {
-    pub fn new(
-        llm: Arc<dyn ChatProvider>,
-        memory: Arc<OpenVikingClient>,
-        cache: Arc<InMemoryCache>,
-        db: SqlitePool,
-    ) -> Self {
-        Self::with_context(llm, memory, cache, db, ContextSettings::default())
-    }
-
-    /// Конструктор с настраиваемым бюджетом контекста (значения из config.toml).
-    pub fn with_context(
-        llm: Arc<dyn ChatProvider>,
-        memory: Arc<OpenVikingClient>,
-        cache: Arc<InMemoryCache>,
-        db: SqlitePool,
-        context: ContextSettings,
-    ) -> Self {
+    pub fn new(llm: Arc<dyn ChatProvider>, cache: Arc<InMemoryCache>, db: SqlitePool) -> Self {
         Self {
             llm: Some(llm),
-            memory: Some(memory),
             kernel: None,
             cache,
             db,
-            context,
-            // Просим у поиска чуть больше, чем подмешаем: часть отсеется
-            // по порогу релевантности.
-            search_limit: context.top_k.saturating_mul(2).max(1),
         }
     }
 
@@ -201,12 +173,9 @@ impl ChatService {
     pub fn with_kernel(kernel: Arc<KernelClient>, cache: Arc<InMemoryCache>, db: SqlitePool) -> Self {
         Self {
             llm: None,
-            memory: None,
             kernel: Some(kernel),
             cache,
             db,
-            context: ContextSettings::default(),
-            search_limit: 1,
         }
     }
 
@@ -231,12 +200,12 @@ impl ChatService {
         let kind = resolve_kind(&req);
 
         let (answer, source, suggested_next) = match kind {
-            QuestionKind::Who => (answer_who(), "openviking_direct".to_string(), suggested_next(kind)),
-            QuestionKind::Services => (answer_services(), "openviking_direct".to_string(), suggested_next(kind)),
-            QuestionKind::Pricing => (answer_pricing(), "openviking_direct".to_string(), suggested_next(kind)),
-            QuestionKind::LocalInference => (answer_local_inference(), "openviking_direct".to_string(), suggested_next(kind)),
-            QuestionKind::Availability => (answer_availability(), "openviking_direct".to_string(), suggested_next(kind)),
-            QuestionKind::LeadRequest => (answer_lead_request(), "openviking_direct".to_string(), suggested_next(kind)),
+            QuestionKind::Who => (answer_who(), "direct".to_string(), suggested_next(kind)),
+            QuestionKind::Services => (answer_services(), "direct".to_string(), suggested_next(kind)),
+            QuestionKind::Pricing => (answer_pricing(), "direct".to_string(), suggested_next(kind)),
+            QuestionKind::LocalInference => (answer_local_inference(), "direct".to_string(), suggested_next(kind)),
+            QuestionKind::Availability => (answer_availability(), "direct".to_string(), suggested_next(kind)),
+            QuestionKind::LeadRequest => (answer_lead_request(), "direct".to_string(), suggested_next(kind)),
             QuestionKind::Free => self.answer_free(&req, client_hash.as_deref()).await?,
         };
 
@@ -286,31 +255,10 @@ impl ChatService {
 
         let content = crate::memory::content::SiteContent::get();
 
-        // Семантический контекст из OpenViking (при ошибке — пустой контекст).
-        let context = match self
-            .memory
-            .as_ref()
-            .expect("legacy chat memory is configured")
-            .semantic_search(&req.message, self.search_limit)
-            .await
-        {
-            Ok(results) => build_context_string(&results, &self.context),
-            Err(e) => {
-                tracing::debug!("OpenViking search failed, empty context: {e}");
-                String::new()
-            }
-        };
-
         // Факты сайта через тот же реестр, что отдаёт MCP внешним агентам:
         // кейсы под задачу, прайс из админки, живой статус. Без этого модель
         // отвечала «делали ли вы такое» общими словами.
-        let site = crate::mcp::context_for(&self.db, &req.message).await;
-        let context = match (context.is_empty(), site.is_empty()) {
-            (true, true) => String::new(),
-            (true, false) => site,
-            (false, true) => context,
-            (false, false) => format!("{context}\n\n{site}"),
-        };
+        let context = crate::mcp::context_for(&self.db, &req.message).await;
 
         let system = chatbot_system_prompt(&content.profile);
         let user = if context.is_empty() {
@@ -557,7 +505,7 @@ mod tests {
     use super::*;
     use crate::error::AppError;
     use crate::llm::Message;
-    use crate::memory::content::{fallback_content, SiteContent};
+    use crate::memory::content::{builtin_content, SiteContent};
     use crate::storage::init_memory_pool;
 
     struct MockProvider {
@@ -580,17 +528,13 @@ mod tests {
         let llm: Arc<dyn ChatProvider> = Arc::new(MockProvider {
             fail: provider_fails,
         });
-        let memory = Arc::new(OpenVikingClient::new(
-            "http://127.0.0.1:1",
-            std::time::Duration::from_millis(10),
-        ));
         let cache = Arc::new(InMemoryCache::new(std::time::Duration::from_secs(60)));
-        ChatService::new(llm, memory, cache, pool)
+        ChatService::new(llm, cache, pool)
     }
 
     fn ensure_content() {
         // Повторный set — no-op (OnceLock), поэтому безопасно вызывать в каждом тесте.
-        SiteContent::set_global(fallback_content());
+        SiteContent::set_global(builtin_content());
     }
 
     fn preset_req(index: usize) -> ChatRequest {
@@ -618,7 +562,7 @@ mod tests {
         ensure_content();
         let svc = service(true).await; // LLM сломан — preset всё равно работает
         let resp = svc.answer(preset_req(0), None).await.unwrap();
-        assert_eq!(resp.source, "openviking_direct");
+        assert_eq!(resp.source, "direct");
         assert!(resp.answer.contains("Евгений Биль"));
     }
 
@@ -627,7 +571,7 @@ mod tests {
         ensure_content();
         let svc = service(true).await;
         let resp = svc.answer(preset_req(3), None).await.unwrap();
-        assert_eq!(resp.source, "openviking_direct");
+        assert_eq!(resp.source, "direct");
         assert!(resp.answer.contains("инференс") || resp.answer.contains("Инференс"));
     }
 
@@ -648,7 +592,7 @@ mod tests {
         };
 
         let resp = svc.answer(preset_req(index("Сколько стоит?")), None).await.unwrap();
-        assert_eq!(resp.source, "openviking_direct");
+        assert_eq!(resp.source, "direct");
         // Цена каждой услуги, а не объяснение технологии.
         for service in &crate::memory::content::SiteContent::get().services {
             assert!(

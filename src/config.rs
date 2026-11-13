@@ -17,7 +17,6 @@ pub struct AppConfig {
     pub server: ServerConfig,
     pub database: DatabaseConfig,
     pub cache: CacheConfig,
-    pub openviking: OpenVikingConfig,
     pub llm: LlmConfig,
     pub telegram: TelegramConfig,
     /// Бот настроек сайта. Секция опциональна: без неё эндпоинт выключен.
@@ -302,15 +301,6 @@ pub struct CacheConfig {
 }
 
 #[derive(Debug, Clone, Deserialize)]
-pub struct OpenVikingConfig {
-    pub base_url: String,
-    #[serde(default = "default_timeout")]
-    pub timeout_seconds: u64,
-    #[serde(default = "default_read_timeout")]
-    pub read_timeout_seconds: u64,
-}
-
-#[derive(Debug, Clone, Deserialize)]
 pub struct LlmConfig {
     pub provider: String,
     pub base_url: String,
@@ -325,18 +315,6 @@ pub struct LlmConfig {
     pub max_tokens: u32,
     #[serde(default = "default_llm_temperature")]
     pub temperature: f32,
-    /// Сколько результатов семантического поиска подмешивать в промпт.
-    #[serde(default = "default_context_top_k")]
-    pub context_top_k: usize,
-    /// Сколько символов брать из каждого результата.
-    #[serde(default = "default_context_snippet_chars")]
-    pub context_snippet_chars: usize,
-    /// Общий бюджет RAG-контекста в символах — жёсткий потолок входа.
-    #[serde(default = "default_context_max_chars")]
-    pub context_max_chars: usize,
-    /// Порог релевантности: результаты с меньшим score отбрасываются.
-    #[serde(default = "default_context_min_score")]
-    pub context_min_score: f64,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -471,12 +449,6 @@ fn default_true() -> bool {
 fn default_ttl() -> u64 {
     3600
 }
-fn default_timeout() -> u64 {
-    10
-}
-fn default_read_timeout() -> u64 {
-    5
-}
 fn default_max_requests() -> u32 {
     10
 }
@@ -494,18 +466,6 @@ fn default_llm_max_tokens() -> u32 {
 }
 fn default_llm_temperature() -> f32 {
     0.7
-}
-fn default_context_top_k() -> usize {
-    4
-}
-fn default_context_snippet_chars() -> usize {
-    400
-}
-fn default_context_max_chars() -> usize {
-    1600
-}
-fn default_context_min_score() -> f64 {
-    0.35
 }
 fn default_telegram_api_base() -> String {
     "https://api.telegram.org".to_string()
@@ -571,9 +531,6 @@ impl AppConfig {
         }
         if let Ok(v) = std::env::var("LLM_MODEL") {
             self.llm.model = v;
-        }
-        if let Ok(v) = std::env::var("OPENVIKING_BASE_URL") {
-            self.openviking.base_url = v;
         }
         if let Ok(v) = std::env::var("TELEGRAM_BOT_TOKEN") {
             self.telegram.bot_token = v;
@@ -721,9 +678,6 @@ path = "/tmp/test.db"
 enabled = true
 ttl_seconds = 60
 
-[openviking]
-base_url = "http://localhost:1933/mcp"
-
 [llm]
 provider = "deepseek"
 base_url = "https://api.deepseek.com/v1"
@@ -770,8 +724,6 @@ ip_hash_algorithm = "sha256"
 [database]
 path = "x.db"
 [cache]
-[openviking]
-base_url = "http://x"
 [llm]
 provider = "deepseek"
 base_url = "http://x"
@@ -819,8 +771,6 @@ public_url = "http://127.0.0.1:8282/"
 [database]
 path = "x.db"
 [cache]
-[openviking]
-base_url = "http://x"
 [llm]
 provider = "deepseek"
 base_url = "http://x"
@@ -853,8 +803,6 @@ outbox_batch_limit = 10
 [database]
 path = "x.db"
 [cache]
-[openviking]
-base_url = "http://x"
 [llm]
 provider = "deepseek"
 base_url = "http://x"

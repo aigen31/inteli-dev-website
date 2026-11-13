@@ -2,8 +2,8 @@
 //!
 //! # Зачем отдельный слой
 //!
-//! `SiteContent` — это контент из OpenViking (профиль, услуги, проекты). Он
-//! загружается один раз при старте и дальше неизменяем. Статус занятости
+//! `SiteContent` — это встроенный контент (профиль, услуги, проекты). Он
+//! задаётся при старте и дальше неизменяем. Статус занятости
 //! устроен иначе: это операционное состояние, которое меняется несколько раз в
 //! день, и менять его нужно быстро — из Telegram, с телефона, без пересборки и
 //! перезапуска.
@@ -12,12 +12,12 @@
 //! [`crate::memory::content::SiteContent::availability`] остаётся значением по
 //! умолчанию: им пользуются, пока в БД нет сохранённого значения.
 //!
-//! # Почему SQLite, а не OpenViking
+//! # Почему SQLite, а не контент
 //!
-//! OpenViking — источник правды для *контента* (кто я, что делаю, сколько
-//! стоит). Статус занятости — это *состояние сервиса*: он должен переживать
-//! рестарт и быть записан даже когда OpenViking недоступен. Писать его в
-//! SQLite рядом с заявками надёжнее и не требует сети.
+//! Контент (кто я, что делаю, сколько стоит) меняется вместе с кодом. Статус
+//! занятости — это *состояние сервиса*: он должен переживать рестарт и
+//! меняться без пересборки и перезапуска. Писать его в SQLite рядом с заявками
+//! надёжнее и не требует сети.
 
 use std::sync::RwLock;
 
@@ -152,12 +152,12 @@ pub fn test_lock() -> std::sync::MutexGuard<'static, ()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::memory::content::fallback_content;
+    use crate::memory::content::builtin_content;
 
     fn ensure_content() {
         // SiteContent инициализируется один раз на процесс — повторный вызов
         // безопасен (OnceLock::set игнорирует ошибку).
-        SiteContent::set_global(fallback_content());
+        SiteContent::set_global(builtin_content());
     }
 
     #[test]
@@ -168,14 +168,14 @@ mod tests {
 
         let a = SiteSettings::availability();
         assert_eq!(a.status, "available");
-        assert_eq!(SiteSettings::updated_at(), fallback_content().status_updated_at);
+        assert_eq!(SiteSettings::updated_at(), builtin_content().status_updated_at);
     }
 
     #[test]
     fn published_settings_win_over_content() {
         ensure_content();
         let _guard = test_lock();
-        let mut availability = fallback_content().availability;
+        let mut availability = builtin_content().availability;
         availability.status = "full".into();
         availability.current_projects = 4;
         SiteSettings::set_global(SiteSettings {
@@ -194,6 +194,6 @@ mod tests {
         ensure_content();
         let _guard = test_lock();
         let defaults = defaults_from_content();
-        assert_eq!(defaults.availability, fallback_content().availability);
+        assert_eq!(defaults.availability, builtin_content().availability);
     }
 }

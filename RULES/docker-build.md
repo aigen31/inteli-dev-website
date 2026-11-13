@@ -205,8 +205,6 @@ services:
     environment:
       - RUST_LOG=${RUST_LOG:-info}
       - CONFIG_PATH=/app/config.toml
-      # OpenViking
-      - OPENVIKING_BASE_URL=http://viking:1933/mcp
       # LLM API
       - LLM_API_KEY=${LLM_API_KEY:?LLM_API_KEY required}
       - LLM_BASE_URL=https://api.deepseek.com/v1
@@ -225,8 +223,6 @@ services:
       - db-data:/data              # Persistent SQLite data
       - ./config.toml:/app/config.toml:ro  # Read-only config
     depends_on:
-      viking:
-        condition: service_healthy
       redis:
         condition: service_started
     healthcheck:
@@ -235,25 +231,6 @@ services:
       timeout: 5s
       retries: 3
       start_period: 10s
-
-  # ===== OpenViking — семантическая память =====
-  viking:
-    image: openviking/server:latest
-    container_name: inteli-dev-viking
-    restart: unless-stopped
-    ports:
-      - "${VIKING_PORT:-1933}:1933"
-    environment:
-      - OPENVIKING_DATA_DIR=/data
-    volumes:
-      - viking-data:/data
-      - ./viking-content:/imports:ro  # Initial content import
-    healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:1933/health"]
-      interval: 15s
-      timeout: 5s
-      retries: 5
-      start_period: 30s
 
   # ===== Redis — кеширование и сессии =====
   redis:
@@ -271,7 +248,6 @@ services:
 
 volumes:
   db-data:
-  viking-data:
   redis-data:
 ```
 
@@ -325,7 +301,6 @@ APP_VERSION=1.0.0
 
 # Optional: порты для нестандартных развертываний
 WEB_PORT=8080
-VIKING_PORT=1933
 ```
 
 ### Production .env (`.env.prod`)
@@ -368,7 +343,6 @@ target/
 Cargo.lock
 .DS_Store
 *.md
-viking-content/
 config.toml      # Секреты не должны быть в образе
 .env
 *.sqlite
@@ -400,15 +374,14 @@ pub async fn handle_health() -> Result<impl IntoResponse> {
     // Проверяем зависимости
     let db_ok = sqlx::query("SELECT 1").fetch_one(&pool).await.is_ok();
     let redis_ok = redis_client.ping().await.is_ok();
-    let viking_ok = viking_client.health_check().await.is_ok();
     
+
     if !db_ok || !redis_ok {
         // Partial health — сервис работает, но зависимости не OK
         return Ok(Json(serde_json::json!({
             "status": "degraded",
             "database": db_ok,
             "redis": redis_ok,
-            "openviking": viking_ok,
             "uptime_seconds": get_uptime_secs(),
         })));
     }
@@ -418,7 +391,6 @@ pub async fn handle_health() -> Result<impl IntoResponse> {
         "status": "healthy",
         "database": true,
         "redis": true,
-        "openviking": viking_ok,
         "uptime_seconds": get_uptime_secs(),
         "version": env!("APP_VERSION", "unknown"),
     })))
@@ -480,7 +452,6 @@ readinessProbe:
 docker compose up --build       # Построить и запустить
 docker compose down             # Остановить
 docker compose logs -f web      # Просмотр логов приложения
-docker compose logs -f viking   # Просмотр логов OpenViking
 
 # ===== Production (на сервере) =====
 # 0. Один раз: внешняя сеть Traefik (см. /mnt/disk1/work/traefik/docker-compose.yml)
@@ -493,7 +464,7 @@ scp .env.prod user@server:/opt/inteli-dev/.env.prod
 
 # 2. На сервере (домен должен уже резолвиться в этот сервер — иначе ACME HTTP-01 не пройдёт):
 cd /opt/inteli-dev
-docker compose pull   # OpenViking, Redis, Nginx
+docker compose pull   # Redis, Nginx
 docker compose up -d --build
 docker compose ps     # Проверить все сервисы
 
@@ -511,7 +482,6 @@ ssh user@server "cd /opt/inteli-dev && docker compose pull && docker compose up 
 | Данные | Как бэкапить | Частота | Хранение |
 |--------|-------------|---------|----------|
 | SQLite (chats.db) | `cp chats.db chats.db.bak && sqlite3 chats.db ".backup chats.db.full"` | Ежедневно | 7 дней локально, архив на S3 30 дней |
-| OpenViking data | Копия volumes/viking-data/ | Еженедельно | 4 недели + S3 |
 | Config (config.toml) | Git-версия (без секретов!) или encrypted backup | При каждом изменении | Git repo |
 
 ### Disaster Recovery

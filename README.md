@@ -13,7 +13,7 @@ Telegram + VK.
 | UI | Leptos (SSR) + ванильный JS |
 | HTTP | axum (hyper) + tokio |
 | Хранилище | SQLite (WAL, sqlx) |
-| Память ИИ | OpenViking (`viking://`) с fallback |
+| Контент сайта | встроенный (`src/memory/content.rs`) |
 | LLM | DeepSeek V4 (OpenAI-compatible) |
 | Уведомления | Telegram Bot API + VK Messages API |
 | Деплой | Docker multi-stage (~35 MB runtime) |
@@ -30,7 +30,7 @@ src/
 ├── api/               — HTTP-хендлеры (chat, lead, status, health, admin)
 ├── services/          — бизнес-логика (чат, заявки, статус)
 ├── storage/           — SQLite (chats, leads)
-├── memory/            — OpenViking client + fallback-контент
+├── memory/            — встроенный контент и страницы услуг
 ├── llm/               — ChatProvider trait + DeepSeek + промпты
 ├── notification/      — Telegram + VK
 ├── cache.rs           — in-memory кэш + rate limiter

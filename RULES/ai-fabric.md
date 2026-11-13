@@ -112,10 +112,10 @@ impl ChatProvider for DeepSeekProvider {
 
 ## Системный промпт для chatbot
 
-### Основной системный промпт (хранится в `viking://user/inteli-dev/prompts/chatbot-system.md`)
+### Основной системный промпт (в коде: `src/llm/prompt.rs`)
 
-**Этот промпт загружается из OpenViking каждый раз при создании нового диалога.**
-В runtime он дополняется контекстом поиска по знаниям.
+**Промпт собирается при старте диалога.** В runtime он дополняется фактами
+сайта: кейсами, прайсом и живым статусом.
 
 ```markdown
 Ты — AI-ассистент Ивана Петрова, специалиста по поисковой оптимизации (SEO) 
@@ -299,25 +299,23 @@ impl ChatProvider for DeepSeekProvider {
 // llm/prompt_builder.rs
 
 pub struct PromptBuilder {
-    system_template: String,  // Загружается из OpenViking
+    system_template: String,  // Собирается из профиля в контенте
 }
 
 impl PromptBuilder {
     pub async fn build_chat_prompt(
         &self, 
         user_message: &str,
-        openviking_context: &[MemoryResult],
+        site_context: &str,
     ) -> Result<(String, String), AppError> {
-        // 1. Берём шаблон системного промпта из OpenViking
+        // 1. Берём шаблон системного промпта
         let system_template = self.system_template.clone();
         
-        // 2. Формируем контекст из релевантных записей OpenViking
-        let context_text = build_context_string(openviking_context)?;
-        
-        // 3. Подставляем в шаблон
+        // 2. Подставляем профиль и услуги из контента
+        let profile = &SiteContent::get().profile;
         let system_prompt = system_template
-            .replace("{context_from_profile}", &extract_profile_context(&context_text)?)
-            .replace("{context_from_services}", &extract_services_context(&context_text)?);
+            .replace("{profile}", &profile_summary(profile))
+            .replace("{services}", &services_summary(&SiteContent::get().services));
         
         Ok((system_prompt, user_message.to_string()))
     }
@@ -326,8 +324,8 @@ impl PromptBuilder {
         &self,
         url: &str,
     ) -> Result<(String, String), AppError> {
-        // Загрузка специфичного промпта для анализа из OpenViking
-        let analysis_template = self.read_uri("viking://user/inteli-dev/prompts/analysis-prompt.md").await?;
+        // Промпт анализа сайта встроен в код
+        let analysis_template = analysis_prompt_template();
         
         let system_prompt = analysis_template.replace("{URL}", url);
         let user_message = "Проанализируйте этот сайт с точки зрения SEO.".to_string();
@@ -383,11 +381,10 @@ fn extract_services_context(context: &str) -> Result<String, AppError> {
 
 ### Когда использовать
 - LLM API timeout / 503 error
-- OpenViking недоступен
-- Оба сервиса недоступны
+- Ядро ассистента недоступно
 
 ### Промпт fallback для chatbot
-**Хранится в `viking://user/inteli-dev/prompts/fallback-chat.md`**
+**Встроен в код: `fallback_answer` в `src/llm/prompt.rs`**
 
 ```markdown
 ## Фоллбек-ответы на частые вопросы

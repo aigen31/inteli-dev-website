@@ -11,7 +11,7 @@
 - [Аналитика чата](#аналитика-чата)
 
 > **Обновление 2026-11.** Свободные вопросы (`QuestionKind::Free`) больше не
-> ходят напрямую в DeepSeek/OpenViking из `ChatService`. Сайт вызывает
+> ходят напрямую в DeepSeek из `ChatService`. Сайт вызывает
 > `inteli-dev-kiki-assistant-kernel-api` (`KERNEL_URL`); ядро владеет промптом,
 > моделью, историей и tool loop, а сайт отдаёт ему `site_lookup` через
 > `/internal/assistant`. Preset/availability/lead_request остаются локальными
@@ -116,19 +116,19 @@ Hero-терминал на главной показывает подмноже�
               ▼
 4. ChatService.process_query(message, question_type)
               │
-              ├── preset (preset-кнопка) → lookup готового ответа в OpenViking
+              ├── preset (preset-кнопка) → готовый ответ из контента
               ├── analysis (URL анализ) → вызов LLM с промптом для анализа
               ├── lead_request → redirect на форму лида + сохранить intent
-              └── free (свободный ввод) → semantic search + LLM
+              └── free (свободный ввод) → факты сайта + LLM
               │
               ▼
 5. Redis cache check: exists? return cached answer
               │
               ▼
-6. OpenViking semantic_search(query) → получает context из URI
+6. Реестр фактов: кейсы под задачу, прайс, живой статус
               │
               ▼
-7. Build prompt: system_prompt + viking_context + user_question
+7. Build prompt: system_prompt + site_context + user_question
               │
               ▼
 8. LLM provider call (DeepSeek V4 / OpenAI-compatible API)
@@ -181,10 +181,10 @@ prompt-шаблонах: это фиксированный текст, а не �
 
 ```rust
 // В ChatService, по типу вопроса (см. resolve_kind)
-QuestionKind::Pricing => (answer_pricing(), "openviking_direct"),
+QuestionKind::Pricing => (answer_pricing(), "direct"),
 QuestionKind::Availability => (
     format_availability(&SiteSettings::availability()),  // живой статус
-    "openviking_direct",
+    "direct",
 ),
 ```
 
@@ -192,16 +192,16 @@ QuestionKind::Availability => (
 «Отлично!», пересказа всего профиля и «оставьте заявку» в тексте — кнопки
 следующего шага рисует UI. Ориентир по длине — экран телефона.
 
-### Источник B: Semantic search + LLM (free text)
-Для нестандартных вопросов — ищем релевантный контекст в OpenViking, подставляем в промпт, получаем ответ от LLM.
+### Источник B: Факты сайта + LLM (free text)
+Для нестандартных вопросов — собираем релевантные факты (кейсы, прайс, статус) и отдаём их модели вместе с вопросом.
 
 ### Источник C: Direct API response (status, availability)
 Для запросов статуса — прямой JSON response из `/api/status.json`, без LLM.
 
 Живой статус занятости живёт в `src/settings.rs` (`SiteSettings`), а не в
 контенте: владелец меняет его из Telegram-бота настроек
-(см. `docs/settings-bot.md`). `SiteContent.availability` из OpenViking — только
-значение по умолчанию, пока в БД нет сохранённой записи.
+(см. `docs/settings-bot.md`). `SiteContent.availability` — только значение по
+умолчанию, пока в БД нет сохранённой записи.
 
 `StatusBadge` (шапка и главная), `/api/status` и ответ чата на вопрос о
 занятости читают **один и тот же** `SiteSettings::availability()`, поэтому
@@ -236,7 +236,7 @@ QuestionKind::Availability => (
 
 ## Промпт для AI-ассистента
 
-### Системный промпт (хранится в OpenViking: `viking://user/inteli-dev/prompts/chatbot-system.md`)
+### Системный промпт (в коде: `src/llm/prompt.rs`, `chatbot_system_prompt`)
 
 ```markdown
 # Системный промпт AI-чата
@@ -245,10 +245,10 @@ QuestionKind::Availability => (
 Помогаешь посетителям сайта понять, чем вы можете помочь, и подталкиваете к оставлению заявки.
 
 ## О специалисте:
-{context_from_viking_profile}
+{profile}
 
 ## Об услугах:
-{context_from_viking_services}
+{services}
 
 ## Правила общения:
 1. Отвечай на русском языке (если пользователь пишет на русском)
@@ -317,8 +317,8 @@ QuestionKind::Availability => (
 match llm_provider.chat(prompt).await {
     Ok(response) => response,
     Err(ApiError::Timeout) | Err(ApiError::ServiceUnavailable) => {
-        // Использовать cached answer или fallback-ответ из OpenViking
-        let fallback = viking_client.read_uri("viking://user/inteli-dev/prompts/fallback-chat.md").await?;
+        // Готовый fallback-ответ с контактами
+        let fallback = fallback_answer(&SiteContent::get().profile);
         
         ChatResponse {
             answer: format!("Временно ответ на ваш вопрос может занять больше времени. Вот что могу сказать:\n\n{}", fallback),
@@ -329,23 +329,10 @@ match llm_provider.chat(prompt).await {
 }
 ```
 
-### Сценарий: OpenViking недоступен
-```rust
-// Fallback: использовать embedded profile data при недоступности OpenViking
-match viking_client.semantic_search(query).await {
-    Ok(results) => results,
-    Err(ApiError::ConnectionRefused) => {
-        // Использовать in-memory fallback profile (загружается при старте)
-        let cached = get_cached_profile();  // static OnceLock
-        
-        ChatResponse {
-            answer: build_answer_from_cached(cached, query)?,
-            source: "cached_fallback",
-            suggested_next: vec![CTA::LeaveLead],
-        }
-    }
-}
-```
+### Сценарий: контент не инициализирован
+Контент встроен в код и доступен всегда, поэтому отдельного сценария
+деградации нет. Если база SQLite не открылась, приложение не стартует —
+это осознанное решение: без БД нет ни лидов, ни прайса.
 
 ### Сценарий: Rate limiting — два независимых уровня
 

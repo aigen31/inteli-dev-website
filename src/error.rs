@@ -34,9 +34,6 @@ pub enum AppError {
     #[error("empty LLM response")]
     EmptyLlmResponse,
 
-    #[error("OpenViking error: {0}")]
-    OpenViking(String),
-
     #[error("assistant kernel error: {0}")]
     Kernel(String),
 
@@ -77,7 +74,6 @@ impl AppError {
             AppError::LlmApiError { .. }
             | AppError::TelegramError { .. }
             | AppError::VkError { .. }
-            | AppError::OpenViking(_)
             | AppError::Kernel(_) => StatusCode::BAD_GATEWAY,
             _ => StatusCode::INTERNAL_SERVER_ERROR,
         }

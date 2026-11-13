@@ -19,11 +19,6 @@ path = "data/chats.db"        # или DB_PATH env (в контейнере: /da
 enabled = true
 ttl_seconds = 3600            # TTL кэша ответов LLM (in-memory; Redis — этап P7)
 
-[openviking]
-base_url = "http://viking:1933/mcp"
-timeout_seconds = 5
-read_timeout_seconds = 5
-
 [llm]
 provider = "deepseek"
 base_url = "https://api.deepseek.com/v1"
@@ -31,10 +26,6 @@ model = "deepseek-chat"
 # api_key — читается из env LLM_API_KEY, НЕ храните его здесь.
 max_tokens = 600              # потолок выходных токенов
 temperature = 0.7
-context_top_k = 4             # сколько фрагментов памяти подмешивать в промпт
-context_snippet_chars = 400   # сколько символов брать из каждого фрагмента
-context_max_chars = 1600      # жёсткий бюджет RAG-контекста
-context_min_score = 0.35      # порог релевантности
 
 [kernel]
 # Центральное AI-ядро. Пусто = старый встроенный LLM-путь (только для тестов).

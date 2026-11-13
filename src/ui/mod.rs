@@ -1,7 +1,7 @@
 //! UI Layer — Leptos SSR-компоненты (без WASM/hydration).
 //!
 //! Интерактивность (чат, анимации) — на ванильном JS в `assets/main.js`.
-//! Контент читается из `SiteContent` (OpenViking → fallback) синхронно, т.к.
+//! Контент читается из `SiteContent` (встроенные значения) синхронно, т.к.
 //! SSR рендерится на сервере.
 
 pub mod admin;

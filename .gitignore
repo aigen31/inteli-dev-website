@@ -26,8 +26,6 @@ node_modules/
 .idea/
 .vscode/
 
-# OpenViking local data
-viking-content/
 
 # Local docker CLI state (обход read-only ~/.docker в песочнице)
 .docker-build/

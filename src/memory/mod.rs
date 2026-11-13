@@ -1,12 +1,10 @@
-//! Memory Layer — интеграция с OpenViking (`viking://` URIs).
+//! Контент сайта: профиль автора, услуги, проекты, статус занятости.
 //!
-//! OpenViking — единый источник правды об авторе (профиль, услуги, проекты,
-//! статус занятости). При недоступности OpenViking приложение деградирует на
-//! встроенный fallback-контент ([`content::fallback_content`]) — см. `memory-storage.md`.
+//! Источник — встроенные значения ([`content::builtin_content`]) и страницы
+//! услуг из [`service_pages`]. Живые настройки (статус занятости, прайс) лежат
+//! в SQLite и правятся из админки или Telegram-бота.
 
-pub mod client;
 pub mod content;
 pub mod service_pages;
 
-pub use client::{MemoryResult, OpenVikingClient};
 pub use content::{AuthorProfile, Availability};

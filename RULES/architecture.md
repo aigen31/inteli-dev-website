@@ -86,7 +86,7 @@
 | **UI Layer** (Leptos) | Рендеринг страниц, формы, навигация | Логика бизнес-правил, доступ к БД |
 | **API Layer** | HTTP обработчики, валидация, авторизация | Рендеринг UI, прямые SQL запросы |
 | **Services Layer** | Бизнес-логика, orchestration | HTTP ответы, хранение данных |
-| **Memory Layer** | OpenViking client, semantic search | Бизнес-логика, HTTP вызовы |
+| **Content Layer** | встроенный контент, страницы услуг, реестр фактов | Бизнес-логика, HTTP вызовы |
 | **Storage Layer** | SQLite queries, Redis cache | Бизнес-правила |
 
 ---
@@ -103,18 +103,18 @@ async fn main() {
     let config = load_config().await;
     
     // 2. Инициализация сервисов
-    let db = init_db(&config).await;          // SQLite
-    let viking = init_openviking(&config).await; // OpenViking client
-    let redis = init_redis(&config).await;     // Redis cache (опционально)
+    let db = init_db(&config).await;              // SQLite
+    let content = builtin_content();              // контент сайта
+    let redis = init_redis(&config).await;        // Redis cache (опционально)
     
     // 3. Запуск сервера
-    let app_state = AppState { db, viking, redis, config };
+    let app_state = AppState { db, content, redis, config };
     start_server(app_state).await;
 }
 
 struct AppState {
     db: SqlitePool,
-    viking: OpenVikingClient,
+    content: SiteContent,
     redis: RedisClient,
     config: AppConfig,
 }
@@ -183,7 +183,7 @@ src/
 │   ├── login.rs            // Авторизация через токен
 │   ├── dashboard.rs        // Аналитика: лиды, конверсии, графики
 │   ├── chat_history.rs     // История чатов с фильтрами
-│   └── settings.rs         // Управление контентом (через OpenViking)
+│   └── settings.rs         // Живые настройки: статус занятости, прайс
 │
 ├── api/                    // HTTP API endpoints (Hyper)
 │   ├── mod.rs              // Регистрация routes для Hyper
@@ -193,11 +193,9 @@ src/
 │   ├── telegram.rs         // Webhook endpoint для Telegram
 │   └── admin_auth.rs       // Middleware авторизации админа
 │
-├── memory/                 // OpenViking интеграция
-│   ├── client.rs           // HTTP клиент к OpenViking server
-│   ├── search.rs           // Wrapper для find/search/grep
-│   ├── profile.rs          // Абстракция профиля автора
-│   └── project.rs          // Абстракция проектов
+├── memory/                 // Контент сайта
+│   ├── content.rs          // Профиль, услуги, кейсы, контакты
+│   └── service_pages.rs    // Страницы услуг
 │
 ├── llm/                    // LLM интеграция
 │   ├── mod.rs              // Trait ChatProvider
@@ -403,9 +401,9 @@ async fn handle_chat(req: Request<Body>) -> Result<Response<Body>, AppError> {
 ```rust
 // ChatService — orchestration чатбота
 pub struct ChatService {
-    viking_client: OpenVikingClient,
     llm_provider: Box<dyn LLMProvider>,
     redis_cache: RedisClient,
+    db: SqlitePool,
 }
 
 impl ChatService {
@@ -415,8 +413,8 @@ impl ChatService {
             return Ok(cached);
         }
         
-        // 2. Semantic search in OpenViking
-        let context = self.viking_client.semantic_search(query, 5).await?;
+        // 2. Факты сайта под запрос: кейсы, прайс, живой статус
+        let context = crate::mcp::context_for(&self.db, query).await;
         
         // 3. Build prompt with context + LLM call
         let prompt = build_prompt(query, &context)?;
@@ -451,83 +449,26 @@ pub async fn notify_on_lead(lead: &Lead) -> Result<(), AppError> {
 }
 ```
 
-### 3. Memory Layer (OpenViking)
+### 3. Content Layer
 ```rust
-// OpenVikingClient — HTTP wrapper для MCP endpoints
-pub struct OpenVikingClient {
-    base_url: String,
-    client: reqwest::Client,
+// Контент сайта — структура в коде, без внешних вызовов.
+pub struct SiteContent {
+    pub profile: AuthorProfile,
+    pub services: Vec<Service>,
+    pub projects: Vec<Project>,
+    pub availability: Availability,
 }
 
-impl OpenVikingClient {
-    // Semantic search across all resources
-    pub async fn semantic_search(&self, query: &str, limit: usize) 
-        -> Result<Vec<MemoryResult>, AppError> 
-    {
-        let url = format!("{}/api/find", self.base_url);
-        let params = serde_json::json!({
-            "query": query,
-            "limit": limit,
-            "min_score": 0.35,
-            "context_type": ["memory", "resource"],
-        });
-        
-        let response = self.client.post(url)
-            .json(&params)
-            .send()
-            .await?;
-            
-        Ok(response.json().await?)
-    }
-    
-    // Read specific URI
-    pub async fn read_uri(&self, uri: &str) -> Result<String, AppError> {
-        let url = format!("{}/api/read", self.base_url);
-        let response = self.client.post(url)
-            .json(&serde_json::json!({ "uris": [uri] }))
-            .send()
-            .await?;
-        
-        Ok(response.text().await?)
-    }
-    
-    // Write/Update URI (via admin only)
-    pub async fn write_uri(&self, uri: &str, content: &str) 
-        -> Result<(), AppError> 
-    {
-        let url = format!("{}/api/write", self.base_url);
-        self.client.post(url)
-            .json(&serde_json::json!({
-                "uri": uri,
-                "content": content,
-            }))
-            .send()
-            .await?;
-        
-        Ok(())
-    }
-}
+// Автор наполняет структуру один раз; читается синхронно на каждом запросе.
+pub fn builtin_content() -> SiteContent { /* значения из кода */ }
 
-// Profile abstraction — извлекает данные профиля из OpenViking
+// Профиль автора — часть контента.
 pub struct AuthorProfile {
     pub name: String,
     pub title: String,
     pub experience_years: u8,
     pub skills: Vec<String>,
-    pub contact_email: String,
-    pub contact_telegram: String,
-    pub contact_vk: String,
-}
-
-impl AuthorProfile {
-    pub async fn load_from_openviking(viking: &OpenVikingClient) 
-        -> Result<Self, AppError> 
-    {
-        let content = viking.read_uri("viking://user/inteli-dev/profile/main.md").await?;
-        
-        // Parse markdown content into struct (simple key-value format)
-        Self::parse_from_markdown(&content)
-    }
+    pub contacts: Contacts,
 }
 ```
 
@@ -685,7 +626,7 @@ CREATE INDEX IF NOT EXISTS idx_leads_source ON leads(source);
 // ui/home.rs — hero секция с двумя CTA кнопками
 #[component]
 fn Home() -> impl IntoView {
-    let profile = load_profile();  // из OpenViking или кэша
+    let profile = &SiteContent::get().profile;  // встроенный контент
     let status = get_availability_status().await;
     
     view! {
@@ -763,7 +704,7 @@ fn SecondaryButton(text: String, href: String) -> impl IntoView {
         { "text": "Посмотреть примеры работ", "type": "link: /projects" }
     ],
     "citations": [
-        "viking://user/inteli-dev/services/seo-audit.md"
+        "/services/seo-audit"
     ]
 }
 ```
@@ -822,7 +763,7 @@ document.write('<span class="inteli-status-available">🟢 Свободен дл
     → UI отправляет POST /api/chat { message }
         → ChatService получает запрос
             ├── Redis: check cache (TTL 1h) → hit? return cached
-            └── miss → OpenViking semantic_search(query)
+            └── miss → факты сайта: кейсы, прайс, живой статус
                 → LLM provider.chat(prompt_with_context)
                 → Save to SQLite
                 → Add CTA "Оставить заявку?" в ответ
@@ -841,14 +782,12 @@ document.write('<span class="inteli-status-available">🟢 Свободен дл
         → Return "thank you" message to user
 ```
 
-### Поток 3: Админ → Обновление профиля → OpenViking
+### Поток 3: Админ → Живые настройки
 ```
-Админ вводит данные в /admin/settings
-    → PUT /api/admin/profile { name, skills, projects }
+Админ меняет статус занятости и прайс в /admin
+    → PUT /api/admin/settings { status, slots }
         ├── Validate input
-        ├── Convert to markdown format
-        └── viking_client.write_uri("viking://user/inteli-dev/profile/main.md", content)
-            → Invalidate Redis cache for profile data
+        └── SQLite: upsert в site_settings → инвалидация кеша ответов
 ```
 
 ### Поток 4: Telegram Webhook → Обработка входящих сообщений

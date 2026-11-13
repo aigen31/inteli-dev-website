@@ -13,10 +13,8 @@ use inteli_dev::config::AppConfig;
 use inteli_dev::error::AppResult;
 use inteli_dev::limits::Limits;
 use inteli_dev::llm::deepseek::DeepSeekProvider;
-use inteli_dev::llm::prompt::ContextSettings;
 use inteli_dev::llm::ChatProvider;
 use inteli_dev::memory::content::SiteContent;
-use inteli_dev::memory::OpenVikingClient;
 use inteli_dev::notification::NotificationService;
 use inteli_dev::services::{
     kernel::KernelClient, ArticleService, ChatService, GitHubService, LeadService, MediaService,
@@ -61,13 +59,8 @@ async fn run(config: AppConfig) -> AppResult<()> {
     // 1. Storage — SQLite (WAL).
     let db = storage::init_pool(&config.database.path).await?;
 
-    // 2. Memory — OpenViking (с fallback на встроенный контент).
-    let viking = OpenVikingClient::new(
-        &config.openviking.base_url,
-        Duration::from_secs(config.openviking.timeout_seconds),
-    );
-    let content = SiteContent::load(&viking).await;
-    SiteContent::set_global(content);
+    // 2. Контент сайта: профиль, услуги и кейсы встроены в код.
+    SiteContent::set_global(inteli_dev::memory::content::builtin_content());
 
     // 2.0. Прайс: на первом запуске собирается из услуг контента, дальше
     //      живёт в БД и правится в админке. Ассистент читает его через MCP.
@@ -172,18 +165,7 @@ async fn run(config: AppConfig) -> AppResult<()> {
     // Прямые ответы (цены, статус, услуги) остаются локальными и бесплатными.
     let chat = if config.kernel.url.trim().is_empty() {
         tracing::warn!("KERNEL_URL не задан: используется старый встроенный LLM-путь");
-        Arc::new(ChatService::with_context(
-            llm,
-            Arc::new(viking),
-            cache.clone(),
-            db.clone(),
-            ContextSettings {
-                top_k: config.llm.context_top_k,
-                snippet_chars: config.llm.context_snippet_chars,
-                max_chars: config.llm.context_max_chars,
-                min_score: config.llm.context_min_score,
-            },
-        ))
+        Arc::new(ChatService::new(llm, cache.clone(), db.clone()))
     } else {
         tracing::info!("AI-ядро: {}", config.kernel.url);
         Arc::new(ChatService::with_kernel(

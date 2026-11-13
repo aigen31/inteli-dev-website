@@ -290,12 +290,12 @@ fn normalized_price(service: &Service) -> (String, String) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::memory::content::fallback_content;
+    use crate::memory::content::builtin_content;
     use std::collections::BTreeSet;
 
     #[test]
     fn every_service_gets_a_base_row_and_tasks() {
-        let services = fallback_content().services;
+        let services = builtin_content().services;
         let items = build(&services, "now");
 
         for service in &services {
@@ -315,9 +315,9 @@ mod tests {
 
     #[test]
     fn slugs_are_unique_and_priced() {
-        let items = build(&fallback_content().services, "now");
+        let items = build(&builtin_content().services, "now");
         let mut seen = BTreeSet::new();
-        let base_slugs: BTreeSet<String> = fallback_content()
+        let base_slugs: BTreeSet<String> = builtin_content()
             .services
             .into_iter()
             .map(|service| service.slug)
@@ -338,7 +338,7 @@ mod tests {
 
     #[test]
     fn tasks_are_ordered_after_their_service() {
-        let items = build(&fallback_content().services, "now");
+        let items = build(&builtin_content().services, "now");
         let mut sorts = BTreeSet::new();
         for item in &items {
             assert!(sorts.insert(item.sort), "повтор sort {}", item.sort);
@@ -347,7 +347,7 @@ mod tests {
 
     #[test]
     fn monthly_and_hourly_units_are_not_duplicated_in_price() {
-        let items = build(&fallback_content().services, "now");
+        let items = build(&builtin_content().services, "now");
         for item in &items {
             assert!(
                 !item.price_from.contains("/мес") && !item.price_from.contains("/час"),

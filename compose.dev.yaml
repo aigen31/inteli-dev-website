@@ -23,8 +23,6 @@ services:
       - RUST_LOG=${RUST_LOG:-info}
       - PORT=8080
       - CONFIG_PATH=/app/config.toml
-      # OpenViking
-      - OPENVIKING_BASE_URL=http://viking:1933/mcp
       # LLM
       - LLM_API_KEY=${LLM_API_KEY:-}
       - LLM_BASE_URL=${LLM_BASE_URL:-https://api.deepseek.com/v1}
@@ -79,19 +77,6 @@ services:
       retries: 3
       start_period: 10s
 
-  # OpenViking — семантическая память (опционально, приложение деградирует на fallback).
-  # ⚠️ 1933 на хосте занят (хост-OpenViking/OpenWebUI), поэтому публикуем на VIKING_PORT
-  # (по умолчанию 1943). Внутри контейнер слушает 1933, и web ходит к нему по
-  # docker-сети как `http://viking:1933/mcp` — это НЕ конфликтует с хостом.
-  viking:
-    image: ghcr.io/volcengine/openviking:latest
-    container_name: inteli-dev-viking
-    restart: unless-stopped
-    ports:
-      - "${VIKING_PORT:-1943}:1933"
-    volumes:
-      - viking-data:/data
-
   # Redis — кэш/rate limiting (этап P7; приложение работает и без него).
   redis:
     image: redis:7-alpine
@@ -108,5 +93,4 @@ networks:
 
 volumes:
   db-data:
-  viking-data:
   redis-data:

@@ -8,7 +8,6 @@ target/
 target-check/
 .DS_Store
 *.md
-viking-content/
 config.toml
 .env
 .env.*
