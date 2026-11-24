@@ -8,7 +8,6 @@
 use serde::Serialize;
 
 use crate::memory::content::Availability;
-use crate::settings::SiteSettings;
 
 /// Постоянное подлежащее бейджа.
 ///
@@ -119,15 +118,16 @@ pub struct StatusPayload {
 /// и в API должно уходить именно живое значение. Встроенный контент остаётся
 /// значением по умолчанию (см. `src/settings.rs`).
 pub fn status_payload() -> StatusPayload {
-    let availability = SiteSettings::availability();
+    let snapshot = crate::services::availability::snapshot();
+    let slot = crate::services::availability::slot_text(&snapshot);
     StatusPayload {
-        status: availability.status.clone(),
-        label: status_line(&availability.status),
-        icon_name: icon_name(&availability.status).to_string(),
-        availability_date: availability.availability_date,
-        current_projects: availability.current_projects,
-        next_free_slot: availability.next_free_slot,
-        updated_at: SiteSettings::updated_at(),
+        status: snapshot.status.clone(),
+        label: status_line(&snapshot.status),
+        icon_name: icon_name(&snapshot.status).to_string(),
+        availability_date: slot.clone(),
+        current_projects: snapshot.active_projects.min(u8::MAX as u32) as u8,
+        next_free_slot: slot,
+        updated_at: snapshot.updated_at,
     }
 }
 
@@ -136,7 +136,7 @@ mod tests {
     use super::*;
     use crate::memory::content::{builtin_content, SiteContent};
     use crate::settings::SiteSettings;
-
+    
     fn ensure_content() {
         SiteContent::set_global(builtin_content());
     }

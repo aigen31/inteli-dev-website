@@ -36,6 +36,7 @@ services:
       DB_PATH: /data/chats.db
       KERNEL_URL: http://kernel:8080
       KERNEL_CHANNEL: site
+      CRM_PUBLIC_URL: ${CRM_PUBLIC_URL:-https://crm.inteli-dev.ru}
     volumes:
       - db-data:/data
       - ./config/config.prod.toml:/app/config.toml:ro

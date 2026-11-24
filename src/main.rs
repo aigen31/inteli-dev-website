@@ -117,6 +117,13 @@ async fn run(config: AppConfig) -> AppResult<()> {
         None => tracing::info!("github: логин не задан, ссылка в шапке не показывается"),
     }
 
+    // 3.3.1. Занятость для виджета «Приём заявок» — из CRM, а не из настроек
+    //        сайта. Фоновая задача обновляет снимок, SSR читает готовые данные.
+    let crm_public_url = std::env::var("CRM_PUBLIC_URL")
+        .unwrap_or_else(|_| "https://crm.inteli-dev.ru".to_string());
+    tracing::info!("CRM availability: источник {crm_public_url}");
+    inteli_dev::services::availability::spawn_refresh(crm_public_url);
+
     // 3.4. Счётчики аналитики (Яндекс.Метрика и Google tag) и мета-данные
     //      страниц (canonical, OpenGraph): и то, и другое вставляется в <head>
     //      каждой страницы. Публикуются здесь, потому что `shell()` — обёртка

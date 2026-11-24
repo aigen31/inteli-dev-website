@@ -46,7 +46,6 @@ pub fn App() -> impl IntoView {
                     <Route path=path!("/admin/articles") view=admin::AdminArticles/>
                     <Route path=path!("/admin/outbox") view=admin::AdminOutbox/>
                     <Route path=path!("/admin/prices") view=admin::AdminPrices/>
-                    <Route path=path!("/admin/settings") view=admin::AdminSettings/>
                 </Routes>
             </Layout>
         </Router>

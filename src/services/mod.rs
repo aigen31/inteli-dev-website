@@ -5,6 +5,7 @@
 //! изображения статей и SEO-поверхность (robots.txt, IndexNow).
 
 pub mod article;
+pub mod availability;
 pub mod chat;
 pub mod feed;
 pub mod github;

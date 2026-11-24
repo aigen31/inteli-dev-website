@@ -471,7 +471,7 @@ fn answer_local_inference() -> String {
 fn answer_availability() -> String {
     // Живой статус, а не контент: владелец меняет его из Telegram-бота,
     // и AI-ассистент должен отвечать то же, что показывает бейдж на сайте.
-    format_availability(&crate::settings::SiteSettings::availability())
+    format_availability(&crate::services::availability::current_availability())
 }
 
 /// Форматирует статус занятости в текст ответа чата.

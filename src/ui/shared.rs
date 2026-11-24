@@ -1,5 +1,6 @@
 //! Общие UI-компоненты: кнопки, бейдж статуса, карточки.
 
+use chrono::Datelike;
 use leptos::prelude::*;
 
 use crate::memory::content::{Project, Service};
@@ -23,29 +24,83 @@ use crate::ui::icon::LucideIcon;
 /// фокусом с клавиатуры (CSS) и тапом (`initStatusBadge` в `assets/main.js`).
 #[component]
 pub fn StatusBadge() -> impl IntoView {
-    let availability = SiteSettings::availability();
-    let p = status::presentation(&availability.status);
-    let lines = status::facts(&availability);
-    let aria = status::aria_label(&availability);
+    let snapshot = crate::services::availability::snapshot();
+    let p = status::presentation(&snapshot.status);
+    let aria = crate::services::availability::aria_label(&snapshot);
+    let facts = crate::services::availability::facts(&snapshot);
+    let slot = crate::services::availability::slot_text(&snapshot);
+    let today = chrono::Local::now().date_naive().format("%Y-%m-%d").to_string();
+    let week: Vec<_> = snapshot
+        .days
+        .iter()
+        .take(7)
+        .map(|day| {
+            let date = chrono::NaiveDate::parse_from_str(&day.date, "%Y-%m-%d").ok();
+            let number = date.map(|d| d.day()).unwrap_or_default();
+            let classes = format!(
+                "status-day {}{}{}{}",
+                if day.busy { " is-busy" } else { " is-free" },
+                if !day.workday { " is-weekend" } else { "" },
+                if day.date == today { " is-today" } else { "" },
+                if day.date == snapshot.next_free_slot.as_deref().unwrap_or_default() { " is-next" } else { "" },
+            );
+            let label = format!(
+                "{} {}: {} задач",
+                crate::services::availability::weekday_short(day.weekday),
+                number,
+                day.load
+            );
+
+            view! {
+                <span class=classes title=label>
+                    <span class="status-day-name">{crate::services::availability::weekday_short(day.weekday)}</span>
+                    <span class="status-day-num">{number}</span>
+                    <span class="status-day-load">{day.load}</span>
+                </span>
+            }
+        })
+        .collect::<Vec<_>>();
 
     view! {
         <button
             type="button"
-            class=format!("status-badge status-{}", availability.status)
+            class=format!("status-badge status-{}", snapshot.status)
             aria-expanded="false"
             aria-label=aria
         >
             <span class="status-dot" aria-hidden="true"></span>
             <span class="status-subject">{format!("{}:", p.subject)}</span>
             <span class="status-state">{p.state}</span>
-            // `aria-hidden`: тот же текст уже в `aria-label`, дублировать его
-            // для скринридера не нужно.
             <span class="status-popover" aria-hidden="true">
-                <span class="status-popover-summary">{p.summary}</span>
-                {lines
-                    .into_iter()
-                    .map(|line| view! { <span class="status-popover-line">{line}</span> })
-                    .collect::<Vec<_>>()}
+                <span class="status-popover-head">
+                    <span class="status-popover-summary">{p.summary}</span>
+                    <span class="status-popover-note">
+                        {if snapshot.source == crate::services::availability::SnapshotSource::Crm {
+                            "CRM · живая нагрузка"
+                        } else {
+                            "CRM недоступна · последние данные"
+                        }}
+                    </span>
+                </span>
+
+                <span class="status-week" aria-label="Нагрузка на неделю">
+                    {week}
+                </span>
+
+                <span class="status-popover-foot">
+                    <span class="status-legend">
+                        <span class="status-legend-item"><span class="status-legend-dot is-free"></span>"до 4 задач"</span>
+                        <span class="status-legend-item"><span class="status-legend-dot is-busy"></span>"5+ занято"</span>
+                    </span>
+                    {facts
+                        .into_iter()
+                        .map(|line| view! { <span class="status-popover-line">{line}</span> })
+                        .collect::<Vec<_>>()}
+                    <span class="status-popover-slot">
+                        <span class="status-popover-slot-label">"Ближайшее окно"</span>
+                        <span class="status-popover-slot-value">{slot}</span>
+                    </span>
+                </span>
             </span>
         </button>
     }

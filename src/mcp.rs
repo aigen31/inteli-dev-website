@@ -228,7 +228,7 @@ fn format_price_list(items: &[PriceItem]) -> String {
 }
 
 fn availability_text() -> String {
-    let a = crate::settings::SiteSettings::availability();
+    let a = crate::services::availability::current_availability();
     let mut lines = vec![crate::services::status::status_line(&a.status)];
     lines.extend(crate::services::status::facts(&a));
     lines.join("\n")

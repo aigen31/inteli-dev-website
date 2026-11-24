@@ -1467,8 +1467,7 @@ async fn admin_sections_live_on_their_own_urls() {
         ("/admin/leads", "Заявки", "admin-leads-table", "admin-chats-table"),
         ("/admin/chats", "Чаты", "admin-chats-table", "admin-leads-table"),
         ("/admin/articles", "Статьи", "admin-articles-table", "admin-outbox-table"),
-        ("/admin/outbox", "Кросспостинг", "admin-outbox-table", "admin-settings"),
-        ("/admin/settings", "Приём заявок", "admin-settings", "admin-leads-table"),
+        ("/admin/outbox", "Кросспостинг", "admin-outbox-table", "admin-leads-table"),
     ];
 
     for (path, title, own_id, foreign_id) in sections {

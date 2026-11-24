@@ -25,8 +25,6 @@
 
 use leptos::prelude::*;
 
-use crate::services::settings_bot::{MAX_PROJECTS, TEXT_FIELD_MAX_CHARS};
-
 /// Раздел админки.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Section {
@@ -36,7 +34,6 @@ pub enum Section {
     Articles,
     Outbox,
     Prices,
-    Settings,
 }
 
 impl Section {
@@ -49,7 +46,6 @@ impl Section {
             Section::Articles => "/admin/articles",
             Section::Outbox => "/admin/outbox",
             Section::Prices => "/admin/prices",
-            Section::Settings => "/admin/settings",
         }
     }
 
@@ -62,7 +58,6 @@ impl Section {
             Section::Articles => "Статьи",
             Section::Outbox => "Кросспостинг",
             Section::Prices => "Прайс",
-            Section::Settings => "Приём заявок",
         }
     }
 
@@ -77,7 +72,6 @@ impl Section {
                 "События публикации, которые забирает n8n для кросспостинга."
             }
             Section::Prices => "Цены, которые называет ассистент и показывает сайт.",
-            Section::Settings => "Бейдж в шапке сайта — его же меняет Telegram-бот.",
         }
     }
 }
@@ -116,12 +110,6 @@ pub fn AdminOutbox() -> impl IntoView {
 #[component]
 pub fn AdminPrices() -> impl IntoView {
     page(Section::Prices)
-}
-
-/// Раздел «Приём заявок».
-#[component]
-pub fn AdminSettings() -> impl IntoView {
-    page(Section::Settings)
 }
 
 /// Оболочка админки: вход, сайдбар, шапка страницы и содержимое раздела.
@@ -189,7 +177,7 @@ fn sidebar(current: Section) -> AnyView {
                 {nav_group(None, &[Section::Overview], current)}
                 {nav_group(Some("Клиенты"), &[Section::Leads, Section::Chats], current)}
                 {nav_group(Some("Контент"), &[Section::Articles, Section::Outbox], current)}
-                {nav_group(Some("Сайт"), &[Section::Prices, Section::Settings], current)}
+                {nav_group(Some("Сайт"), &[Section::Prices], current)}
             </nav>
 
             <a class="admin-nav-link admin-nav-exit" href="/">
@@ -254,7 +242,6 @@ fn content(section: Section) -> AnyView {
         Section::Articles => articles(),
         Section::Outbox => outbox(),
         Section::Prices => prices(),
-        Section::Settings => settings(),
     }
 }
 
@@ -281,7 +268,6 @@ fn overview() -> AnyView {
                 (Section::Leads, "Заявки с контактами и статусами"),
                 (Section::Chats, "История вопросов и ответов"),
                 (Section::Articles, "Черновики, публикации и редактор"),
-                (Section::Settings, "Статус приёма заявок в шапке"),
             ]
             .into_iter()
             .map(|(target, hint)| view! {
@@ -497,55 +483,6 @@ fn outbox() -> AnyView {
         <div class="table-wrap">
             <table id="admin-outbox-table" class="admin-table" aria-label="События кросспостинга"></table>
         </div>
-    }
-    .into_any()
-}
-
-/// Приём заявок: бейдж в шапке сайта.
-///
-/// Значения те же, что у Telegram-бота (`services::settings_bot`): границы
-/// полей берутся из его констант, а не пишутся здесь заново.
-fn settings() -> AnyView {
-    view! {
-        <div class="admin-settings" id="admin-settings">
-            <div class="admin-settings-grid">
-                <div class="form-field">
-                    <label for="admin-status-select">"Статус"</label>
-                    <select id="admin-status-select">
-                        <option value="available">"Открыт — беру новые проекты"</option>
-                        <option value="busy">"Ограничен — беру не все"</option>
-                        <option value="full">"Закрыт — новые не беру"</option>
-                    </select>
-                </div>
-                <div class="form-field">
-                    <label for="admin-projects">"Проектов в работе"</label>
-                    <input
-                        id="admin-projects"
-                        type="number"
-                        min="0"
-                        max=MAX_PROJECTS.to_string()
-                        step="1"
-                        inputmode="numeric"
-                    />
-                </div>
-                <div class="form-field">
-                    <label for="admin-slot">"Ближайший слот"</label>
-                    <input
-                        id="admin-slot"
-                        type="text"
-                        maxlength=TEXT_FIELD_MAX_CHARS.to_string()
-                        placeholder="например: с 1 октября"
-                    />
-                </div>
-            </div>
-            <div class="admin-editor-actions">
-                <button type="button" id="admin-settings-save" class="btn btn-primary">"Сохранить"</button>
-            </div>
-            <p id="admin-settings-message" class="form-status" role="status" aria-live="polite"></p>
-        </div>
-        <p class="admin-hint">
-            "Правки видны сразу на всех страницах сайта: бейдж в шапке читает то же состояние, что и Telegram-бот."
-        </p>
     }
     .into_any()
 }

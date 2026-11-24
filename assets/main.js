@@ -710,7 +710,6 @@
       if (document.getElementById('admin-articles-table')) tasks.push(loadArticles());
       if (document.getElementById('admin-outbox-table')) tasks.push(loadOutbox());
       if (document.getElementById('admin-prices-table')) tasks.push(loadPrices());
-      if (document.getElementById('admin-settings')) tasks.push(loadSettings());
 
       await Promise.all(tasks);
       showDashboard();
@@ -817,98 +816,6 @@
     tokenInput.addEventListener('keydown', function (e) {
       if (e.key === 'Enter') loginBtn.click();
     });
-
-    // ---------- Настройки сайта: бейдж «Приём заявок» ----------
-    //
-    // Те же поля правит Telegram-бот, поэтому ответ сервера — единственный
-    // источник и для формы, и для бейджа в шапке: он отдаёт готовые строки
-    // («В работе 2 проекта», «Приём заявок: открыт»), и админка не склеивает
-    // их заново — иначе падежи в форме и в подсказке разошлись бы.
-    function setSettingsMessage(message, kind) {
-      var el = field('admin-settings-message');
-      if (!el) return;
-      el.textContent = message || '';
-      el.className = 'form-status' + (kind ? ' ' + kind : '');
-    }
-
-    function renderSettings(s) {
-      if (!field('admin-status-select')) return;
-      field('admin-status-select').value = s.status || 'available';
-      field('admin-projects').value = s.current_projects == null ? 0 : s.current_projects;
-      field('admin-slot').value = s.next_free_slot || '';
-    }
-
-    // Бейдж в шапке отрендерен сервером. После правки он показывал бы старое
-    // состояние — это читается как «не сохранилось», поэтому обновляем его
-    // здесь тем же текстом, что пришёл в ответе.
-    function syncStatusBadge(s) {
-      document.querySelectorAll('.status-badge').forEach(function (badge) {
-        // Класс состояния меняем через classList: у бейджа есть второй класс
-        // `status-badge`, и замена по регулярке задела бы именно его.
-        badge.classList.remove('status-available', 'status-busy', 'status-full');
-        badge.classList.add('status-' + s.status);
-        badge.setAttribute('aria-label', s.aria_label);
-
-        var state = badge.querySelector('.status-state');
-        if (state) {
-          // label — «Приём заявок: открыт»: подлежащее у бейджа своё.
-          var parts = String(s.label || '').split(': ');
-          state.textContent = parts.length > 1 ? parts.slice(1).join(': ') : s.label;
-        }
-
-        var summary = badge.querySelector('.status-popover-summary');
-        if (summary) summary.textContent = s.summary;
-
-        var lines = badge.querySelectorAll('.status-popover-line');
-        (s.facts || []).forEach(function (fact, i) {
-          if (lines[i]) lines[i].textContent = fact;
-        });
-      });
-    }
-
-    async function loadSettings() {
-      var res = await api('/api/admin/settings');
-      if (!res.ok) return;
-      renderSettings(res.body);
-      syncStatusBadge(res.body);
-    }
-
-    async function saveSettings() {
-      var raw = field('admin-projects').value;
-      var projects = parseInt(raw, 10);
-      if (isNaN(projects)) {
-        setSettingsMessage('Число проектов должно быть целым.', 'error');
-        return;
-      }
-
-      var payload = {
-        status: field('admin-status-select').value,
-        current_projects: projects,
-        next_free_slot: field('admin-slot').value
-      };
-
-      var res = await api('/api/admin/settings', {
-        method: 'PATCH',
-        body: JSON.stringify(payload)
-      });
-      if (!res.ok) {
-        setSettingsMessage(res.body.error || ('Ошибка ' + res.status), 'error');
-        return;
-      }
-
-      renderSettings(res.body);
-      syncStatusBadge(res.body);
-      setSettingsMessage('Сохранено: ' + res.body.label + ' · ' + (res.body.facts || []).join(' · '), 'success');
-    }
-
-    if (field('admin-settings-save')) {
-      field('admin-settings-save').addEventListener('click', saveSettings);
-    }
-    if (field('admin-slot')) {
-      field('admin-slot').addEventListener('keydown', function (e) {
-        if (e.key === 'Enter') saveSettings();
-      });
-    }
 
     // ---------- Прайс-лист ----------
     //

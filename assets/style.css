@@ -432,6 +432,109 @@ ul { margin: 0; padding: 0; list-style: none; }
   text-transform: none;
   color: var(--color-text);
 }
+.status-popover-head {
+  display: grid;
+  gap: 4px;
+  padding: 12px 18px 11px;
+}
+.status-popover-note {
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-text-tertiary);
+}
+/* Неделя нагрузки: семь ячеек, занятость читается и цветом, и числом. */
+.status-week {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 4px;
+  padding: 10px 14px 12px;
+  border-top: 1px solid var(--rule);
+}
+.status-day {
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+  padding: 6px 0 5px;
+  border: 1px solid var(--rule);
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.02);
+  font-family: var(--font-mono);
+  line-height: 1.1;
+}
+.status-day-name {
+  font-size: 0.52rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-text-tertiary);
+}
+.status-day-num { font-size: 0.68rem; color: var(--color-text); }
+.status-day-load {
+  margin-top: 1px;
+  padding: 1px 4px;
+  border-radius: 999px;
+  font-size: 0.5rem;
+  color: var(--color-text-secondary);
+  background: rgba(255, 255, 255, 0.05);
+}
+.status-day.is-busy {
+  border-color: rgba(255, 99, 99, 0.35);
+  background: rgba(255, 99, 99, 0.08);
+}
+.status-day.is-busy .status-day-load {
+  color: #ff9c9c;
+  background: rgba(255, 99, 99, 0.18);
+}
+.status-day.is-free .status-day-load {
+  color: #7fd2a7;
+  background: rgba(76, 217, 100, 0.12);
+}
+.status-day.is-weekend { opacity: 0.55; }
+.status-day.is-today { box-shadow: inset 0 0 0 1px var(--color-primary); }
+.status-day.is-next { border-color: var(--color-primary); }
+.status-popover-foot {
+  display: grid;
+  gap: 0;
+  border-top: 1px solid var(--rule);
+}
+.status-legend {
+  display: flex;
+  gap: 14px;
+  padding: 9px 18px 2px;
+  font-family: var(--font-mono);
+  font-size: 0.58rem;
+  color: var(--color-text-tertiary);
+}
+.status-legend-item { display: inline-flex; align-items: center; gap: 5px; }
+.status-legend-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+.status-legend-dot.is-free { background: #4cd964; }
+.status-legend-dot.is-busy { background: #ff6363; }
+.status-popover-slot {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 18px 12px;
+  border-top: 1px solid var(--rule);
+}
+.status-popover-slot-label {
+  font-family: var(--font-mono);
+  font-size: 0.58rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-text-tertiary);
+}
+.status-popover-slot-value {
+  font-family: var(--font-display, var(--font-body));
+  font-size: 0.86rem;
+  color: var(--color-text);
+}
+
 /* Каждая следующая строка — отдельная строка справки за линейкой. */
 .status-popover-line {
   display: block;

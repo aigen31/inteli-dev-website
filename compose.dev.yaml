@@ -21,6 +21,7 @@ services:
       - "host.docker.internal:host-gateway"
     environment:
       - RUST_LOG=${RUST_LOG:-info}
+      - CRM_PUBLIC_URL=${CRM_PUBLIC_URL:-https://crm.inteli-dev.ru}
       - PORT=8080
       - CONFIG_PATH=/app/config.toml
       # LLM
