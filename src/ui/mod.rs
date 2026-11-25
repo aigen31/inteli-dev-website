@@ -9,6 +9,7 @@ pub mod beget;
 pub mod blog;
 pub mod chat;
 pub mod contact;
+pub mod crm;
 pub mod github;
 pub mod home;
 pub mod icon;
@@ -40,6 +41,7 @@ pub fn App() -> impl IntoView {
                     <Route path=path!("/blog/:slug") view=blog::BlogPost/>
                     <Route path=path!("/chat") view=chat::Chat/>
                     <Route path=path!("/contact") view=contact::Contact/>
+                    <Route path=path!("/crm") view=crm::CrmLanding/>
                     <Route path=path!("/admin") view=admin::AdminOverview/>
                     <Route path=path!("/admin/leads") view=admin::AdminLeads/>
                     <Route path=path!("/admin/chats") view=admin::AdminChats/>

@@ -50,6 +50,7 @@ pub fn routes(seo: &SeoConfig) -> Router<AppState> {
         // Internal tool contract for the central Kiki kernel. Service token only.
         .route("/internal/assistant/profile", get(kernel::profile))
         .route("/internal/assistant/tools/:tool", post(kernel::tool))
+        .route("/internal/assistant/prices", get(kernel::prices))
         // MCP-сервер сайта: JSON-RPC 2.0, только чтение публичных данных.
         .route("/mcp", post(handlers::mcp))
         .route("/api/lead", post(handlers::lead))
@@ -115,6 +116,7 @@ pub fn routes(seo: &SeoConfig) -> Router<AppState> {
         .route("/assets/habr.svg", get(handlers::habr_icon))
         .route("/assets/mascot/:file", get(handlers::mascot_image))
         .route("/assets/projects/:file", get(handlers::project_image))
+        .route("/assets/crm/:file", get(handlers::crm_image))
         .route("/assets/services/:file", get(handlers::service_image))
         .route("/assets/fonts/:file", get(handlers::font_file))
         .route("/assets/hero/kiki-levitation.webp", get(handlers::hero_art))

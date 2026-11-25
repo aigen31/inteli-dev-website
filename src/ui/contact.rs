@@ -91,6 +91,18 @@ pub fn Contact() -> impl IntoView {
                         <span class="char-count" data-counter-for="message" aria-hidden="true"></span>
                     </div>
                     <input type="hidden" name="source" value=source/>
+                    <div class="form-field form-consent">
+                        <label class="consent-label" for="consent">
+                            <input id="consent" name="consent" type="checkbox" required/>
+                            <span>
+                                "Я даю "
+                                <a href="https://crm.inteli-dev.ru/legal/consent" target="_blank" rel="noopener noreferrer">"согласие на обработку персональных данных"</a>
+                                " и подтверждаю, что ознакомлен с "
+                                <a href="https://crm.inteli-dev.ru/legal/privacy" target="_blank" rel="noopener noreferrer">"политикой"</a>
+                                "."
+                            </span>
+                        </label>
+                    </div>
                     <button type="submit" class="btn btn-primary">Отправить заявку</button>
                     <p id="lead-form-status" class="form-status" role="status" aria-live="polite"></p>
                 </form>

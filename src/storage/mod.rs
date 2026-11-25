@@ -36,6 +36,7 @@ CREATE TABLE IF NOT EXISTS leads (
     message TEXT NOT NULL,
     source TEXT NOT NULL DEFAULT 'form' CHECK(source IN ('form', 'chat', 'telegram', 'vk')),
     status TEXT NOT NULL DEFAULT 'new' CHECK(status IN ('new', 'processing', 'contacted', 'converted', 'dismissed')),
+    consent_at TEXT,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );
@@ -177,6 +178,7 @@ pub async fn init_pool(path: &str) -> AppResult<SqlitePool> {
     // расширение CHECK-ограничения требует отдельной миграции.
     migrate_chats_question_type(&pool).await?;
     migrate_articles_habr_url(&pool).await?;
+    migrate_leads_consent_at(&pool).await?;
 
     Ok(pool)
 }
@@ -197,6 +199,24 @@ async fn migrate_articles_habr_url(pool: &SqlitePool) -> AppResult<()> {
 
     tracing::info!("миграция articles: добавляем колонку habr_url («Читать на Хабр»)");
     sqlx::query("ALTER TABLE articles ADD COLUMN habr_url TEXT")
+        .execute(pool)
+        .await?;
+
+    Ok(())
+}
+
+/// Добавляет `leads.consent_at` в БД, созданные до появления согласия.
+async fn migrate_leads_consent_at(pool: &SqlitePool) -> AppResult<()> {
+    let columns: Vec<String> = sqlx::query_scalar("SELECT name FROM pragma_table_info('leads')")
+        .fetch_all(pool)
+        .await?;
+
+    if columns.iter().any(|name| name == "consent_at") {
+        return Ok(());
+    }
+
+    tracing::info!("миграция leads: добавляем колонку consent_at");
+    sqlx::query("ALTER TABLE leads ADD COLUMN consent_at TEXT")
         .execute(pool)
         .await?;
 

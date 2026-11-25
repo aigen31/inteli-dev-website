@@ -114,6 +114,7 @@ pub fn Layout(children: Children) -> impl IntoView {
                         <a href="/blog">Блог</a>
                         <a href="/chat">Чат</a>
                         <a href="/contact">Контакты</a>
+                        <a class="navbar-crm" href="/crm">"CRM" <span aria-hidden="true">"↗"</span></a>
                     </div>
 
                     // Внешние профили уехали в подвал: в шапке они спорили за
@@ -180,6 +181,16 @@ pub fn Layout(children: Children) -> impl IntoView {
                             />
                         </a>
                     </div>
+                </div>
+
+                <div class="footer-col">
+                    <p class="footer-contacts">
+                        <a href="https://crm.inteli-dev.ru/legal/privacy" target="_blank" rel="noopener noreferrer">"Политика конфиденциальности"</a>
+                        <span aria-hidden="true">{"·"}</span>
+                        <a href="https://crm.inteli-dev.ru/legal/consent" target="_blank" rel="noopener noreferrer">"Согласие на обработку данных"</a>
+                        <span aria-hidden="true">{"·"}</span>
+                        <a href="https://crm.inteli-dev.ru/legal/requisites" target="_blank" rel="noopener noreferrer">"Реквизиты"</a>
+                    </p>
                 </div>
 
                 <div class="footer-col footer-col-beget">

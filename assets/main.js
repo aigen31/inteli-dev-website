@@ -612,13 +612,20 @@
       var data = {
         name: form.name.value.trim(),
         message: form.message.value.trim(),
-        source: 'form'
+        source: 'form',
+        consent: !!(form.consent && form.consent.checked)
       };
       if (form.email && form.email.value.trim()) data.email = form.email.value.trim();
       if (form.phone && form.phone.value.trim()) data.phone = form.phone.value.trim();
 
       if (!data.name || !data.message) {
         status.textContent = 'Заполните имя и сообщение.';
+        status.className = 'form-status error';
+        return;
+      }
+
+      if (!data.consent) {
+        status.textContent = 'Подтвердите согласие на обработку персональных данных.';
         status.className = 'form-status error';
         return;
       }
@@ -2714,7 +2721,528 @@
     if (name) name.focus({ preventScroll: true });
   }
 
+  // ---------- CRM: появление, прогресс потока, параллакс, наклон ----------
+  function initCrmLanding() {
+    var root = document.querySelector('.crm-page, .section-crm-teaser');
+    if (!root) return;
+    var reduceMotion = !!(window.matchMedia &&
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+
+    var reveal = Array.prototype.slice.call(root.querySelectorAll('[data-crm-reveal]'));
+    reveal.forEach(function (el) {
+      var parent = el.parentElement;
+      var siblings = parent ? Array.prototype.filter.call(parent.children, function (node) {
+        return node.hasAttribute && node.hasAttribute('data-crm-reveal');
+      }) : [];
+      el.style.setProperty('--crm-i', Math.max(0, siblings.indexOf(el)));
+    });
+
+    if ('IntersectionObserver' in window && !reduceMotion) {
+      var io = new IntersectionObserver(function (entries) {
+        entries.forEach(function (entry) {
+          if (entry.isIntersecting) {
+            entry.target.classList.add('is-visible');
+            io.unobserve(entry.target);
+          }
+        });
+      }, { threshold: 0.12, rootMargin: '0px 0px -8% 0px' });
+      reveal.forEach(function (el) { io.observe(el); });
+    } else {
+      reveal.forEach(function (el) { el.classList.add('is-visible'); });
+    }
+
+    var flow = root.querySelector('[data-crm-flow]');
+    var steps = flow ? Array.prototype.slice.call(flow.querySelectorAll('.crm-flow-steps li')) : [];
+
+    // Прогресс линии потока и подсветка текущего шага.
+    var ticking = false;
+
+    function onScroll() {
+      if (!flow || ticking) return;
+      ticking = true;
+      window.requestAnimationFrame(function () {
+        var rect = flow.getBoundingClientRect();
+        var span = Math.max(rect.height - window.innerHeight * 0.35, 1);
+        var progress = Math.min(1, Math.max(0, (window.innerHeight * 0.65 - rect.top) / span));
+        flow.style.setProperty('--crm-progress', progress.toFixed(3));
+        var active = Math.min(steps.length - 1, Math.floor(progress * steps.length));
+        steps.forEach(function (step, index) { step.classList.toggle('is-active', index <= active); });
+        ticking = false;
+      });
+    }
+
+    if (flow && !reduceMotion) {
+      window.addEventListener('scroll', onScroll, { passive: true });
+      window.addEventListener('resize', onScroll);
+      onScroll();
+    }
+
+    // Параллакс иллюстрации в hero от положения курсора.
+    var hero = root.querySelector('[data-crm-hero]');
+    var art = root.querySelector('[data-crm-parallax]');
+    if (hero && art && !reduceMotion && window.matchMedia('(pointer: fine)').matches) {
+      hero.addEventListener('pointermove', function (event) {
+        var rect = hero.getBoundingClientRect();
+        var dx = (event.clientX - rect.left) / rect.width - 0.5;
+        var dy = (event.clientY - rect.top) / rect.height - 0.5;
+        art.style.setProperty('--crm-px', (dx * 16).toFixed(1) + 'px');
+        art.style.setProperty('--crm-py', (dy * 12).toFixed(1) + 'px');
+      }, { passive: true });
+      hero.addEventListener('pointerleave', function () {
+        art.style.setProperty('--crm-px', '0px');
+        art.style.setProperty('--crm-py', '0px');
+      });
+    }
+
+    // Лёгкий наклон карточек: только на устройствах с курсором.
+    if (!reduceMotion && window.matchMedia('(pointer: fine)').matches) {
+      root.querySelectorAll('[data-crm-tilt]').forEach(function (card) {
+        card.addEventListener('pointermove', function (event) {
+          var rect = card.getBoundingClientRect();
+          var x = (event.clientX - rect.left) / rect.width - 0.5;
+          var y = (event.clientY - rect.top) / rect.height - 0.5;
+          card.style.transform = 'perspective(900px) rotateX(' + (-y * 3.2).toFixed(2) +
+            'deg) rotateY(' + (x * 3.2).toFixed(2) + 'deg) translateZ(0)';
+        }, { passive: true });
+        card.addEventListener('pointerleave', function () {
+          card.style.transform = '';
+        });
+      });
+    }
+  }
+
+  // ---------- Лендинг CRM: модалка запроса доступа ----------
+  // ---------- Лендинг CRM: чат Кики показывает результат ----------
+  function initCrmChatDemo() {
+    var mock = document.querySelector('[data-crm-chat]');
+    if (!mock) return;
+    var status = mock.querySelector('[data-crm-chat-status]');
+    var reduceMotion = !!(window.matchMedia &&
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+
+    function finish() {
+      mock.classList.remove('is-thinking', 'is-tool');
+      mock.classList.add('is-done');
+      if (status) status.textContent = 'готово · 3 задачи';
+    }
+
+    if (reduceMotion) { finish(); return; }
+
+    var timers = [];
+    function run() {
+      mock.classList.remove('is-done', 'is-tool');
+      mock.classList.add('is-thinking');
+      if (status) status.textContent = 'Кики смотрит задачи';
+      timers.push(setTimeout(function () {
+        mock.classList.add('is-tool');
+        if (status) status.textContent = 'list_tasks · 2026-11-25';
+      }, 900));
+      timers.push(setTimeout(finish, 1900));
+      timers.push(setTimeout(run, 7500));
+    }
+
+    run();
+    window.addEventListener('pagehide', function () {
+      timers.forEach(function (id) { clearTimeout(id); });
+    }, { once: true });
+  }
+
+  function initCrmAccessModal() {
+    var modal = document.getElementById('crm-access-modal');
+    if (!modal) return;
+    var panel = modal.querySelector('.crm-modal-panel');
+    var form = document.getElementById('crm-access-form');
+    var status = document.getElementById('crm-access-status');
+    var submit = form ? form.querySelector('button[type="submit"]') : null;
+    var lastFocus = null;
+
+    function open(event) {
+      if (event) event.preventDefault();
+      lastFocus = document.activeElement;
+      modal.hidden = false;
+      document.body.classList.add('is-modal-open');
+      var first = panel ? (panel.querySelector('input, textarea') || panel.querySelector('button')) : null;
+      if (first) first.focus();
+    }
+
+    function close() {
+      if (modal.hidden) return;
+      modal.hidden = true;
+      document.body.classList.remove('is-modal-open');
+      if (lastFocus && lastFocus.focus) lastFocus.focus();
+    }
+
+    document.querySelectorAll('[data-crm-access]').forEach(function (trigger) {
+      trigger.addEventListener('click', open);
+    });
+    modal.querySelectorAll('[data-crm-access-close]').forEach(function (button) {
+      button.addEventListener('click', close);
+    });
+
+    document.addEventListener('keydown', function (event) {
+      if (modal.hidden) return;
+      if (event.key === 'Escape') { close(); return; }
+      if (event.key !== 'Tab' || !panel) return;
+      var focusable = Array.prototype.filter.call(
+        panel.querySelectorAll('button, input, textarea, a[href]'),
+        function (el) { return !el.disabled && el.offsetParent !== null; }
+      );
+      if (!focusable.length) return;
+      var first = focusable[0];
+      var last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    });
+
+    if (!form) return;
+    form.addEventListener('submit', async function (event) {
+      event.preventDefault();
+      var data = {
+        name: (form.elements.namedItem('name').value || '').trim(),
+        email: (form.elements.namedItem('email').value || '').trim(),
+        message: 'Запрос доступа к CRM. ' + ((form.elements.namedItem('message').value || '').trim()),
+        source: 'form',
+        consent: !!(form.elements.namedItem('consent') || {}).checked
+      };
+
+      if (!data.name || !data.email || !data.message) {
+        status.textContent = 'Заполните имя, email и задачу.';
+        status.className = 'crm-modal-status is-error';
+        return;
+      }
+      if (!data.consent) {
+        status.textContent = 'Подтвердите согласие на обработку персональных данных.';
+        status.className = 'crm-modal-status is-error';
+        return;
+      }
+
+      if (submit) { submit.disabled = true; submit.textContent = 'Отправляю'; }
+      status.textContent = 'Отправляю запрос…';
+      status.className = 'crm-modal-status';
+
+      try {
+        var response = await fetch('/api/lead', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data)
+        });
+        var json = await response.json().catch(function () { return {}; });
+        if (response.ok) {
+          status.textContent = json.message || 'Запрос отправлен. Отвечу на почту.';
+          status.className = 'crm-modal-status is-success';
+          form.reset();
+        } else {
+          status.textContent = json.error || 'Не удалось отправить запрос.';
+          status.className = 'crm-modal-status is-error';
+        }
+      } catch (err) {
+        status.textContent = 'Сетевая ошибка. Попробуйте ещё раз.';
+        status.className = 'crm-modal-status is-error';
+      } finally {
+        if (submit) { submit.disabled = false; submit.textContent = 'Отправить запрос ↗'; }
+      }
+    });
+  }
+
+  // ---------- CRM hero: направляющие строго от карточек к Кики ----------
+  function initCrmHeroLines() {
+    var svg = document.querySelector('.crm-scene-lines');
+    if (!svg) return;
+    var stage = svg.parentElement;
+    var kiki = stage.querySelector('.crm-scene-kiki');
+    var cards = Array.prototype.slice.call(stage.querySelectorAll('.crm-scene-card'));
+    var paths = Array.prototype.slice.call(svg.querySelectorAll('path'));
+
+    function update() {
+      if (!kiki || !cards.length) return;
+      if (window.innerWidth <= 1024) return;
+      var stageRect = stage.getBoundingClientRect();
+      var kikiRect = kiki.getBoundingClientRect();
+      if (!stageRect.width || !kikiRect.width) return;
+      var toX = kikiRect.left - stageRect.left + kikiRect.width * 0.53;
+      var toY = kikiRect.top - stageRect.top + kikiRect.height * 0.48;
+      svg.setAttribute('viewBox', '0 0 ' + stageRect.width + ' ' + stageRect.height);
+
+      paths.forEach(function (path, index) {
+        var card = cards[index];
+        if (!card) return;
+        var rect = card.getBoundingClientRect();
+        var x = rect.left - stageRect.left;
+        var y = rect.top - stageRect.top;
+        var fromX = x + rect.width / 2 < toX ? x + rect.width : x;
+        var fromY = y + rect.height / 2;
+        var bend = Math.max(34, Math.abs(toX - fromX) * 0.42);
+        path.setAttribute('d', 'M' + fromX.toFixed(1) + ' ' + fromY.toFixed(1) +
+          ' C' + (fromX + bend).toFixed(1) + ' ' + fromY.toFixed(1) + ', ' +
+          (toX - bend).toFixed(1) + ' ' + toY.toFixed(1) + ', ' +
+          toX.toFixed(1) + ' ' + toY.toFixed(1));
+      });
+    }
+
+    update();
+    window.addEventListener('resize', update);
+    if ('ResizeObserver' in window) new ResizeObserver(update).observe(stage);
+    window.setTimeout(update, 700);
+  }
+
+  // ---------- CRM hero: частицы вокруг Кики (без кликов и подсветки) ----------
+  function initCrmHeroScene() {
+    var canvas = document.getElementById('crm-hero-particles');
+    if (!canvas) return;
+    var scene = canvas.parentElement;
+    var ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    var reduceMotion = !!(window.matchMedia &&
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+    var particles = [];
+    var raf = 0;
+    var last = 0;
+    var running = true;
+
+    function resize() {
+      var rect = scene.getBoundingClientRect();
+      var dpr = Math.min(window.devicePixelRatio || 1, 2);
+      canvas.width = Math.max(1, Math.round(rect.width * dpr));
+      canvas.height = Math.max(1, Math.round(rect.height * dpr));
+      canvas.style.width = rect.width + 'px';
+      canvas.style.height = rect.height + 'px';
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      var count = rect.width < 520 ? 18 : 34;
+      particles = Array.from({ length: count }, function (_, index) {
+        return {
+          x: Math.random() * rect.width,
+          y: Math.random() * rect.height,
+          length: 4 + Math.random() * 16,
+          speed: 8 + Math.random() * 18,
+          alpha: 0.08 + Math.random() * 0.24,
+          size: 0.4 + Math.random() * 0.8,
+          wobble: (index % 5) * 0.7
+        };
+      });
+    }
+
+    function draw(delta) {
+      var w = scene.clientWidth;
+      var h = scene.clientHeight;
+      ctx.clearRect(0, 0, w, h);
+      particles.forEach(function (p) {
+        if (!reduceMotion) {
+          p.y += p.speed * delta;
+          p.x += Math.sin(p.y * 0.02 + p.wobble) * 4 * delta;
+          if (p.y > h + 20) { p.y = -20; p.x = Math.random() * w; }
+        }
+        ctx.strokeStyle = 'rgba(174,165,255,' + p.alpha + ')';
+        ctx.lineWidth = p.size;
+        ctx.beginPath();
+        ctx.moveTo(p.x, p.y - p.length);
+        ctx.lineTo(p.x, p.y);
+        ctx.stroke();
+      });
+    }
+
+    function loop(timestamp) {
+      if (!running) return;
+      if (!last) last = timestamp;
+      var delta = Math.min((timestamp - last) / 1000, 0.05);
+      last = timestamp;
+      draw(delta);
+      raf = window.requestAnimationFrame(loop);
+    }
+
+    resize();
+    if ('ResizeObserver' in window) new ResizeObserver(resize).observe(scene);
+    else window.addEventListener('resize', resize);
+
+    if (reduceMotion) { draw(0); return; }
+    raf = window.requestAnimationFrame(loop);
+    document.addEventListener('visibilitychange', function () {
+      if (document.hidden) {
+        running = false;
+        window.cancelAnimationFrame(raf);
+      } else if (!running) {
+        running = true;
+        last = 0;
+        raf = window.requestAnimationFrame(loop);
+      }
+    });
+  }
+
+  // ---------- CRM hero: точная кинетическая сцена из лаборатории ----------
+  function initCrmLabScene() {
+    var scene = document.getElementById('crm-lab-scene');
+    var canvas = document.getElementById('crm-lab-particles');
+    if (!scene || !canvas) return;
+    var ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    var reduceMotion = !!(window.matchMedia &&
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+    var width = 0, height = 0, dpr = 1;
+    var particles = [], glyphs = [];
+    var last = 0, time = 0, raf = 0;
+
+    function rand(min, max) { return min + Math.random() * (max - min); }
+
+    function buildField() {
+      var count = width < 700 ? 38 : 64;
+      particles = Array.from({ length: count }, function (_, index) {
+        return {
+          x: Math.random() * width,
+          y: Math.random() * height,
+          z: rand(0.35, 1),
+          vy: rand(10, 34) * (width < 700 ? 0.75 : 1),
+          vx: rand(-3, 3),
+          len: rand(4, 26),
+          alpha: rand(0.12, 0.5),
+          twinkle: rand(0, Math.PI * 2),
+          size: rand(0.4, 1.35),
+          index: index
+        };
+      });
+      glyphs = Array.from({ length: width < 700 ? 3 : 7 }, function (_, index) {
+        return {
+          x: rand(width * 0.4, width * 0.86),
+          y: rand(0, height),
+          vy: rand(7, 16),
+          text: ['KOR-18', 'INV-104', 'BALANCE', 'TASK', 'SYNC', 'CRM', '→'][index % 7],
+          alpha: rand(0.1, 0.26),
+          size: rand(6, 8),
+          drift: rand(-4, 4)
+        };
+      });
+    }
+
+    function resize() {
+      var rect = scene.getBoundingClientRect();
+      width = Math.max(rect.width, 1);
+      height = Math.max(rect.height, 1);
+      dpr = Math.min(window.devicePixelRatio || 1, 2);
+      canvas.width = Math.round(width * dpr);
+      canvas.height = Math.round(height * dpr);
+      canvas.style.width = width + 'px';
+      canvas.style.height = height + 'px';
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      buildField();
+    }
+
+    function draw(delta) {
+      ctx.clearRect(0, 0, width, height);
+      ctx.save();
+      for (var dot = 0; dot < 110; dot += 1) {
+        var dx = ((dot * 73.13 + 19) % 1) * width;
+        var dy = ((dot * 41.71 + 7) % 1) * height;
+        ctx.fillStyle = 'rgba(242,241,233,' + (0.025 + (dot % 4) * 0.01) + ')';
+        ctx.fillRect(dx, dy, 1, 1);
+      }
+      ctx.restore();
+
+      if (!reduceMotion) {
+        particles.forEach(function (particle) {
+          particle.y += particle.vy * delta;
+          particle.x += particle.vx * delta;
+          particle.twinkle += delta * 1.7;
+          if (particle.y > height + 30) { particle.y = -30; particle.x = Math.random() * width; }
+          if (particle.x < -20) particle.x = width + 20;
+          if (particle.x > width + 20) particle.x = -20;
+          var alpha = particle.alpha * (0.7 + Math.sin(particle.twinkle) * 0.3);
+          var length = particle.len * (0.8 + particle.z * 0.9);
+          ctx.strokeStyle = 'rgba(174,165,255,' + alpha + ')';
+          ctx.lineWidth = particle.size;
+          ctx.beginPath();
+          ctx.moveTo(particle.x, particle.y - length);
+          ctx.lineTo(particle.x, particle.y);
+          ctx.stroke();
+        });
+
+        glyphs.forEach(function (glyph) {
+          glyph.y += glyph.vy * delta;
+          glyph.x += glyph.drift * delta;
+          if (glyph.y > height + 20) { glyph.y = -20; glyph.x = rand(width * 0.4, width * 0.86); }
+          ctx.save();
+          ctx.font = glyph.size + 'px "Mono Lab", monospace';
+          ctx.fillStyle = 'rgba(174,165,255,' + glyph.alpha + ')';
+          ctx.fillText(glyph.text, glyph.x, glyph.y);
+          ctx.restore();
+        });
+      }
+    }
+
+    function loop(timestamp) {
+      if (!last) last = timestamp;
+      var delta = Math.min((timestamp - last) / 1000, 0.05);
+      last = timestamp;
+      if (!reduceMotion) time += delta;
+      draw(delta);
+      raf = window.requestAnimationFrame(loop);
+    }
+
+    scene.addEventListener('pointermove', function (event) {
+      var rect = scene.getBoundingClientRect();
+      scene.style.setProperty('--mx', ((event.clientX - rect.left) / rect.width - 0.5).toFixed(3));
+      scene.style.setProperty('--my', ((event.clientY - rect.top) / rect.height - 0.5).toFixed(3));
+    }, { passive: true });
+
+    var connectors = scene.querySelector('.connectors');
+    var stage = scene.querySelector('.stage');
+    var kiki = document.getElementById('crm-lab-kiki');
+    var cards = Array.from(scene.querySelectorAll('.float-card'));
+
+    function updateConnectors() {
+      if (!connectors || !stage || !kiki) return;
+      var stageRect = stage.getBoundingClientRect();
+      var kikiRect = kiki.getBoundingClientRect();
+      if (!stageRect.width || !kikiRect.width) return;
+      var toX = kikiRect.left - stageRect.left + kikiRect.width * 0.55;
+      var toY = kikiRect.top - stageRect.top + kikiRect.height * 0.5;
+      var paths = Array.from(connectors.querySelectorAll('.connector'));
+      connectors.setAttribute('viewBox', '0 0 ' + Math.round(stageRect.width) + ' ' + Math.round(stageRect.height));
+      paths.forEach(function (path, index) {
+        var card = cards[index];
+        if (!card) return;
+        var rect = card.getBoundingClientRect();
+        var x = rect.left - stageRect.left;
+        var y = rect.top - stageRect.top;
+        var fromX = x + rect.width / 2 < toX ? x + rect.width : x;
+        var fromY = y + rect.height / 2;
+        var bend = Math.max(40, Math.abs(toX - fromX) * 0.42);
+        path.setAttribute('d', 'M' + fromX.toFixed(1) + ' ' + fromY.toFixed(1) +
+          ' C' + (fromX + bend).toFixed(1) + ' ' + fromY.toFixed(1) + ', ' +
+          (toX - bend).toFixed(1) + ' ' + toY.toFixed(1) + ', ' +
+          toX.toFixed(1) + ' ' + toY.toFixed(1));
+      });
+    }
+
+    function refreshLayout() {
+      resize();
+      updateConnectors();
+    }
+
+    refreshLayout();
+    if ('ResizeObserver' in window) new ResizeObserver(refreshLayout).observe(scene);
+    else window.addEventListener('resize', refreshLayout);
+    scene.querySelectorAll('.float-card').forEach(function (card) {
+      card.addEventListener('animationend', updateConnectors, { once: true });
+    });
+    window.setTimeout(updateConnectors, 1200);
+    if (reduceMotion) { draw(0); return; }
+    raf = window.requestAnimationFrame(loop);
+    document.addEventListener('visibilitychange', function () {
+      if (document.hidden) window.cancelAnimationFrame(raf);
+      else { last = 0; raf = window.requestAnimationFrame(loop); }
+    });
+  }
+
   initReveal();
+  initCrmAccessModal();
+  initCrmChatDemo();
+  initCrmLanding();
+  initCrmHeroScene();
+  initCrmLabScene();
+  initCrmHeroLines();
   initAssistantTools();
   initServiceFilter();
   initMobileNav();

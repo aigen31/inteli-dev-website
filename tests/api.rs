@@ -2884,3 +2884,19 @@ async fn mascot_emotions_are_sized_pngs_and_live_only_in_the_hero() {
     let (_, _, chat) = get_page(&state, "/chat").await;
     assert!(!chat.contains("terminal-mascot"));
 }
+
+/// Лендинг CRM: страница доступна, заголовок и ключевой блок на месте.
+#[tokio::test]
+async fn crm_landing_renders() {
+    let _guard = seo_lock();
+    let state = test_state().await;
+    inteli_dev::services::seo::set_site_url(test_public_url());
+
+    let (status, _, html) = get_page(&state, "/crm").await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(html.contains("Клиенты. Задачи."), "нет заголовка лендинга");
+    assert!(html.contains("В одной CRM."), "нет финальной строки заголовка");
+    assert!(html.contains("/assets/crm/kiki-crm-lotus.webp"), "нет иллюстрации");
+    assert!(html.contains("Клиент, работа и деньги в одной базе."), "нет манифеста");
+    assert!(html.contains("id=\"crm-access-modal\""), "нет модалки доступа");
+}

@@ -16,6 +16,7 @@ pub struct Lead {
     pub message: String,
     pub source: String,
     pub status: String,
+    pub consent_at: Option<String>,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -28,20 +29,22 @@ pub struct NewLead {
     pub phone: Option<String>,
     pub message: String,
     pub source: String,
+    pub consent_at: Option<String>,
 }
 
 /// Сохраняет лид (status = "new") и возвращает полную запись с id.
 pub async fn insert(pool: &SqlitePool, lead: NewLead) -> AppResult<Lead> {
     let now = chrono::Utc::now().to_rfc3339();
     let result = sqlx::query(
-        r#"INSERT INTO leads (name, email, phone, message, source, status, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, 'new', ?, ?)"#,
+        r#"INSERT INTO leads (name, email, phone, message, source, status, consent_at, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, 'new', ?, ?, ?)"#,
     )
     .bind(lead.name)
     .bind(lead.email)
     .bind(lead.phone)
     .bind(lead.message)
     .bind(lead.source)
+    .bind(lead.consent_at)
     .bind(&now)
     .bind(&now)
     .execute(pool)
@@ -54,7 +57,7 @@ pub async fn insert(pool: &SqlitePool, lead: NewLead) -> AppResult<Lead> {
 /// Возвращает лид по id.
 pub async fn get(pool: &SqlitePool, id: i64) -> AppResult<Lead> {
     sqlx::query_as::<_, Lead>(
-        "SELECT id, name, email, phone, message, source, status, created_at, updated_at FROM leads WHERE id = ?",
+        "SELECT id, name, email, phone, message, source, status, consent_at, created_at, updated_at FROM leads WHERE id = ?",
     )
     .bind(id)
     .fetch_optional(pool)
@@ -65,7 +68,7 @@ pub async fn get(pool: &SqlitePool, id: i64) -> AppResult<Lead> {
 /// Возвращает последние `limit` лидов.
 pub async fn list(pool: &SqlitePool, limit: i64) -> AppResult<Vec<Lead>> {
     sqlx::query_as::<_, Lead>(
-        "SELECT id, name, email, phone, message, source, status, created_at, updated_at
+        "SELECT id, name, email, phone, message, source, status, consent_at, created_at, updated_at
          FROM leads ORDER BY created_at DESC, id DESC LIMIT ?",
     )
     .bind(limit)
@@ -125,6 +128,7 @@ mod tests {
                 phone: Some("+7999".into()),
                 message: "Нужен SEO".into(),
                 source: "form".into(),
+                consent_at: None,
             },
         )
         .await
@@ -146,6 +150,7 @@ mod tests {
                 phone: None,
                 message: "msg".into(),
                 source: "chat".into(),
+                consent_at: None,
             },
         )
         .await

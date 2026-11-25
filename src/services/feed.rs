@@ -15,7 +15,7 @@ use crate::services::article::{Article, ArticleHead, PublishedArticles};
 use crate::utils::markdown;
 
 /// Статические страницы сайта, которые всегда должны быть в карте сайта.
-const STATIC_PAGES: &[&str] = &["/", "/services", "/projects", "/blog", "/chat", "/contact"];
+const STATIC_PAGES: &[&str] = &["/", "/services", "/projects", "/blog", "/chat", "/contact", "/crm"];
 
 /// Название сайта в лентах.
 const FEED_TITLE: &str = "inteli.dev — блог";

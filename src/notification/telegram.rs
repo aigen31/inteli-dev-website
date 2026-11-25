@@ -98,6 +98,7 @@ mod tests {
             message: "нужен SEO".into(),
             source: "form".into(),
             status: "new".into(),
+            consent_at: None,
             created_at: "2026-09-07T10:00:00Z".into(),
             updated_at: "2026-09-07T10:00:00Z".into(),
         };

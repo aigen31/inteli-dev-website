@@ -10,6 +10,7 @@ use crate::limits::Limits;
 use crate::memory::content::SiteContent;
 use crate::services::goals;
 use crate::ui::blog::LatestArticles;
+use crate::ui::crm::CrmTeaser;
 use crate::ui::github::GitHubStatsSection;
 use crate::ui::shared::{
     GlossaryLinks, PrimaryButton, ProjectCard, QuickActions, SecondaryButton, ServiceCard, StatusBadge,
@@ -305,8 +306,10 @@ pub fn Home() -> impl IntoView {
         // Последние статьи. Блок сам себя скрывает, пока ничего не опубликовано.
         <LatestArticles/>
 
+        <CrmTeaser/>
+
         <section class="section section-cta cta-section">
-            <p class="eyebrow"><span class="eyebrow-dot" aria-hidden="true"></span>{"04 — Контакт"}</p>
+            <p class="eyebrow"><span class="eyebrow-dot" aria-hidden="true"></span>{"05 / Контакт"}</p>
             <h2>Готовы обсудить ваш проект?</h2>
             <p class="section-note">{"Опишите задачу: что нужно сделать, к какому сроку и какой бюджет."}</p>
             <div class="cta-buttons">

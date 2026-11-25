@@ -1010,6 +1010,23 @@ pub async fn mascot_image(Path(file): Path<String>, raw: RawQuery) -> Result<Res
 /// WebP: скриншоты 1920×1080 в PNG весили по несколько мегабайт, а на сайте
 /// показываются шириной до 1600 px. Неизвестный файл — 404, а не пустая
 /// картинка: имена приходят из контента, и опечатка в `Project::image` должна
+pub async fn crm_image(Path(file): Path<String>, raw: RawQuery) -> Result<Response, ApiError> {
+    let image = assets::crm_image(&file)
+        .ok_or_else(|| AppError::NotFound(format!("crm image `{file}`")))?;
+
+    Ok((
+        [
+            (header::CONTENT_TYPE, "image/webp"),
+            (
+                header::CACHE_CONTROL,
+                asset_cache_control(query_version(raw.0.as_deref())),
+            ),
+        ],
+        image,
+    )
+        .into_response())
+}
+
 /// быть видна сразу, а не превращаться в дыру в карточке.
 pub async fn project_image(Path(file): Path<String>, raw: RawQuery) -> Result<Response, ApiError> {
     let image = assets::project_image(&file)

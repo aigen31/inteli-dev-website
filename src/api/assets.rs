@@ -253,6 +253,21 @@ pub const HERO_ART_WIDTH: u32 = 2560;
 /// Высота иллюстрации hero в пикселях.
 pub const HERO_ART_HEIGHT: u32 = 1440;
 
+/// Иллюстрации лендинга CRM.
+pub const CRM_DESK: &[u8] = include_bytes!("../../assets/crm/kiki-crm-desk.webp");
+pub const CRM_GRID: &[u8] = include_bytes!("../../assets/crm/kiki-crm-grid.webp");
+pub const CRM_LOTUS: &[u8] = include_bytes!("../../assets/crm/kiki-crm-lotus.webp");
+
+/// Картинка лендинга по имени файла.
+pub fn crm_image(file: &str) -> Option<&'static [u8]> {
+    match file {
+        "kiki-crm-desk.webp" => Some(CRM_DESK),
+        "kiki-crm-grid.webp" => Some(CRM_GRID),
+        "kiki-crm-lotus.webp" => Some(CRM_LOTUS),
+        _ => None,
+    }
+}
+
 /// Логотип и иконки приложения.
 ///
 /// Знак — шляпа Кики, сгенерирована в той же one-line манере, что и hero-арт,

@@ -22,6 +22,9 @@ pub struct LeadSubmission {
     pub message: String,
     #[serde(default = "default_source")]
     pub source: String,
+    /// Подтверждение согласия на обработку ПДн. Без него заявка не принимается.
+    #[serde(default)]
+    pub consent: bool,
 }
 
 fn default_source() -> String {
@@ -69,6 +72,12 @@ impl LeadSubmission {
             }
         }
 
+        if !self.consent {
+            return Err(AppError::Validation(
+                "подтвердите согласие на обработку персональных данных".into(),
+            ));
+        }
+
         if let Some(email) = self.email.as_deref() {
             let email = email.trim();
             if !email.is_empty() && !is_valid_email(email) {
@@ -85,6 +94,7 @@ impl LeadSubmission {
             phone: self.phone.filter(|p| !p.trim().is_empty()),
             message: self.message.trim().to_string(),
             source: self.source,
+            consent_at: self.consent.then(|| chrono::Utc::now().to_rfc3339()),
         }
     }
 }
@@ -128,6 +138,7 @@ mod tests {
             phone: None,
             message: "msg".into(),
             source: "form".into(),
+            consent: true,
         };
         assert!(s.validate().is_err());
     }
@@ -140,6 +151,7 @@ mod tests {
             phone: None,
             message: "msg".into(),
             source: "form".into(),
+            consent: true,
         };
         assert!(s.validate().is_err());
     }
@@ -157,6 +169,7 @@ mod tests {
                 phone: Some("+7999".into()),
                 message: "Нужен SEO".into(),
                 source: "form".into(),
+                consent: true,
             })
             .await
             .unwrap();

@@ -42,29 +42,65 @@ pub async fn profile(
     authorize(&state, &headers)?;
     let content = SiteContent::get();
     let system = crate::llm::prompt::chatbot_system_prompt(&content.profile);
+    let tools: Vec<Value> = crate::mcp::TOOLS
+        .iter()
+        .map(|tool| {
+            json!({
+                "type": "function",
+                "function": {
+                    "name": tool.name,
+                    "description": tool.description,
+                    "parameters": (tool.schema)(),
+                }
+            })
+        })
+        .collect();
 
     Ok(Json(json!({
         "system": system,
-        "tools": [{
-            "type": "function",
-            "function": {
-                "name": "site_lookup",
-                "description": "Найти факты сайта: услуги, цены, статус, кейсы, статьи и контакты. Используй для вопросов о том, что делает автор и сколько это стоит.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "query": {"type": "string", "description": "Вопрос или ключевые слова посетителя."}
-                    },
-                    "required": ["query"],
-                    "additionalProperties": false
-                }
-            }
-        }],
+        "tools": tools,
         "suggested_next": [
             {"text": "Какие услуги вы делаете?", "type": "lead_request"},
             {"text": "Сколько стоит?", "type": "lead_request"},
             {"text": "Оставить заявку", "type": "lead_request"}
         ]
+    })))
+}
+
+/// Прайс-лист для ядра: любая ассистентская поверхность получает один и тот же
+/// снимок цен, не читая базу сайта. Источник правды остаётся здесь.
+pub async fn prices(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<Value>, ApiError> {
+    authorize(&state, &headers)?;
+
+    let items = crate::storage::price::load_active(&state.db)
+        .await
+        .map_err(ApiError::from)?;
+
+    let updated_at = items
+        .iter()
+        .map(|item| item.updated_at.clone())
+        .max()
+        .unwrap_or_default();
+
+    let payload: Vec<Value> = items
+        .iter()
+        .map(|item| {
+            json!({
+                "slug": item.slug,
+                "title": item.title,
+                "description": item.description,
+                "price_from": item.price_from,
+                "unit": item.unit,
+            })
+        })
+        .collect();
+
+    Ok(Json(json!({
+        "updated_at": updated_at,
+        "items": payload,
     })))
 }
 
@@ -75,30 +111,39 @@ pub async fn tool(
     Json(call): Json<ToolCall>,
 ) -> Result<Json<Value>, ApiError> {
     authorize(&state, &headers)?;
-    if name != "site_lookup" {
-        return Err(AppError::NotFound(format!("unknown assistant tool: {name}")).into());
+    // `site_lookup` is kept as a backward-compatible alias for old callers.
+    // New profiles expose every read-only site MCP tool directly.
+    if name == "site_lookup" {
+        let query = call
+            .arguments
+            .get("query")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .trim();
+        if query.is_empty() {
+            return Err(AppError::Validation("site_lookup.query is required".into()).into());
+        }
+
+        let context = crate::mcp::context_for(&state.db, query).await;
+        let text = if context.trim().is_empty() {
+            "В публичной базе знаний нет подходящих фактов. Не выдумывай детали, предложи уточнить вопрос или оставить заявку.".to_string()
+        } else {
+            context
+        };
+
+        return Ok(Json(json!({
+            "result": { "text": text },
+            "tool": "site_lookup",
+            "conversation_id": call.conversation_id,
+        })));
     }
 
-    let query = call
-        .arguments
-        .get("query")
-        .and_then(Value::as_str)
-        .unwrap_or_default()
-        .trim();
-    if query.is_empty() {
-        return Err(AppError::Validation("site_lookup.query is required".into()).into());
-    }
-
-    let context = crate::mcp::context_for(&state.db, query).await;
-    let text = if context.trim().is_empty() {
-        "В публичной базе знаний нет подходящих фактов. Не выдумывай детали, предложи уточнить вопрос или оставить заявку.".to_string()
-    } else {
-        context
-    };
+    let outcome = crate::mcp::call(&state, &name, &call.arguments).await;
 
     Ok(Json(json!({
-        "result": { "text": text },
-        "tool": "site_lookup",
+        "result": { "text": outcome.text },
+        "is_error": outcome.is_error,
+        "tool": name,
         "conversation_id": call.conversation_id,
     })))
 }

@@ -779,6 +779,13 @@ pub fn page_meta(path: &str, site_url: &str, article: Option<&Article>) -> PageM
             OgType::Website,
             Some(default_og_image(base)),
         ),
+        "/crm" => PageMeta::new(
+            format!("CRM для частной практики, {name}"),
+            "Клиенты, проекты, задачи, счета и баланс в одном рабочем месте. Кики внутри CRM: ищет задачи, готовит счёт и показывает загрузку.".to_string(),
+            absolute(base, "/crm"),
+            OgType::Website,
+            Some(default_og_image(base)),
+        ),
         "/contact" => PageMeta::new(
             format!("Контакты и заявка — {name}"),
             "Telegram, email и форма заявки. Опишите проект: задача, сроки, бюджет.".to_string(),
