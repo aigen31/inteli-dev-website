@@ -20,7 +20,11 @@ FILES=(
     src/ui/admin.rs
     src/ui/mod.rs
     src/ui/shared.rs
+    src/ui/crm.rs
     assets/style.css
+    assets/main.js
+    assets/crm-lab-scene.html
+    assets/crm
     compose.yaml
     compose.dev.yaml
 )
