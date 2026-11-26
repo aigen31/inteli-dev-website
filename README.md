@@ -1,63 +1,65 @@
 # inteli-dev.ru
 
-<img src="docs/assets/readme/kiki-header.svg" alt="Кики, маскот inteli dev, среди векторных карточек сайта" width="100%">
+<img src="docs/assets/readme/kiki-header.en.svg" alt="Kiki pointing at the inteli-dev.ru browser card" width="100%">
 
-Личный сайт специалиста по SEO и разработке: витрина услуг, кейсы, блог, CRM-лендинг и ассистент Кики. Один домен, один контур: посетитель читает, задаёт вопрос и оставляет заявку без переходов между сервисами.
+[English](README.md) · [Русский](README.ru.md) · [中文](README.zh_CN.md)
 
-Философия простая: меньше кнопок и текста, больше пользы. Заявка должна занимать несколько действий, а не квест по страницам. Подробные правила — в [`AGENT.md`](AGENT.md).
+A personal site for SEO and development work: services, cases, blog, the CRM landing page and the Kiki assistant. One domain and one flow: a visitor reads, asks a question and leaves a request without jumping between services.
 
-## Что внутри
+Less noise, fewer buttons, more useful signal. Detailed rules live in [`AGENT.md`](AGENT.md).
 
-| Раздел | Путь | Что делает |
+## Sections
+
+| Section | Path | What it does |
 |---|---|---|
-| Главная | `/` | позиционирование, услуги, кейсы, быстрый вход в чат и заявку |
-| Услуги | `/services`, `/services/{slug}` | SEO, аудит, разработка и сопровождение |
-| Проекты | `/projects`, `/projects/{slug}` | кейсы с контекстом и результатом |
-| Блог | `/blog`, `/blog/{slug}` | статьи и технические разборы |
-| Чат | `/chat` | диалог с Кики, история и быстрые сценарии |
-| CRM-лендинг | `/crm` | отдельная посадочная страница CRM с кинетической иллюстрацией |
-| Админка | `/admin/*` | заявки, чаты, статьи, прайс и outbox |
-| API | `/api/*` | health, статус, чат, заявки, вебхук Telegram |
+| Home | `/` | positioning, services, cases, chat and request entry points |
+| Services | `/services`, `/services/{slug}` | SEO, audits, development and support |
+| Projects | `/projects`, `/projects/{slug}` | case studies with context and results |
+| Blog | `/blog`, `/blog/{slug}` | articles and engineering notes |
+| Chat | `/chat` | Kiki conversation with history and quick scenarios |
+| CRM landing | `/crm` | CRM landing page with the kinetic Kiki scene |
+| Admin | `/admin/*` | leads, chats, articles, prices and outbox |
+| API | `/api/*` | health, status, chat, leads and the Telegram webhook |
 
-## Стек
+## Stack
 
-| Компонент | Технология |
+| Layer | Technology |
 |---|---|
-| UI | Leptos 0.7.8 (SSR) + ванильный JS |
+| UI | Leptos 0.7.8 (SSR) + vanilla JS |
 | HTTP | axum 0.7, tokio, tower |
-| Хранилище | SQLite (WAL, sqlx) |
-| Контент | встроенный реестр `src/memory/content.rs` |
-| LLM | DeepSeek через OpenAI-compatible endpoint |
-| Уведомления | Telegram Bot API + VK Messages API |
-| Деплой | Docker multi-stage, лёгкий runtime |
+| Storage | SQLite (WAL, sqlx) |
+| Content | built-in registry `src/memory/content.rs` |
+| LLM | DeepSeek via an OpenAI-compatible endpoint |
+| Notifications | Telegram Bot API + VK Messages API |
+| Delivery | multi-stage Docker, small runtime image |
 
-## Структура
+## Structure
 
 ```text
 src/
-├── main.rs            boot: конфигурация → слои → сервер
-├── lib.rs             библиотека и сборка роутера
-├── config.rs          config.toml + переменные окружения
-├── api/               HTTP-хендлеры: chat, lead, status, health, admin
-├── services/          бизнес-логика: чат, заявки, статус, SEO
-├── storage/           SQLite: чаты, лиды, статьи, прайс
-├── memory/            встроенный контент и страницы услуг
-├── llm/               ChatProvider, DeepSeek и промпты
-├── notification/      Telegram и VK
-├── cache.rs           in-memory кэш и rate limiter
-├── utils/             валидация, анонимизация IP
+├── main.rs            boot: config → layers → server
+├── lib.rs             library and router assembly
+├── config.rs          config.toml + environment
+├── api/               HTTP handlers: chat, lead, status, health, admin
+├── services/          chat, leads, status, SEO, availability
+├── storage/           SQLite: chats, leads, articles, prices
+├── memory/            built-in content and service pages
+├── llm/               ChatProvider, DeepSeek and prompts
+├── notification/      Telegram and VK
+├── cache.rs           in-memory cache and rate limiter
+├── utils/             validation, IP anonymisation
 └── ui/                Leptos SSR: home, services, blog, chat, crm, admin
-assets/                style.css, main.js, изображения и шрифты
-tests/                 интеграционные тесты API и страниц
-RULES/                 архитектурные и UI-правила
-docs/                  ADR и эксплуатационные заметки
+assets/                style.css, main.js, images and fonts
+tests/                 API and page integration tests
+RULES/                 architecture and UI rules
+docs/                  ADRs and operational notes
 ```
 
-## Быстрый старт
+## Quick start
 
-### Локально
+### Local
 
-Нужен Rust 1.85+.
+Rust 1.85+ is required.
 
 ```bash
 cp config.toml.example config.toml
@@ -65,9 +67,7 @@ cargo run
 # → http://localhost:8080
 ```
 
-Секреты задаются через env (`LLM_API_KEY`, `TELEGRAM_BOT_TOKEN`, `ADMIN_TOKEN`, …)
-или `config.toml`. Без ключей сайт работает: чат отвечает fallback-ответами,
-уведомления пропускаются.
+Secrets come from env (`LLM_API_KEY`, `TELEGRAM_BOT_TOKEN`, `ADMIN_TOKEN`, …) or `config.toml`. Without keys the site still runs: chat falls back to canned replies and notifications are skipped.
 
 ### Docker dev
 
@@ -77,52 +77,43 @@ docker compose -f compose.dev.yaml up -d --build
 # → http://localhost:8282
 ```
 
-### Docker prod
+### Docker production
 
-Продакшен — канонический `compose.yaml`: приложение за nginx, трафик и TLS
-через внешний Traefik (сеть `traefik-public`), сертификат Let's Encrypt
-выпускается автоматически. Контейнеры и тома имеют префикс `inteli-dev-prod`,
-поэтому production можно держать рядом с dev-стеком.
+Production uses the canonical `compose.yaml`: the app sits behind nginx, traffic and TLS go through an external Traefik network (`traefik-public`), and Let's Encrypt issues the certificate. Containers and volumes use the `inteli-dev-prod` prefix, so production can run next to the dev stack.
 
 ```bash
 cp .env.prod.example .env.prod
 docker compose up -d --build
 ```
 
-Требования к серверу:
+Server requirements:
 
-- внешняя docker-сеть Traefik: `docker network create traefik-public`;
-- A-запись `inteli-dev.ru` и `www` на этот сервер, иначе ACME HTTP-01 не пройдёт.
+- an external Traefik Docker network: `docker network create traefik-public`;
+- A records for `inteli-dev.ru` and `www` pointing at the server, otherwise ACME HTTP-01 fails.
 
-Конфигурация приложения — `config/config.prod.toml` (монтируется read-only как
-`/app/config.toml`, секретов в нём нет). Подробности — [`RULES/docker-build.md`](RULES/docker-build.md).
+Application config is `config/config.prod.toml` (mounted read-only as `/app/config.toml`, no secrets). See [`RULES/docker-build.md`](RULES/docker-build.md).
 
 ## API
 
-| Метод | Путь | Описание |
+| Method | Path | Purpose |
 |---|---|---|
-| GET | `/api/health` | health-check |
-| GET | `/api/status` | статус занятости |
-| POST | `/api/chat` | AI-чат |
-| POST | `/api/lead` | заявка/лид → Telegram + VK |
-| POST | `/api/telegram/webhook` | webhook Telegram |
-| GET | `/api/admin/stats` | сводка (Bearer `ADMIN_TOKEN`) |
-| GET | `/api/admin/leads` | список лидов |
-| GET | `/api/admin/chats` | история чатов |
-| PATCH | `/api/admin/leads/{id}` | смена статуса |
+| GET | `/api/health` | health check |
+| GET | `/api/status` | availability status |
+| POST | `/api/chat` | AI chat |
+| POST | `/api/lead` | lead → Telegram + VK |
+| POST | `/api/telegram/webhook` | Telegram webhook |
+| GET | `/api/admin/stats` | summary (Bearer `ADMIN_TOKEN`) |
+| GET | `/api/admin/leads` | lead list |
+| GET | `/api/admin/chats` | chat history |
+| PATCH | `/api/admin/leads/{id}` | change lead status |
 
-## Кики и CRM
+## Kiki and CRM
 
-Кики — общий ассистент сайта и CRM. Ядро живёт в
-[`inteli-dev-kiki-assistant-kernel-api`](../inteli-dev-kiki-assistant-kernel-api/README.md):
-оно хранит диалоги, инструменты и маршрутизацию моделей. Сайт отдаёт ядру
-контекст страницы и принимает tool calls; CRM подключается к тому же ядру.
+Kiki is shared by the site and the CRM. The kernel lives in [`inteli-dev-kiki-assistant-kernel-api`](../inteli-dev-kiki-assistant-kernel-api/README.md): it owns conversations, tools and model routing. The site sends page context and accepts tool calls; the CRM connects to the same kernel.
 
-CRM-лендинг `/crm` — отдельная кинетическая сцена: Кики, орбиты, карточки
-клиентов и задач. Она собрана из тех же токенов, что и остальной сайт, и не
-тянет внешний фреймворк.
+The `/crm` landing page uses a kinetic scene built from the site tokens: Kiki, orbit rings, client and task cards. It does not pull a frontend framework.
 
-## Тесты
+## Tests
 
 ```bash
 cargo test
@@ -130,8 +121,8 @@ cargo clippy --all-targets --all-features
 cargo fmt --check
 ```
 
-## Документация
+## Documentation
 
-- [`AGENT.md`](AGENT.md) — правила разработки, дизайна и деплоя.
-- [`RULES/`](RULES/) — архитектура, UI, Docker, безопасность.
-- [`docs/ADR.md`](docs/ADR.md) — архитектурные решения.
+- [`AGENT.md`](AGENT.md) — development, design and deployment rules.
+- [`RULES/`](RULES/) — architecture, UI, Docker, security.
+- [`docs/ADR.md`](docs/ADR.md) — architecture decisions.
